@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { workbenchDir } from '@/config'
 import * as git from '@/lib/git'
@@ -33,13 +33,20 @@ export function worktreePathFor(repo: string, issueNumber: number): string {
   return join(workbenchDir(), 'worktrees', owner, name, `aalai-issue-${issueNumber}`)
 }
 
-/** Clones the repository if it is missing, then brings its refs up to date. */
+/**
+ * Clones the repository if it is missing, then brings its refs up to date.
+ *
+ * Existence is checked on the filesystem rather than by running `git rev-parse`
+ * in the target: Bun.spawn throws ENOENT when its `cwd` does not exist, so
+ * probing with a subprocess would fail before git could answer, and the very
+ * first run against a new repository could never get as far as cloning it.
+ */
 export async function ensureClone(repo: string): Promise<string> {
   const clonePath = clonePathFor(repo)
-  const isRepo = await exec(['git', 'rev-parse', '--git-dir'], { cwd: clonePath })
-  if (isRepo.exitCode !== 0) {
-    const { owner } = splitRepo(repo)
-    mkdirSync(join(workbenchDir(), owner), { recursive: true })
+  const { owner } = splitRepo(repo)
+  mkdirSync(join(workbenchDir(), owner), { recursive: true })
+
+  if (!existsSync(join(clonePath, '.git'))) {
     log.info('cloning', { repo, into: clonePath })
     await execOrThrow(['gh', 'repo', 'clone', repo, clonePath])
   }

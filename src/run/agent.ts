@@ -14,7 +14,7 @@ const log = logger('agent')
 export interface AgentTurnInput {
   readonly worktree: string
   readonly task: string
-  readonly conventionsInstruction: string
+  readonly systemRules: string
   readonly config: Config
 }
 
@@ -35,7 +35,7 @@ export interface AgentTurnResult {
  * never ships.
  */
 export async function runAgentTurn(input: AgentTurnInput): Promise<AgentTurnResult> {
-  const { worktree, task, conventionsInstruction, config } = input
+  const { worktree, task, systemRules, config } = input
 
   const provider = createAcpxProvider({
     agent: config.agent,
@@ -46,7 +46,7 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AgentTurnResu
     // rather than hanging forever on a prompt nobody is there to answer.
     nonInteractivePermissions: 'deny',
     turnTimeoutMs: config.turnTimeoutMs,
-    sessionOptions: { systemPrompt: { append: conventionsInstruction } },
+    sessionOptions: { systemPrompt: { append: systemRules } },
   })
 
   try {

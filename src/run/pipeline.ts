@@ -1,11 +1,11 @@
 import type { Config } from '@/config'
 import type { GhIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { buildTaskPrompt } from '@/prompts/implement-issue'
+import { buildTaskPrompt, buildAgentRules } from '@/prompts/implement-issue'
 import { runAgentTurn } from '@/run/agent'
 import { conventionsInstruction, detectConventions } from '@/run/conventions'
 import { deliver, reportOutcomeOnIssue, type Delivery } from '@/run/deliver'
-import { discardWorkspace, prepareWorkspace } from '@/run/workspace'
+import { discardWorkspace, prepareWorkspace, type Workspace } from '@/run/workspace'
 
 const log = logger('pipeline')
 
@@ -19,9 +19,11 @@ export interface PipelineResult {
 /**
  * Takes one issue from intake to a draft pull request.
  *
- * The stages are deliberately ordered so nothing reaches GitHub until the agent
- * has produced a verifiable diff: workspace, agent, verify, deliver. A failure
- * before the deliver stage leaves the repository untouched.
+ * Stages are ordered so nothing reaches GitHub until the agent has produced a
+ * verifiable diff: workspace, agent, verify, deliver. Every stage, workspace
+ * setup included, resolves to a `PipelineResult` rather than throwing, because
+ * the caller finalises the run's claim from that result: a rejection here would
+ * leave the issue claimed and unretryable until its lease expires.
  */
 export async function runIssue(
   repo: string,
@@ -29,7 +31,15 @@ export async function runIssue(
   config: Config,
 ): Promise<PipelineResult> {
   log.info('run starting', { repo, issue: issue.number, title: issue.title })
-  const workspace = await prepareWorkspace(repo, issue.number, issue.title)
+
+  let workspace: Workspace
+  try {
+    workspace = await prepareWorkspace(repo, issue.number, issue.title)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log.error('workspace setup failed', { repo, issue: issue.number, error: message })
+    return { status: 'failed', error: `workspace setup failed: ${message}` }
+  }
 
   try {
     const conventionFiles = await detectConventions(workspace.worktreePath)
@@ -46,7 +56,7 @@ export async function runIssue(
         branch: workspace.branch,
         base: workspace.base,
       }),
-      conventionsInstruction: conventionsInstruction(conventionFiles),
+      systemRules: `${buildAgentRules()}\n\n${conventionsInstruction(conventionFiles)}`,
       config,
     })
     log.info('agent turn complete', {

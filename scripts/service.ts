@@ -18,6 +18,16 @@ const logDir = join(homedir(), '.aalai', 'logs')
  * is the real 24x7 constraint, and launchd will not wake it: pair this with
  * `caffeinate` or a pmset policy if the factory must run overnight.
  */
+/** Escapes the five XML predefined entities, so a path containing `&` cannot produce an invalid plist. */
+function xml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
 function buildPlist(bunPath: string, projectDir: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,24 +37,24 @@ function buildPlist(bunPath: string, projectDir: string): string {
   <string>${LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${bunPath}</string>
+    <string>${xml(bunPath)}</string>
     <string>run</string>
-    <string>${join(projectDir, 'src', 'index.ts')}</string>
+    <string>${xml(join(projectDir, 'src', 'index.ts'))}</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>${projectDir}</string>
+  <string>${xml(projectDir)}</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>${join(logDir, 'aalai.out.log')}</string>
+  <string>${xml(join(logDir, 'aalai.out.log'))}</string>
   <key>StandardErrorPath</key>
-  <string>${join(logDir, 'aalai.err.log')}</string>
+  <string>${xml(join(logDir, 'aalai.err.log'))}</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${join(homedir(), '.bun', 'bin')}</string>
+    <string>${xml(`/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${join(homedir(), '.bun', 'bin')}`)}</string>
   </dict>
 </dict>
 </plist>

@@ -1,11 +1,12 @@
 import { loadConfig, stateDir, type Config } from '@/config'
+import { scrubInheritedTokens } from '@/lib/credentials'
 import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
 import { pollOnce } from '@/watch/poll'
 import { screenIssue } from '@/watch/intake'
-import { completeRun, claimRun, listRuns, openState } from '@/watch/state'
+import { claimRun, completeRun, forgetRun, listRuns, openState } from '@/watch/state'
 
 const log = logger('aalai')
 
@@ -81,7 +82,7 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     db.close()
     return
   }
-  if (!claimRun(db, repo, issueNumber)) {
+  if (!claimRun(db, repo, issueNumber, config.staleClaimMinutes * 60_000)) {
     log.error('already run; clear it from the runs table to retry', { repo, issue: issueNumber })
     process.exitCode = 1
     db.close()
@@ -147,8 +148,29 @@ async function doctor(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  const removed = scrubInheritedTokens()
+  if (removed.length > 0) {
+    log.debug('removed inheritable tokens from the environment', { vars: removed.join(',') })
+  }
+
   const [command, ...rest] = process.argv.slice(2)
 
+  if (command === 'forget') {
+    const [repo, issueArg] = process.argv.slice(3)
+    const issueNumber = Number(issueArg)
+    if (repo === undefined || !Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+      log.error('usage: aalai forget <owner/repo> <issue-number>')
+      process.exitCode = 1
+      return
+    }
+    const db = openState()
+    log.info(forgetRun(db, repo, issueNumber) ? 'forgotten' : 'no record found', {
+      repo,
+      issue: issueNumber,
+    })
+    db.close()
+    return
+  }
   if (command === 'status') {
     showStatus()
     return
