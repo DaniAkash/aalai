@@ -1,0 +1,12 @@
+{
+  "pollSeconds": 60,
+  "watch": [
+    { "repo": "DaniAkash/aalai-demo" }
+  ],
+  "agent": "codex",
+  "reasoningEffort": "high",
+  "trustedAuthorsOnly": true,
+  "requireLabel": null,
+  "turnTimeoutMs": 900000,
+  "keepWorktreeOnFailure": true
+}
