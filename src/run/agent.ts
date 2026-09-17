@@ -5,6 +5,12 @@ import { logger, raw } from '@/lib/log'
 
 const log = logger('agent')
 
+// The provider implements LanguageModelV2, which the AI SDK accepts through a
+// documented compatibility path. Its warning fires on every turn with a full
+// stack trace and would bury the agent's own output, so it is silenced here
+// rather than left to scroll past.
+;(globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS = false
+
 export interface AgentTurnInput {
   readonly worktree: string
   readonly task: string
