@@ -8,6 +8,14 @@ const watchedRepoSchema = z.object({
 })
 
 export const configSchema = z.object({
+  /**
+   * Refused rather than ignored. This was replaced by `agents`, and zod would
+   * otherwise strip it, so a config asking for a non-codex agent would silently
+   * run codex for every station.
+   */
+  agent: z
+    .never({ error: 'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }' })
+    .optional(),
   pollSeconds: z.number().int().min(10).default(60),
   watch: z.array(watchedRepoSchema).min(1),
   /**

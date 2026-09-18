@@ -5,8 +5,10 @@ import { logger } from '@/lib/log'
 import { buildCommitMessage } from '@/prompts/implement-issue'
 import { conventionsInstruction, detectConventions } from '@/run/conventions'
 import { deliver, reportOutcomeOnIssue, type Delivery } from '@/run/deliver'
+import { redactDeep } from '@/lib/redact'
+import { runReviewLoop, type CommitOutcome } from '@/run/loop'
 import { runAnalyst, runImplementer, runReviewer } from '@/run/stations'
-import type { Analysis, Review } from '@/run/stations/schemas'
+import type { Analysis } from '@/run/stations/schemas'
 import {
   discardPath,
   discardWorkspace,
@@ -53,6 +55,7 @@ export async function runIssue(
   }
 
   let reviewWorktree: string | null = null
+  let delivered = false
 
   try {
     const conventionFiles = await detectConventions(workspace.worktreePath)
@@ -72,17 +75,41 @@ export async function runIssue(
       criteria: analysis.acceptance_criteria.length,
     })
 
-    const outcome = await implementAndReview({
-      repo,
-      issue,
-      workspace,
-      analysis,
-      conventionFiles,
-      config,
-      onReviewWorktree: (path) => {
-        reviewWorktree = path
+    const outcome = await runReviewLoop(
+      {
+        implement: async (revision) => {
+          const turn = await runImplementer({
+            repo,
+            issue,
+            worktree: workspace.worktreePath,
+            analysis,
+            conventionFiles,
+            revision,
+            config,
+          })
+          return turn.text
+        },
+        commit: (attempt) => commitImplementerWork(workspace, issue, attempt, config),
+        review: async () => {
+          const path = await prepareReviewWorkspace(workspace)
+          reviewWorktree = path
+          const { review } = await runReviewer({
+            repo,
+            issue,
+            worktree: path,
+            analysis,
+            base: workspace.base,
+            branch: workspace.branch,
+            config,
+          })
+          // Redacted at the boundary: every field below is published, either in
+          // the pull request body or in an issue comment on a stopped run.
+          return redactDeep(review, workspace.worktreePath)
+        },
       },
-    })
+      analysis,
+      config,
+    )
 
     if (outcome.kind === 'stopped') {
       await reportOutcomeOnIssue(repo, issue, { delivered: false, reason: outcome.reason })
@@ -102,6 +129,7 @@ export async function runIssue(
     if (!delivery.delivered) {
       return { status: 'skipped', error: delivery.reason }
     }
+    delivered = true
     return { status: 'delivered', branch: delivery.branch, prUrl: delivery.prUrl }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -111,104 +139,41 @@ export async function runIssue(
     if (reviewWorktree !== null) {
       await discardPath(workspace, reviewWorktree)
     }
-    if (!config.keepWorktreeOnFailure) {
+    // keepWorktreeOnFailure is exactly that: a successful run always cleans up,
+    // or every delivered issue leaves a checkout and a branch behind.
+    if (delivered || !config.keepWorktreeOnFailure) {
       await discardWorkspace(workspace)
     }
   }
 }
 
-type LoopOutcome =
-  | { readonly kind: 'approved'; readonly review: Review; readonly implementerReport: string }
-  | { readonly kind: 'stopped'; readonly reason: string }
-
-/**
- * Implement, commit, review, and send back at most `maxRevisions` times.
- *
- * The commit happens before review on purpose. It is local and unpushed, and it
- * is what lets the reviewer read the change from its own checkout rather than
- * from the working directory the implementer just left behind.
- */
-async function implementAndReview(input: {
-  repo: string
-  issue: GhIssue
-  workspace: Workspace
-  analysis: Analysis
-  conventionFiles: readonly string[]
-  config: Config
-  onReviewWorktree: (path: string) => void
-}): Promise<LoopOutcome> {
-  const { repo, issue, workspace, analysis, conventionFiles, config } = input
-  let revision: { review: Review; attempt: number } | undefined
-  let implementerReport = ''
-
-  for (let attempt = 0; attempt <= config.maxRevisions; attempt += 1) {
-    const turn = await runImplementer({
-      repo,
-      issue,
-      worktree: workspace.worktreePath,
-      analysis,
-      conventionFiles,
-      revision,
-      config,
-    })
-    implementerReport = turn.text
-
-    const changed = await git.changedFiles(workspace.worktreePath)
-    const { deliverable, generated } = git.partitionStagePaths(changed)
-    if (generated.length > 0) {
-      log.warn('ignoring generated output the agent produced', { count: generated.length })
-    }
-    if (deliverable.length === 0) {
-      return { kind: 'stopped', reason: 'the agent made no file changes' }
-    }
-
-    await git.stageAll(workspace.worktreePath)
-    if (!(await git.hasStagedChanges(workspace.worktreePath))) {
-      return { kind: 'stopped', reason: 'the agent changed only build or dependency output' }
-    }
-    const sha = await git.commit(
-      workspace.worktreePath,
-      attempt === 0
-        ? buildCommitMessage(issue)
-        : `${buildCommitMessage(issue).split('\n')[0] ?? issue.title} (review pass ${attempt})`,
-      { name: config.commitName, email: config.commitEmail },
-    )
-    log.info('committed locally', { sha: sha.slice(0, 8), attempt })
-
-    const reviewPath = await prepareReviewWorkspace(workspace)
-    input.onReviewWorktree(reviewPath)
-
-    const { review } = await runReviewer({
-      repo,
-      issue,
-      worktree: reviewPath,
-      analysis,
-      base: workspace.base,
-      branch: workspace.branch,
-      config,
-    })
-    const passed = review.criteria_results.filter((r) => r.pass).length
-    log.info('verdict', {
-      verdict: review.verdict,
-      criteria: `${passed}/${review.criteria_results.length}`,
-      blocking: review.blocking_findings.length,
-    })
-
-    if (review.verdict === 'approve') {
-      return { kind: 'approved', review, implementerReport }
-    }
-    if (review.verdict === 'reject') {
-      return {
-        kind: 'stopped',
-        reason: `the reviewer rejected the approach: ${review.summary}`,
-      }
-    }
-    revision = { review, attempt: attempt + 1 }
-    log.warn('changes requested, sending back', { attempt: attempt + 1 })
+/** Stages the implementer's work and commits it locally, unpushed. */
+async function commitImplementerWork(
+  workspace: Workspace,
+  issue: GhIssue,
+  attempt: number,
+  config: Config,
+): Promise<CommitOutcome> {
+  const changed = await git.changedFiles(workspace.worktreePath)
+  const { deliverable, generated } = git.partitionStagePaths(changed)
+  if (generated.length > 0) {
+    log.warn('ignoring generated output the agent produced', { count: generated.length })
+  }
+  if (deliverable.length === 0) {
+    return 'no-changes'
   }
 
-  return {
-    kind: 'stopped',
-    reason: `the reviewer still requested changes after ${config.maxRevisions} revisions`,
+  await git.stageAll(workspace.worktreePath)
+  if (!(await git.hasStagedChanges(workspace.worktreePath))) {
+    return 'generated-only'
   }
+
+  const subject = buildCommitMessage(issue).split('\n')[0] ?? issue.title
+  const sha = await git.commit(
+    workspace.worktreePath,
+    attempt === 0 ? buildCommitMessage(issue) : `${subject} (review pass ${attempt})`,
+    { name: config.commitName, email: config.commitEmail },
+  )
+  log.info('committed locally', { sha: sha.slice(0, 8), attempt })
+  return 'committed'
 }

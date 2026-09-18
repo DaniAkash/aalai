@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { buildAnalystPrompt, buildImplementerPrompt, buildReviewerPrompt } from '@/prompts/stations'
 import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
 import { parseStationOutput } from '@/lib/structured'
-import { calledInOrder, issueFixture } from './harness'
+import { issueFixture } from './harness'
 
 const analysis = {
   problem_statement: 'The slug keeps separators at both ends.',
@@ -16,20 +16,6 @@ const analysis = {
   ],
   test_strategy: 'bun test test/slugify.test.ts',
 }
-
-describe('the stations run in order', () => {
-  test('a trace with the four stations in sequence satisfies the order check', () => {
-    expect(calledInOrder(['analyst', 'implementer', 'reviewer'], ['analyst', 'reviewer'])).toBe(true)
-  })
-
-  test('a trace missing the reviewer does not', () => {
-    expect(calledInOrder(['analyst', 'implementer'], ['analyst', 'reviewer'])).toBe(false)
-  })
-
-  test('the reviewer before the implementer does not', () => {
-    expect(calledInOrder(['reviewer', 'implementer'], ['implementer', 'reviewer'])).toBe(false)
-  })
-})
 
 describe('the acceptance criteria reach the stations that need them', () => {
   test('the implementer is handed the criteria it will be graded against', () => {
@@ -116,12 +102,23 @@ describe('station output is validated against its schema', () => {
   })
 
   test('a verdict outside the allowed set is rejected', () => {
-    const reply = `\`\`\`json\n${JSON.stringify({ verdict: 'lgtm', criteria_results: [], blocking_findings: [], summary: 'ok' })}\n\`\`\``
+    const reply = `\`\`\`json\n${JSON.stringify({ verdict: 'lgtm', criteria_results: [{ criterion: 'x', pass: true, evidence: 'y' }], blocking_findings: [], summary: 'ok' })}\n\`\`\``
+    expect(parseStationOutput(reply, reviewSchema).ok).toBe(false)
+  })
+
+  test('a review with no criterion results at all is rejected', () => {
+    const reply = `\`\`\`json\n${JSON.stringify({ verdict: 'approve', criteria_results: [], blocking_findings: [], summary: 'ok' })}\n\`\`\``
     expect(parseStationOutput(reply, reviewSchema).ok).toBe(false)
   })
 
   test('the last JSON block wins, so a revised reply parses', () => {
-    const reply = `\`\`\`json\n{"verdict":"reject"}\n\`\`\`\n\nCorrecting that:\n\n\`\`\`json\n${JSON.stringify({ verdict: 'approve', criteria_results: [], blocking_findings: [], summary: 'fine' })}\n\`\`\``
+    const approved = {
+      verdict: 'approve',
+      criteria_results: [{ criterion: 'it works', pass: true, evidence: 'the test passes' }],
+      blocking_findings: [],
+      summary: 'fine',
+    }
+    const reply = `\`\`\`json\n{"verdict":"reject"}\n\`\`\`\n\nCorrecting that:\n\n\`\`\`json\n${JSON.stringify(approved)}\n\`\`\``
     const parsed = parseStationOutput(reply, reviewSchema)
     expect(parsed.ok).toBe(true)
     expect(parsed.ok && parsed.value.verdict).toBe('approve')

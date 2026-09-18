@@ -3,7 +3,7 @@ import { commentOnIssue, createDraftPullRequest, type GhIssue } from '@/lib/gh'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
 import { buildCommitMessage, buildPullRequestBody } from '@/prompts/implement-issue'
-import { redactLocalPaths } from '@/lib/redact'
+import { redactDeep, redactLocalPaths } from '@/lib/redact'
 import type { Analysis, Review } from '@/run/stations/schemas'
 import type { Workspace } from '@/run/workspace'
 
@@ -50,12 +50,14 @@ export async function deliver(input: DeliveryInput): Promise<Delivery> {
     head: workspace.branch,
     base: workspace.base,
     title: `${buildCommitMessage(issue).split('\n')[0] ?? issue.title}`,
+    // Every station ran inside a worktree and can cite absolute paths: the
+    // analyst in its problem statement, the reviewer in its evidence fields,
+    // the implementer in its report. All of it is published, so all of it is
+    // redacted, not just the report that happened to leak first.
     body: buildPullRequestBody({
       issue,
-      analysis,
-      review,
-      // The station reported from inside its worktree, so it cites absolute
-      // paths. Those must not reach a pull request.
+      analysis: redactDeep(analysis, workspace.worktreePath),
+      review: redactDeep(review, workspace.worktreePath),
       report: redactLocalPaths(report, workspace.worktreePath),
       diffStat,
       changedFiles: changed,

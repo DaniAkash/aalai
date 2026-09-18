@@ -49,7 +49,10 @@ export const criterionResultSchema = z.object({
  */
 export const reviewSchema = z.object({
   verdict: z.enum(['approve', 'request_changes', 'reject']),
-  criteria_results: z.array(criterionResultSchema),
+  // At least one, so a station cannot approve with no evidence at all. The
+  // gate checks coverage against the analyst's criteria; this only refuses the
+  // degenerate case that would otherwise parse cleanly.
+  criteria_results: z.array(criterionResultSchema).min(1),
   blocking_findings: z.array(z.string()),
   summary: looseText,
 })

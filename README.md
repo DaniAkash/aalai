@@ -83,7 +83,8 @@ A sleeping Mac does not poll. launchd restarts the process but will not wake the
 | --- | --- | --- |
 | `pollSeconds` | `60` | Seconds between polling passes. Minimum 10. |
 | `watch` | required | Array of `{ "repo": "owner/name" }` to monitor. At least one. |
-| `agent` | `"codex"` | Any agent id in the `acpx` registry. |
+| `agents` | all `"codex"` | Which agent drives each station: `analyst`, `implementer`, `reviewer`. Any id in the `acpx` registry. Point `reviewer` at a different agent for cross-vendor review. |
+| `maxRevisions` | `2` | How many times the reviewer may send work back before the run gives up. |
 | `reasoningEffort` | `"high"` | `low`, `medium`, `high`, or `xhigh`. Applied before the turn. |
 | `trustedAuthorsOnly` | `true` | Only run on issues opened by an `OWNER`, `MEMBER`, or `COLLABORATOR`. See below. |
 | `requireLabel` | `null` | Optional second gate: only act on issues carrying this label. |
