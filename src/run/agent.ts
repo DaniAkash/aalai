@@ -14,7 +14,7 @@ const log = logger('agent')
 export interface AgentTurnInput {
   readonly worktree: string
   readonly task: string
-  readonly conventionsInstruction: string
+  readonly systemRules: string
   readonly config: Config
 }
 
@@ -28,14 +28,16 @@ export interface AgentTurnResult {
 /**
  * Runs one agent turn inside the worktree.
  *
- * `permissionMode: 'approve-all'` is safe here only because of what surrounds it:
- * the agent is confined to a throwaway worktree, holds no GitHub credential, and
- * is told not to run git at all. Delivery happens outside this function, gated on
- * a real diff, so the worst outcome from a hijacked turn is a dirty worktree that
- * never ships.
+ * `permissionMode: 'approve-all'` is not justified by the agent being unable to
+ * reach credentials. It runs as the same user and can invoke an
+ * already-authenticated `gh`; token variables are merely kept out of its
+ * inherited environment. What makes it acceptable is that the agent is confined
+ * to a throwaway worktree and that delivery happens outside this function, gated
+ * on a real diff, so the worst outcome from a hijacked turn is a dirty worktree
+ * that never ships. Do not treat the prompt rules as the mechanism.
  */
 export async function runAgentTurn(input: AgentTurnInput): Promise<AgentTurnResult> {
-  const { worktree, task, conventionsInstruction, config } = input
+  const { worktree, task, systemRules, config } = input
 
   const provider = createAcpxProvider({
     agent: config.agent,
@@ -46,7 +48,7 @@ export async function runAgentTurn(input: AgentTurnInput): Promise<AgentTurnResu
     // rather than hanging forever on a prompt nobody is there to answer.
     nonInteractivePermissions: 'deny',
     turnTimeoutMs: config.turnTimeoutMs,
-    sessionOptions: { systemPrompt: { append: conventionsInstruction } },
+    sessionOptions: { systemPrompt: { append: systemRules } },
   })
 
   try {

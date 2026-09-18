@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { assertSafeBranch, issueBranchName, UnsafeBranchError } from '@/lib/git'
+import {
+  assertSafeBranch,
+  issueBranchName,
+  partitionStagePaths,
+  porcelainPath,
+  UnsafeBranchError,
+} from '@/lib/git'
 
 describe('issueBranchName', () => {
   test('slugifies an ordinary title', () => {
@@ -44,5 +50,48 @@ describe('assertSafeBranch', () => {
 
   test('accepts a normal factory branch', () => {
     expect(() => assertSafeBranch('aalai/issue-12-fix-thing')).not.toThrow()
+  })
+})
+
+describe('partitionStagePaths', () => {
+  test('keeps ordinary source paths', () => {
+    const { deliverable, generated } = partitionStagePaths(['src/a.ts', 'test/b.test.ts'])
+    expect(deliverable).toHaveLength(2)
+    expect(generated).toHaveLength(0)
+  })
+
+  test('separates dependency output an agent installed while verifying', () => {
+    const { deliverable, generated } = partitionStagePaths([
+      'src/a.ts',
+      'node_modules/left-pad/index.js',
+      'dist/bundle.js',
+    ])
+    expect(deliverable).toEqual(['src/a.ts'])
+    expect(generated).toHaveLength(2)
+  })
+
+  test('matches a generated directory at any depth', () => {
+    const { generated } = partitionStagePaths(['packages/api/node_modules/x/y.js'])
+    expect(generated).toHaveLength(1)
+  })
+
+  test('does not match a file whose name merely contains a generated directory name', () => {
+    const { deliverable } = partitionStagePaths(['src/build-helpers.ts'])
+    expect(deliverable).toHaveLength(1)
+  })
+})
+
+describe('porcelainPath', () => {
+  test('strips the two-character status code and its separator', () => {
+    expect(porcelainPath('M  src/a.ts')).toBe('src/a.ts')
+    expect(porcelainPath('?? dist/bundle.js')).toBe('dist/bundle.js')
+  })
+
+  test('keeps the leading space of an unstaged modification out of the path', () => {
+    expect(porcelainPath(' M src/a.ts')).toBe('src/a.ts')
+  })
+
+  test('takes the new path of a rename', () => {
+    expect(porcelainPath('R  src/old.ts -> src/new.ts')).toBe('src/new.ts')
   })
 })

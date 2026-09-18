@@ -33,14 +33,30 @@ export async function deliver(input: DeliveryInput): Promise<Delivery> {
     log.warn('agent produced no changes', { issue: issue.number })
     return { delivered: false, reason: 'the agent made no file changes' }
   }
-  log.info('changes detected', { files: changed.length })
+  const { deliverable, generated } = git.partitionStagePaths(changed)
+  if (generated.length > 0) {
+    log.warn('excluding build or dependency output the agent generated', {
+      count: generated.length,
+      sample: generated.slice(0, 3).join(', '),
+    })
+  }
+  if (deliverable.length === 0) {
+    log.warn('only generated output changed', { issue: issue.number })
+    return { delivered: false, reason: 'the agent changed only build or dependency output' }
+  }
+  log.info('changes detected', { files: deliverable.length })
 
-  await git.stageAll(workspace.worktreePath)
-  const sha = await git.commit(
-    workspace.worktreePath,
-    buildCommitMessage(issue),
-    config.commitEmail,
-  )
+  const unstaged = await git.stageAll(workspace.worktreePath)
+  if (unstaged.length > 0) {
+    log.warn('removed generated output the agent had staged itself', {
+      count: unstaged.length,
+      sample: unstaged.slice(0, 3).join(', '),
+    })
+  }
+  const sha = await git.commit(workspace.worktreePath, buildCommitMessage(issue), {
+    name: config.commitName,
+    email: config.commitEmail,
+  })
   log.info('committed', { sha: sha.slice(0, 8) })
 
   await git.pushBranch(workspace.worktreePath, workspace.branch)
@@ -59,6 +75,14 @@ export async function deliver(input: DeliveryInput): Promise<Delivery> {
   return { delivered: true, prUrl, branch: workspace.branch }
 }
 
+/**
+ * Comments the outcome on the originating issue.
+ *
+ * Best effort on purpose. By the time this runs the pull request already exists,
+ * so letting a failed comment fail the run would discard a real delivery and
+ * mark the issue permanently unretryable. A missing comment is cosmetic; a lost
+ * pull request URL is not.
+ */
 export async function reportOutcomeOnIssue(
   repo: string,
   issue: GhIssue,
@@ -67,5 +91,13 @@ export async function reportOutcomeOnIssue(
   const body = outcome.delivered
     ? `Opened a draft pull request for this issue: ${outcome.prUrl}\n\nIt is a draft. Review the diff and the verification output before marking it ready.`
     : `I picked this issue up but stopped without opening a pull request: ${outcome.reason}.\n\nNothing was pushed.`
-  await commentOnIssue(repo, issue.number, body)
+  try {
+    await commentOnIssue(repo, issue.number, body)
+  } catch (error) {
+    log.warn('could not comment on the issue', {
+      repo,
+      issue: issue.number,
+      error: error instanceof Error ? error.message : error,
+    })
+  }
 }

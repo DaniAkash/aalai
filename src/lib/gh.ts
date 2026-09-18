@@ -1,3 +1,4 @@
+import { githubEnv } from '@/lib/credentials'
 import { execOrThrow } from '@/lib/proc'
 
 /**
@@ -22,9 +23,18 @@ export interface GhIssue {
   readonly pull_request?: unknown
 }
 
+/**
+ * Runs a gh command with the tokens aalai captured at startup.
+ *
+ * They are removed from the ambient environment so the agent cannot inherit
+ * them, so every command that needs one has to ask for it explicitly.
+ */
+async function gh(args: readonly string[]): Promise<string> {
+  return execOrThrow(['gh', ...args], { env: githubEnv() })
+}
+
 async function ghJson<T>(args: readonly string[]): Promise<T> {
-  const stdout = await execOrThrow(['gh', ...args])
-  return JSON.parse(stdout) as T
+  return JSON.parse(await gh(args)) as T
 }
 
 export async function authenticatedLogin(): Promise<string> {
@@ -33,21 +43,39 @@ export async function authenticatedLogin(): Promise<string> {
 }
 
 /**
- * Issues updated at or after `since`, newest activity first.
+ * Issues updated at or after `since`, oldest update first.
  *
- * GitHub's `since` filter is inclusive and matches on `updated_at`, so the
- * caller is responsible for discarding items it has already handled. The claim
- * table is what makes that safe; the cursor alone only bounds the page size.
+ * Sorted by `updated` rather than `created` so the ordering matches the field
+ * `since` filters on. That alignment is what lets a caller advance its cursor to
+ * the last item it actually processed: with a mismatched sort, a partially
+ * processed batch has no safe cursor value.
+ *
+ * `--paginate` follows every page, and `--jq '.[]'` flattens them into one
+ * object per line, because otherwise each page arrives as its own top-level
+ * JSON array and only the first would parse.
  */
 export async function listIssuesSince(repo: string, since: string): Promise<GhIssue[]> {
   const query = new URLSearchParams({
     state: 'open',
     since,
-    per_page: '50',
-    sort: 'created',
-    direction: 'desc',
+    per_page: '100',
+    sort: 'updated',
+    direction: 'asc',
   })
-  return ghJson<GhIssue[]>(['api', `repos/${repo}/issues?${query.toString()}`])
+  const stdout = await gh([
+    'api',
+    '--paginate',
+    '--jq',
+    '.[]',
+    `repos/${repo}/issues?${query.toString()}`,
+  ])
+  if (stdout === '') {
+    return []
+  }
+  return stdout
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as GhIssue)
 }
 
 export async function getIssue(repo: string, issueNumber: number): Promise<GhIssue> {
@@ -59,8 +87,7 @@ export async function commentOnIssue(
   issueNumber: number,
   body: string,
 ): Promise<void> {
-  await execOrThrow([
-    'gh',
+  await gh([
     'api',
     '--method',
     'POST',
@@ -80,8 +107,7 @@ export interface DraftPullRequest {
 
 /** Opens a draft pull request and returns its URL. Draft is not configurable: it is the human gate. */
 export async function createDraftPullRequest(input: DraftPullRequest): Promise<string> {
-  const stdout = await execOrThrow([
-    'gh',
+  const stdout = await gh([
     'pr',
     'create',
     '--repo',

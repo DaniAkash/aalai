@@ -22,8 +22,16 @@ export const configSchema = z.object({
   requireLabel: z.string().nullable().default(null),
   turnTimeoutMs: z.number().int().min(60_000).default(900_000),
   keepWorktreeOnFailure: z.boolean().default(true),
-  /** Commit author email. Defaults to the GitHub noreply address. */
+  /** Commit author name and email. Passed per-commit, never read from global git config. */
+  commitName: z.string().default('aalai'),
   commitEmail: z.string().default('DaniAkash@users.noreply.github.com'),
+  /**
+   * How long a run may hold its claim before another poll may take it over.
+   * A process killed mid-run would otherwise leave the issue claimed forever.
+   */
+  staleClaimMinutes: z.number().int().min(1).default(30),
+  /** Most issues one polling pass will process. The rest wait for the next pass. */
+  maxIssuesPerPoll: z.number().int().min(1).default(25),
 })
 
 export type Config = z.infer<typeof configSchema>

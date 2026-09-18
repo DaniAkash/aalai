@@ -1,11 +1,12 @@
 import { loadConfig, stateDir, type Config } from '@/config'
+import { captureInheritedTokens, githubEnv } from '@/lib/credentials'
 import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
 import { pollOnce } from '@/watch/poll'
 import { screenIssue } from '@/watch/intake'
-import { completeRun, claimRun, listRuns, openState } from '@/watch/state'
+import { claimRun, completeRun, forgetRun, listRuns, openState } from '@/watch/state'
 
 const log = logger('aalai')
 
@@ -81,8 +82,12 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     db.close()
     return
   }
-  if (!claimRun(db, repo, issueNumber)) {
-    log.error('already run; clear it from the runs table to retry', { repo, issue: issueNumber })
+  const lease = claimRun(db, repo, issueNumber, config.staleClaimMinutes * 60_000)
+  if (lease === null) {
+    log.error('already run; use `aalai forget <repo> <issue>` to retry', {
+      repo,
+      issue: issueNumber,
+    })
     process.exitCode = 1
     db.close()
     return
@@ -93,6 +98,7 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     branch: result.branch,
     prUrl: result.prUrl,
     error: result.error,
+    lease,
   })
   log.info('done', { status: result.status, pr: result.prUrl, error: result.error })
   if (result.status === 'failed') {
@@ -120,7 +126,7 @@ function showStatus(): void {
 async function doctor(): Promise<void> {
   let ok = true
 
-  const gh = await exec(['gh', 'auth', 'status'])
+  const gh = await exec(['gh', 'auth', 'status'], { env: githubEnv() })
   if (gh.exitCode === 0) {
     log.info('gh authenticated', { as: await authenticatedLogin() })
   } else {
@@ -147,8 +153,33 @@ async function doctor(): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Tokens move out of the ambient environment so the agent cannot inherit
+  // them, and are handed back explicitly to aalai's own gh and git commands.
+  const captured = captureInheritedTokens()
+  if (captured.length > 0) {
+    log.debug('holding GitHub tokens outside the ambient environment', {
+      vars: captured.join(','),
+    })
+  }
+
   const [command, ...rest] = process.argv.slice(2)
 
+  if (command === 'forget') {
+    const [repo, issueArg] = process.argv.slice(3)
+    const issueNumber = Number(issueArg)
+    if (repo === undefined || !Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+      log.error('usage: aalai forget <owner/repo> <issue-number>')
+      process.exitCode = 1
+      return
+    }
+    const db = openState()
+    log.info(forgetRun(db, repo, issueNumber) ? 'forgotten' : 'no record found', {
+      repo,
+      issue: issueNumber,
+    })
+    db.close()
+    return
+  }
   if (command === 'status') {
     showStatus()
     return
