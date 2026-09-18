@@ -13,7 +13,7 @@ gh api issues ─▶ screen ─▶ claim ─▶ worktree ─▶ agent ─▶ ver
                                  no credentials reach the agent ─────────┘
 ```
 
-The split in that diagram is the design. **The agent edits files. aalai does every git and GitHub operation.** The agent works inside a throwaway worktree and is instructed never to run git. Delivery happens outside the agent turn and is gated on a real diff, so a turn that goes wrong produces a dirty worktree that never ships.
+The split in that diagram is the design. **The agent edits files. aalai owns every git write and every GitHub operation.** The agent works inside a throwaway worktree and may read the repository with git, but never write with it. Delivery happens outside the agent turn and is gated on a real diff, so a turn that goes wrong produces a dirty worktree that never ships.
 
 ### What the isolation actually is
 

@@ -1,5 +1,5 @@
 import { loadConfig, stateDir, type Config } from '@/config'
-import { scrubInheritedTokens } from '@/lib/credentials'
+import { captureInheritedTokens, githubEnv } from '@/lib/credentials'
 import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exec } from '@/lib/proc'
@@ -82,8 +82,12 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     db.close()
     return
   }
-  if (!claimRun(db, repo, issueNumber, config.staleClaimMinutes * 60_000)) {
-    log.error('already run; clear it from the runs table to retry', { repo, issue: issueNumber })
+  const lease = claimRun(db, repo, issueNumber, config.staleClaimMinutes * 60_000)
+  if (lease === null) {
+    log.error('already run; use `aalai forget <repo> <issue>` to retry', {
+      repo,
+      issue: issueNumber,
+    })
     process.exitCode = 1
     db.close()
     return
@@ -94,6 +98,7 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     branch: result.branch,
     prUrl: result.prUrl,
     error: result.error,
+    lease,
   })
   log.info('done', { status: result.status, pr: result.prUrl, error: result.error })
   if (result.status === 'failed') {
@@ -121,7 +126,7 @@ function showStatus(): void {
 async function doctor(): Promise<void> {
   let ok = true
 
-  const gh = await exec(['gh', 'auth', 'status'])
+  const gh = await exec(['gh', 'auth', 'status'], { env: githubEnv() })
   if (gh.exitCode === 0) {
     log.info('gh authenticated', { as: await authenticatedLogin() })
   } else {
@@ -148,9 +153,13 @@ async function doctor(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const removed = scrubInheritedTokens()
-  if (removed.length > 0) {
-    log.debug('removed inheritable tokens from the environment', { vars: removed.join(',') })
+  // Tokens move out of the ambient environment so the agent cannot inherit
+  // them, and are handed back explicitly to aalai's own gh and git commands.
+  const captured = captureInheritedTokens()
+  if (captured.length > 0) {
+    log.debug('holding GitHub tokens outside the ambient environment', {
+      vars: captured.join(','),
+    })
   }
 
   const [command, ...rest] = process.argv.slice(2)

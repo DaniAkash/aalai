@@ -1,3 +1,4 @@
+import { githubEnv } from '@/lib/credentials'
 import { execOrThrow } from '@/lib/proc'
 
 /**
@@ -22,9 +23,18 @@ export interface GhIssue {
   readonly pull_request?: unknown
 }
 
+/**
+ * Runs a gh command with the tokens aalai captured at startup.
+ *
+ * They are removed from the ambient environment so the agent cannot inherit
+ * them, so every command that needs one has to ask for it explicitly.
+ */
+async function gh(args: readonly string[]): Promise<string> {
+  return execOrThrow(['gh', ...args], { env: githubEnv() })
+}
+
 async function ghJson<T>(args: readonly string[]): Promise<T> {
-  const stdout = await execOrThrow(['gh', ...args])
-  return JSON.parse(stdout) as T
+  return JSON.parse(await gh(args)) as T
 }
 
 export async function authenticatedLogin(): Promise<string> {
@@ -52,8 +62,7 @@ export async function listIssuesSince(repo: string, since: string): Promise<GhIs
     sort: 'updated',
     direction: 'asc',
   })
-  const stdout = await execOrThrow([
-    'gh',
+  const stdout = await gh([
     'api',
     '--paginate',
     '--jq',
@@ -78,8 +87,7 @@ export async function commentOnIssue(
   issueNumber: number,
   body: string,
 ): Promise<void> {
-  await execOrThrow([
-    'gh',
+  await gh([
     'api',
     '--method',
     'POST',
@@ -99,8 +107,7 @@ export interface DraftPullRequest {
 
 /** Opens a draft pull request and returns its URL. Draft is not configurable: it is the human gate. */
 export async function createDraftPullRequest(input: DraftPullRequest): Promise<string> {
-  const stdout = await execOrThrow([
-    'gh',
+  const stdout = await gh([
     'pr',
     'create',
     '--repo',

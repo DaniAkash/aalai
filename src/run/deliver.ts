@@ -46,7 +46,13 @@ export async function deliver(input: DeliveryInput): Promise<Delivery> {
   }
   log.info('changes detected', { files: deliverable.length })
 
-  await git.stageAll(workspace.worktreePath)
+  const unstaged = await git.stageAll(workspace.worktreePath)
+  if (unstaged.length > 0) {
+    log.warn('removed generated output the agent had staged itself', {
+      count: unstaged.length,
+      sample: unstaged.slice(0, 3).join(', '),
+    })
+  }
   const sha = await git.commit(workspace.worktreePath, buildCommitMessage(issue), {
     name: config.commitName,
     email: config.commitEmail,

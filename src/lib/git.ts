@@ -1,3 +1,4 @@
+import { githubEnv } from '@/lib/credentials'
 import { exec, execOrThrow } from '@/lib/proc'
 
 const PROTECTED_BRANCHES: ReadonlySet<string> = new Set(['main', 'master', 'HEAD'])
@@ -53,7 +54,10 @@ export async function defaultBranch(repoDir: string): Promise<string> {
 }
 
 export async function fetchOrigin(repoDir: string): Promise<void> {
-  await execOrThrow(['git', 'fetch', '--prune', 'origin'], { cwd: repoDir })
+  await execOrThrow(['git', 'fetch', '--prune', 'origin'], {
+    cwd: repoDir,
+    env: githubEnv(),
+  })
 }
 
 export async function addWorktree(
@@ -154,9 +158,34 @@ export function partitionStagePaths(paths: readonly string[]): {
  * The exclusions are pathspecs rather than a post-hoc unstage, so nothing
  * generated is ever briefly in the index.
  */
-export async function stageAll(worktree: string): Promise<void> {
+export async function stageAll(worktree: string): Promise<string[]> {
   const excludes = [...GENERATED_DIRECTORIES].map((dir) => `:(exclude,glob)**/${dir}/**`)
   await execOrThrow(['git', 'add', '-A', '--', '.', ...excludes], { cwd: worktree })
+
+  // An exclude pathspec only stops a matching file being added by this command.
+  // It does not remove an entry already in the index, and the agent has shell
+  // access, so anything it staged itself would otherwise still be committed.
+  const staged = await execOrThrow(['git', 'diff', '--cached', '--name-only'], {
+    cwd: worktree,
+  })
+  const { generated } = partitionStagePaths(
+    staged === '' ? [] : staged.split('\n').filter((line) => line !== ''),
+  )
+  if (generated.length > 0) {
+    // `git restore --staged` rewrites the index entry from HEAD, which is right
+    // when the path is tracked. It needs a HEAD to resolve, so a repository with
+    // no commits yet falls back to dropping the entry outright; with no HEAD
+    // nothing is tracked, so that is the same outcome.
+    const restore = await exec(['git', 'restore', '--staged', '--', ...generated], {
+      cwd: worktree,
+    })
+    if (restore.exitCode !== 0) {
+      await execOrThrow(['git', 'rm', '--cached', '-q', '--ignore-unmatch', '--', ...generated], {
+        cwd: worktree,
+      })
+    }
+  }
+  return generated
 }
 
 /**
@@ -192,7 +221,7 @@ export async function pushBranch(worktree: string, branch: string): Promise<void
   assertSafeBranch(branch)
   await execOrThrow(
     ['git', 'push', '--set-upstream', 'origin', `refs/heads/${branch}:refs/heads/${branch}`],
-    { cwd: worktree },
+    { cwd: worktree, env: githubEnv() },
   )
 }
 

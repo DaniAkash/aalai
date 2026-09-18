@@ -47,27 +47,38 @@ async function pollRepo(db: Database, config: Config, repo: string): Promise<num
 
   let handled = 0
   let lastProcessed: GhIssue | undefined
+  let earliestFailure: GhIssue | undefined
 
   for (const issue of batch) {
     try {
       handled += (await handleIssue(db, config, repo, issue)) ? 1 : 0
+      lastProcessed = issue
     } catch (error) {
       // One issue must never take the tick down with it, or every repository
       // and issue behind it in the pass would go unprocessed.
-      log.error('issue handling threw', {
-        repo,
-        issue: issue.number,
-        error: error instanceof Error ? error.message : error,
-      })
+      const message = error instanceof Error ? error.message : String(error)
+      log.error('issue handling threw', { repo, issue: issue.number, error: message })
+      // Settle the claim so it cannot sit in `claimed` until its lease expires,
+      // and hold the cursor at this issue so the next pass still sees it.
+      try {
+        completeRun(db, repo, issue.number, { status: 'failed', error: message })
+      } catch {
+        // Recording the failure is best effort; the cursor hold is what matters.
+      }
+      earliestFailure ??= issue
     }
-    lastProcessed = issue
   }
 
   // The cursor advances only after the batch has been worked, and only as far as
   // the batch actually reached. Advancing it up front would permanently skip
-  // everything still unprocessed if the pass died partway through.
+  // everything still unprocessed if the pass died partway through, and advancing
+  // past a failure would put that issue permanently before the next `since`.
   const reachedEnd = batch.length === issues.length
-  const next = reachedEnd ? cutoff : (lastProcessed?.updated_at ?? since)
+  const furthest = reachedEnd ? cutoff : (lastProcessed?.updated_at ?? since)
+  const next =
+    earliestFailure === undefined
+      ? furthest
+      : [furthest, earliestFailure.updated_at].sort()[0] ?? furthest
   writeCursor(db, repo, next)
 
   return handled
@@ -87,18 +98,24 @@ async function handleIssue(
     log.debug('issue skipped', { repo, issue: issue.number, reason: screening.reason })
     return false
   }
-  if (!claimRun(db, repo, issue.number, config.staleClaimMinutes * 60_000)) {
+  const lease = claimRun(db, repo, issue.number, config.staleClaimMinutes * 60_000)
+  if (lease === null) {
     log.debug('already claimed', { repo, issue: issue.number })
     return false
   }
 
   const result = await runIssue(repo, issue, config)
-  completeRun(db, repo, issue.number, {
+  const recorded = completeRun(db, repo, issue.number, {
     status: result.status,
     branch: result.branch,
     prUrl: result.prUrl,
     error: result.error,
+    lease,
   })
+  if (!recorded) {
+    // The lease expired and another pass took the issue over mid-run.
+    log.warn('result discarded, the claim was taken over', { repo, issue: issue.number })
+  }
   log.info('run finished', { repo, issue: issue.number, status: result.status })
   return true
 }

@@ -1,13 +1,5 @@
 import type { GhIssue } from '@/lib/gh'
 
-export interface TaskPromptInput {
-  readonly repo: string
-  readonly issue: GhIssue
-  readonly conventionFiles: readonly string[]
-  readonly branch: string
-  readonly base: string
-}
-
 /**
  * The agent's standing rules, installed in the system prompt at session start.
  *

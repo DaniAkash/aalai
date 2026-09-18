@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { workbenchDir } from '@/config'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
+import { githubEnv } from '@/lib/credentials'
 import { exec, execOrThrow } from '@/lib/proc'
 
 const log = logger('workspace')
@@ -48,7 +49,7 @@ export async function ensureClone(repo: string): Promise<string> {
 
   if (!existsSync(join(clonePath, '.git'))) {
     log.info('cloning', { repo, into: clonePath })
-    await execOrThrow(['gh', 'repo', 'clone', repo, clonePath])
+    await execOrThrow(['gh', 'repo', 'clone', repo, clonePath], { env: githubEnv() })
   }
   await git.fetchOrigin(clonePath)
   return clonePath
