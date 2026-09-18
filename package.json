@@ -8,8 +8,9 @@
     "once": "bun run src/index.ts --once",
     "run-issue": "bun run src/index.ts run",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "service": "bun run scripts/service.ts"
+    "test": "bun test ./test/",
+    "service": "bun run scripts/service.ts",
+    "eval": "bun test ./evals/"
   },
   "dependencies": {
     "acpx": "^0.17.0",

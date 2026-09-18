@@ -10,6 +10,7 @@ const log = logger('workspace')
 
 export interface Workspace {
   readonly repo: string
+  readonly issueNumber: number
   readonly clonePath: string
   readonly worktreePath: string
   readonly branch: string
@@ -29,9 +30,9 @@ export function clonePathFor(repo: string): string {
   return join(workbenchDir(), owner, name)
 }
 
-export function worktreePathFor(repo: string, issueNumber: number): string {
+export function worktreePathFor(repo: string, issueNumber: number, suffix = ''): string {
   const { owner, name } = splitRepo(repo)
-  return join(workbenchDir(), 'worktrees', owner, name, `aalai-issue-${issueNumber}`)
+  return join(workbenchDir(), 'worktrees', owner, name, `aalai-issue-${issueNumber}${suffix}`)
 }
 
 /**
@@ -80,10 +81,32 @@ export async function prepareWorkspace(
   await git.addWorktree(clonePath, worktreePath, branch, base)
   log.info('worktree ready', { path: worktreePath, branch, base })
 
-  return { repo, clonePath, worktreePath, branch, base }
+  return { repo, issueNumber, clonePath, worktreePath, branch, base }
 }
 
 export async function discardWorkspace(workspace: Workspace): Promise<void> {
   await git.removeWorktree(workspace.clonePath, workspace.worktreePath)
   log.debug('worktree removed', { path: workspace.worktreePath })
+}
+
+
+/**
+ * A second checkout of the branch, for the reviewer.
+ *
+ * The reviewer reads the same commits from its own working directory rather
+ * than from the one the implementer just worked in. That is what makes its
+ * independence structural: it cannot see uncommitted scratch, a stray file, or
+ * anything about how the change was arrived at. It sees what was committed.
+ */
+export async function prepareReviewWorkspace(workspace: Workspace): Promise<string> {
+  const path = worktreePathFor(workspace.repo, workspace.issueNumber, '-review')
+  await git.removeWorktree(workspace.clonePath, path)
+  mkdirSync(join(path, '..'), { recursive: true })
+  await git.addExistingBranchWorktree(workspace.clonePath, path, workspace.branch)
+  log.info('review worktree ready', { path })
+  return path
+}
+
+export async function discardPath(workspace: Workspace, path: string): Promise<void> {
+  await git.removeWorktree(workspace.clonePath, path)
 }

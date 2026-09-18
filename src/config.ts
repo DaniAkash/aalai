@@ -8,9 +8,37 @@ const watchedRepoSchema = z.object({
 })
 
 export const configSchema = z.object({
+  /**
+   * Refused rather than ignored. This was replaced by `agents`, and zod would
+   * otherwise strip it, so a config asking for a non-codex agent would silently
+   * run codex for every station.
+   */
+  agent: z
+    .never({ error: 'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }' })
+    .optional(),
   pollSeconds: z.number().int().min(10).default(60),
   watch: z.array(watchedRepoSchema).min(1),
-  agent: z.string().default('codex'),
+  /**
+   * Which ACP agent drives each station.
+   *
+   * All three default to codex so a demo machine needs one agent installed and
+   * authenticated, and the pipeline threads them through per station.
+   *
+   * TODO: point `reviewer` at a different agent (`claude`, `gemini`, whatever
+   * acpx can reach) to get genuine cross-vendor review. That buys a different
+   * harness, different tools, and a different system prompt written by a
+   * different company, rather than the same model grading its own idiom. It is
+   * a config change and nothing else: no code here assumes one agent.
+   */
+  agents: z
+    .object({
+      analyst: z.string().default('codex'),
+      implementer: z.string().default('codex'),
+      reviewer: z.string().default('codex'),
+    })
+    .default(() => ({ analyst: 'codex', implementer: 'codex', reviewer: 'codex' })),
+  /** Most times the reviewer may send work back before the run gives up. */
+  maxRevisions: z.number().int().min(0).max(5).default(2),
   reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).default('high'),
   /**
    * When true, only issues opened by an OWNER, MEMBER, or COLLABORATOR start a run.

@@ -38,7 +38,7 @@ async function serve(config: Config): Promise<void> {
   log.info('aalai is watching', {
     repos: config.watch.map((w) => w.repo).join(','),
     every: `${config.pollSeconds}s`,
-    agent: config.agent,
+    agents: Object.values(config.agents).join(','),
     trustedOnly: config.trustedAuthorsOnly,
   })
 
@@ -140,7 +140,7 @@ async function doctor(): Promise<void> {
 
   try {
     const config = await loadConfig()
-    log.info('config valid', { repos: config.watch.length, agent: config.agent })
+    log.info('config valid', { repos: config.watch.length, agents: Object.values(config.agents).join(',') })
   } catch (error) {
     ok = false
     log.error('config problem', { error: error instanceof Error ? error.message : error })

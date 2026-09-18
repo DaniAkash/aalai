@@ -1,4 +1,5 @@
 import type { GhIssue } from '@/lib/gh'
+import type { Analysis, Review } from '@/run/stations/schemas'
 
 /**
  * The agent's standing rules, installed in the system prompt at session start.
@@ -95,25 +96,59 @@ export function buildCommitMessage(issue: GhIssue): string {
 
 export interface PullRequestBodyInput {
   readonly issue: GhIssue
+  readonly analysis: Analysis
+  readonly review: Review
   readonly report: string
   readonly diffStat: string
   readonly changedFiles: readonly string[]
 }
 
+/**
+ * The pull request body, written as an evidence chain.
+ *
+ * Ordered so a reviewer can audit it from the top: what was asked, what the
+ * criteria were, how each one was judged and on what evidence, what was run to
+ * verify it, and only then the files. The diff is usually one line; the reason
+ * to trust it is everything above.
+ */
 export function buildPullRequestBody(input: PullRequestBodyInput): string {
-  const { issue, report, diffStat, changedFiles } = input
+  const { issue, analysis, review, report, diffStat, changedFiles } = input
+
+  const criteria = review.criteria_results
+    .map((r) => `| ${r.pass ? 'pass' : '**fail**'} | ${r.criterion} | ${r.evidence} |`)
+    .join('\n')
+
   const files =
     changedFiles.length === 0
       ? '_none recorded_'
-      : changedFiles.map((line) => `- \`${line}\``).join('\n')
+      : changedFiles.map((path) => `- \`${path}\``).join('\n')
+
+  const notes =
+    review.blocking_findings.length === 0
+      ? ''
+      : `\n## Reviewer notes\n\n${review.blocking_findings.map((f) => `- ${f}`).join('\n')}\n`
 
   return `Closes #${issue.number}
 
-## What the issue reported
+## The problem
 
-${issue.body?.trim().slice(0, 1200) ?? '_no description was provided_'}
+${analysis.problem_statement}
 
-## What changed
+## The approach
+
+${analysis.approach}
+
+## Acceptance criteria, judged against the diff
+
+These were written before any code existed, and passed to an independent review station verbatim.
+
+| | Criterion | Evidence |
+| --- | --- | --- |
+${criteria}
+
+**Verdict: ${review.verdict}.** ${review.summary}
+${notes}
+## What the implementer reported
 
 ${report.trim()}
 
@@ -124,5 +159,5 @@ ${files}
 ${diffStat.trim() === '' ? '' : `\`\`\`\n${diffStat.trim()}\n\`\`\`\n`}
 ---
 
-This pull request is a draft and is not ready to merge. Review the diff and the verification output above before marking it ready.`
+This pull request is a draft and is not ready to merge.`
 }

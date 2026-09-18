@@ -1,12 +1,19 @@
 {
   "pollSeconds": 60,
   "watch": [
-    { "repo": "DaniAkash/aalai-demo" }
+    {
+      "repo": "DaniAkash/aalai-demo"
+    }
   ],
-  "agent": "codex",
   "reasoningEffort": "high",
   "trustedAuthorsOnly": true,
   "requireLabel": null,
   "turnTimeoutMs": 900000,
-  "keepWorktreeOnFailure": true
+  "keepWorktreeOnFailure": true,
+  "agents": {
+    "analyst": "codex",
+    "implementer": "codex",
+    "reviewer": "codex"
+  },
+  "maxRevisions": 2
 }
