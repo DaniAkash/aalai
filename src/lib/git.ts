@@ -228,3 +228,28 @@ export async function pushBranch(worktree: string, branch: string): Promise<void
 export async function diffStat(worktree: string, base: string): Promise<string> {
   return execOrThrow(['git', 'diff', '--stat', `origin/${base}...HEAD`], { cwd: worktree })
 }
+
+
+/** Adds a worktree for a branch that already exists, used for the review checkout. */
+export async function addExistingBranchWorktree(
+  repoDir: string,
+  worktreePath: string,
+  branch: string,
+): Promise<void> {
+  assertSafeBranch(branch)
+  await execOrThrow(['git', 'worktree', 'add', '--detach', worktreePath, branch], { cwd: repoDir })
+}
+
+/** Commits whatever is staged without touching the working tree of other worktrees. */
+export async function hasStagedChanges(worktree: string): Promise<boolean> {
+  const out = await exec(['git', 'diff', '--cached', '--quiet'], { cwd: worktree })
+  return out.exitCode !== 0
+}
+
+/** Files changed on the branch relative to its base, from the committed history. */
+export async function diffNames(worktree: string, base: string): Promise<string[]> {
+  const out = await execOrThrow(['git', 'diff', '--name-only', `origin/${base}...HEAD`], {
+    cwd: worktree,
+  })
+  return out === '' ? [] : out.split('\n').filter((line) => line !== '')
+}
