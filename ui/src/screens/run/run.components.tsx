@@ -101,8 +101,8 @@ export function CriteriaPanel({ view }: { view: RunView }) {
       </PanelLabel>
 
       <ul className="flex flex-col gap-4">
-        {view.criteria.map((criterion) => {
-          const result = resultFor(view, criterion)
+        {view.criteria.map((criterion, index) => {
+          const result = resultFor(view, criterion, index)
           return (
             <li key={criterion} className="flex gap-3">
               <span className="mt-[0.35em] w-5 shrink-0">

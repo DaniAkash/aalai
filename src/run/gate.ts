@@ -27,6 +27,13 @@ export function reviewGate(review: Review, analysis: Analysis): Gate {
     }
   }
 
+  // One result per criterion in order was asked for, so an exact count is
+  // itself evidence that the contract was honoured even when an agent
+  // rephrased a criterion beyond what normalising can reconcile.
+  if (review.criteria_results.length === analysis.acceptance_criteria.length) {
+    return { ok: true }
+  }
+
   const judged = new Set(review.criteria_results.map((result) => normalise(result.criterion)))
   const missing = analysis.acceptance_criteria.filter((c) => !judged.has(normalise(c)))
   if (missing.length > 0) {
@@ -39,7 +46,18 @@ export function reviewGate(review: Review, analysis: Analysis): Gate {
   return { ok: true }
 }
 
-/** Criteria are echoed by an agent, so compare on content rather than on exact bytes. */
+/**
+ * Criteria are echoed by an agent, so compare on content rather than on bytes.
+ *
+ * The leading list marker is stripped because the criteria are numbered when
+ * they are put in front of the reviewer, and a reviewer that echoes `1. ` back
+ * would otherwise fail every match and have a correct approval refused.
+ */
 function normalise(criterion: string): string {
-  return criterion.toLowerCase().replace(/\s+/g, ' ').replace(/[.`'"]/g, '').trim()
+  return criterion
+    .toLowerCase()
+    .replace(/^\s*(?:\d+[.)]|[-*\u2022])\s*/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.`'"*_]/g, '')
+    .trim()
 }

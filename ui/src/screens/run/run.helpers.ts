@@ -150,7 +150,32 @@ export function reduceRun(events: readonly RunEvent[]): RunView {
   return { ...view, activeStation }
 }
 
+/**
+ * Criteria are echoed by an agent, so compare on content rather than on bytes.
+ *
+ * The same reconciliation the service's gate performs. The leading list marker
+ * matters most: criteria are numbered when shown to the reviewer, and one that
+ * echoes `1. ` back would otherwise never tick on screen.
+ */
+function normalise(criterion: string): string {
+  return criterion
+    .toLowerCase()
+    .replace(/^\s*(?:\d+[.)]|[-*\u2022])\s*/, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[.`'"*_]/g, '')
+    .trim()
+}
+
 /** The verdict for one criterion, or null while it is still unanswered. */
-export function resultFor(view: RunView, criterion: string) {
-  return view.results.find((r) => r.criterion.trim() === criterion.trim()) ?? null
+export function resultFor(view: RunView, criterion: string, index?: number) {
+  const matched = view.results.find((r) => normalise(r.criterion) === normalise(criterion))
+  if (matched !== undefined) {
+    return matched
+  }
+  // One result per criterion in order was asked for, so position is a sound
+  // fallback when the wording drifted past what normalising reconciles.
+  if (index !== undefined && view.results.length === view.criteria.length) {
+    return view.results[index] ?? null
+  }
+  return null
 }
