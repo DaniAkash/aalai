@@ -10,12 +10,16 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test ./test/",
     "service": "bun run scripts/service.ts",
-    "eval": "bun test ./evals/"
+    "eval": "bun test ./evals/",
+    "ui:dev": "cd ui && bun run dev",
+    "ui:build": "cd ui && bun run build",
+    "ui:install": "cd ui && bun install"
   },
   "dependencies": {
     "acpx": "^0.17.0",
     "acpx-ai-provider": "^1.0.0",
     "ai": "^7.0.105",
+    "hono": "^4.13.8",
     "zod": "^4.6.5"
   },
   "devDependencies": {
