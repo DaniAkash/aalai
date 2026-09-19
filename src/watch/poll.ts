@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import type { Config } from '@/config'
+import { emit } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
@@ -96,6 +97,16 @@ async function handleIssue(
   })
   if (!screening.accepted) {
     log.debug('issue skipped', { repo, issue: issue.number, reason: screening.reason })
+    // Surfaced rather than only logged: a refusal is the trust gate working,
+    // and it is worth being able to see it happen.
+    emit({
+      type: 'gate.refused',
+      runId: `${repo}#${issue.number}@refused`,
+      repo,
+      issue: issue.number,
+      reason: screening.reason,
+      at: Date.now(),
+    })
     return false
   }
   const lease = claimRun(db, repo, issue.number, config.staleClaimMinutes * 60_000)
