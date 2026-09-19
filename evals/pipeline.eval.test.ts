@@ -136,8 +136,61 @@ describe('the schema is strict where it matters and forgiving where it does not'
     expect(parsed.ok && parsed.value.test_strategy).toContain('run the focused test')
   })
 
-  test('but acceptance criteria must still be a list with something in it', () => {
-    const reply = `\`\`\`json\n${JSON.stringify({ ...analysis, acceptance_criteria: 'be correct' })}\n\`\`\``
-    expect(parseStationOutput(reply, analysisSchema).ok).toBe(false)
+  test('but acceptance criteria must still carry something', () => {
+    // A lone string is now read as one criterion, which is a reasonable answer.
+    // What must never parse is a shape with no criteria in it at all.
+    for (const empty of [[], {}, '']) {
+      const reply = `\`\`\`json\n${JSON.stringify({ ...analysis, acceptance_criteria: empty })}\n\`\`\``
+      expect(parseStationOutput(reply, analysisSchema).ok).toBe(false)
+    }
+  })
+})
+
+describe('a station that grouped its answer is still accepted', () => {
+  test('affected_surface handed back as an object is flattened', () => {
+    // A real run failed on exactly this: the analyst grouped the surface by
+    // kind, which is a better answer than a flat list, and was rejected.
+    const grouped = {
+      ...analysis,
+      affected_surface: {
+        implementation: ['src/ordinal.ts'],
+        public_interface: ['the named export ordinal(n: number): string'],
+        verification: ['test/ordinal.test.ts'],
+      },
+    }
+    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``, analysisSchema)
+    expect(parsed.ok).toBe(true)
+    expect(parsed.ok && parsed.value.affected_surface).toEqual([
+      'src/ordinal.ts',
+      'the named export ordinal(n: number): string',
+      'test/ordinal.test.ts',
+    ])
+  })
+
+  test('a single string becomes a one-entry list', () => {
+    const single = { ...analysis, risks: 'nothing material' }
+    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(single)}\n\`\`\``, analysisSchema)
+    expect(parsed.ok).toBe(true)
+    expect(parsed.ok && parsed.value.risks).toEqual(['nothing material'])
+  })
+
+  test('grouped acceptance criteria still reach the gate as a flat list', () => {
+    const grouped = {
+      ...analysis,
+      acceptance_criteria: { behaviour: ['it rounds'], api: ['the signature is unchanged'] },
+    }
+    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``, analysisSchema)
+    expect(parsed.ok).toBe(true)
+    expect(parsed.ok && parsed.value.acceptance_criteria).toHaveLength(2)
+  })
+
+  test('a shape that carries no criteria at all is still refused', () => {
+    const empty = { ...analysis, acceptance_criteria: {} }
+    expect(parseStationOutput(`\`\`\`json\n${JSON.stringify(empty)}\n\`\`\``, analysisSchema).ok).toBe(false)
+  })
+
+  test('a list of numbers is still refused', () => {
+    const wrong = { ...analysis, plan: [1, 2, 3] }
+    expect(parseStationOutput(`\`\`\`json\n${JSON.stringify(wrong)}\n\`\`\``, analysisSchema).ok).toBe(false)
   })
 })
