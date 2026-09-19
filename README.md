@@ -55,6 +55,26 @@ bun run src/index.ts doctor
 
 ## Running it
 
+### The dashboard
+
+The service serves a dashboard of its own at `http://localhost:4173` showing the
+pipeline as it runs: which station is working, the acceptance criteria as the
+analyst writes them, and each one being answered at review.
+
+```bash
+bun run ui:install   # once
+bun run ui:build     # produces ui/dist, which the service serves
+bun start            # dashboard and factory, one process
+```
+
+It is an observer. The service runs perfectly well without it, and a dashboard
+that fails to start is a warning rather than a stopped factory.
+
+`present` drops to a projector-sized layout. `history` lists what previous runs
+produced. Issues the gate turned away appear in the footer.
+
+## Running it
+
 ```bash
 bun start                              # run the watch loop in the foreground
 bun run once                           # one polling pass, then exit
@@ -92,6 +112,7 @@ A sleeping Mac does not poll. launchd restarts the process but will not wake the
 | `keepWorktreeOnFailure` | `true` | Leave the worktree on disk when a run fails, for debugging. |
 | `commitName` | `"aalai"` | Commit author name. Passed per commit, never read from global git config. |
 | `commitEmail` | noreply address | Commit author email. |
+| `uiPort` | `4173` | Port for the dashboard and its API. |
 | `staleClaimMinutes` | `30` | How long a run may hold its claim before another pass may take it over. |
 | `maxIssuesPerPoll` | `25` | Most issues one pass will process. The rest wait for the next pass. |
 
