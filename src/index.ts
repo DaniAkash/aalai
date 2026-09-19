@@ -4,6 +4,7 @@ import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
+import { startServer } from '@/server/serve'
 import { pollOnce } from '@/watch/poll'
 import { screenIssue } from '@/watch/intake'
 import { claimRun, completeRun, forgetRun, listRuns, openState } from '@/watch/state'
@@ -27,6 +28,8 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 async function serve(config: Config): Promise<void> {
   const db = openState()
   const controller = new AbortController()
+
+  startServer(config.uiPort)
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
@@ -71,6 +74,9 @@ async function once(config: Config): Promise<void> {
 /** Manual trigger. Bypasses the cursor but still claims, so a demo cannot double-run. */
 async function runOne(config: Config, repo: string, issueNumber: number): Promise<void> {
   const db = openState()
+  if (process.env.AALAI_NO_SERVER !== '1') {
+    startServer(config.uiPort)
+  }
   const issue = await getIssue(repo, issueNumber)
   const screening = screenIssue(issue, {
     trustedAuthorsOnly: config.trustedAuthorsOnly,

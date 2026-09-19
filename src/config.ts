@@ -60,6 +60,8 @@ export const configSchema = z.object({
   staleClaimMinutes: z.number().int().min(1).default(30),
   /** Most issues one polling pass will process. The rest wait for the next pass. */
   maxIssuesPerPoll: z.number().int().min(1).default(25),
+  /** Port for the dashboard and its API. */
+  uiPort: z.number().int().min(1024).max(65535).default(4173),
 })
 
 export type Config = z.infer<typeof configSchema>
