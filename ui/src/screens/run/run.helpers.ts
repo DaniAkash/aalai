@@ -1,4 +1,4 @@
-import type { RunEvent, RunView, Stage, StationId, StationView } from '@/screens/run/run.types'
+import type { Refusal, RunEvent, RunView, Stage, StationId, StationView } from '@/screens/run/run.types'
 
 const ORDER: readonly Stage[] = ['workspace', 'analyst', 'implementer', 'reviewer', 'deliver']
 
@@ -26,6 +26,7 @@ const EMPTY: RunView = {
   prUrl: null,
   stoppedReason: null,
   activeStation: null,
+  refusals: [],
 }
 
 /**
@@ -47,8 +48,21 @@ export function reduceRun(events: readonly RunEvent[]): RunView {
   for (const event of events) {
     switch (event.type) {
       case 'run.started':
-        view = { ...EMPTY, repo: event.repo, issue: event.issue, title: event.title }
+        // Refusals survive a new run: they are the gate's history, not this
+        // run's state, and they are worth being able to point at.
+        view = { ...EMPTY, refusals: view.refusals, repo: event.repo, issue: event.issue, title: event.title }
         break
+
+      case 'gate.refused': {
+        const refusal: Refusal = {
+          repo: event.repo,
+          issue: event.issue,
+          reason: event.reason,
+          at: event.at,
+        }
+        view = { ...view, refusals: [...view.refusals, refusal].slice(-5) }
+        break
+      }
 
       case 'stage.entered': {
         // Entering a stage settles everything before it.

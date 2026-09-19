@@ -27,6 +27,13 @@ export type RunEvent =
   | { readonly type: 'review.verdict'; readonly verdict: 'approve' | 'request_changes' | 'reject'; readonly results: readonly CriterionResult[] }
   | { readonly type: 'run.delivered'; readonly prUrl: string; readonly branch: string }
   | { readonly type: 'run.stopped'; readonly reason: string }
+  | {
+      readonly type: 'gate.refused'
+      readonly repo: string
+      readonly issue: number
+      readonly reason: string
+      readonly at: number
+    }
 
 /** What a station shows: its state, what it is doing, and what it produced. */
 export interface StationView {
@@ -41,6 +48,24 @@ export interface StationView {
   readonly handoff: string | null
 }
 
+/** A run the service has already finished, read from sqlite. */
+export interface PastRun {
+  readonly repo: string
+  readonly issue: number
+  readonly status: string
+  readonly branch: string | null
+  readonly pr_url: string | null
+  readonly error: string | null
+}
+
+/** An issue the gate turned away before any agent ran. */
+export interface Refusal {
+  readonly repo: string
+  readonly issue: number
+  readonly reason: string
+  readonly at: number
+}
+
 export interface RunView {
   readonly repo: string
   readonly issue: number
@@ -52,4 +77,5 @@ export interface RunView {
   readonly prUrl: string | null
   readonly stoppedReason: string | null
   readonly activeStation: StationId | null
+  readonly refusals: readonly Refusal[]
 }
