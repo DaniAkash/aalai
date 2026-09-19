@@ -28,3 +28,25 @@ describe('redactLocalPaths', () => {
     expect(out).not.toContain('/home/')
   })
 })
+
+describe('URLs survive redaction', () => {
+  test('a pull request link is left intact', () => {
+    const text = 'Opened https://github.com/DaniAkash/aalai-demo/pull/14 for this.'
+    expect(redactLocalPaths(text, WORKTREE)).toBe(text)
+  })
+
+  test('an http link with a deep path is left intact', () => {
+    const text = 'See http://example.com/a/b/c/d for the spec.'
+    expect(redactLocalPaths(text, WORKTREE)).toBe(text)
+  })
+
+  test('a local path next to a URL is still redacted', () => {
+    const out = redactLocalPaths(
+      `See https://github.com/acme/widgets/pull/3 and ${WORKTREE}/src/a.ts`,
+      WORKTREE,
+    )
+    expect(out).toContain('https://github.com/acme/widgets/pull/3')
+    expect(out).not.toContain('/Users/')
+    expect(out).toContain('src/a.ts')
+  })
+})
