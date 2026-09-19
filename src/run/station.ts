@@ -126,12 +126,17 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     }
     // Emitted once the turn settles rather than per token: a projector cannot
     // read text arriving character by character, and it reads as a gimmick.
-    if (text.trim() !== '') {
+    //
+    // The structured block is stripped because it is already emitted as its own
+    // typed event. Leaving it in means the reviewer's prose ends with a wall of
+    // raw JSON on screen.
+    const prose = text.replace(/```(?:json)?\s*\n[\s\S]*?```/g, '').trim()
+    if (prose !== '') {
       emit({
         type: 'agent.text',
         runId: input.runId,
         station: input.station,
-        text: text.trim(),
+        text: prose,
         at: Date.now(),
       })
     }
