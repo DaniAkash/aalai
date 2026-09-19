@@ -19,6 +19,20 @@ const UI_DIST = join(import.meta.dir, '..', '..', 'ui', 'dist')
 export function startServer(port: number): void {
   const hasUi = existsSync(join(UI_DIST, 'index.html'))
 
+  try {
+    listen(port, hasUi)
+  } catch (error) {
+    // The dashboard is an observer. A port already in use, usually another
+    // aalai left running, must not take the factory down with it: the run is
+    // the product and the screen is a convenience.
+    log.warn('dashboard not started, continuing without it', {
+      port,
+      error: error instanceof Error ? error.message : error,
+    })
+  }
+}
+
+function listen(port: number, hasUi: boolean): void {
   Bun.serve({
     port,
     idleTimeout: 0,
