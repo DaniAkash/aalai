@@ -37,7 +37,12 @@ export function redactLocalPaths(text: string, worktree: string): string {
   }
   // Anything still absolute is a root we did not anticipate. Keep the
   // repository-relative tail when there is one, and drop the rest.
-  return out.replace(/(?<![\w.])\/(?:[\w.@+-]+\/)+[\w.@+-]+/g, (match) => {
+  //
+  // The lookbehind excludes `:` and `/` so a URL is left alone. Without it
+  // `https://github.com/owner/repo/pull/14` matches at the `//` after the
+  // scheme and the whole link is destroyed, which a live run caught by
+  // publishing a pull request URL as `https:/<local path>`.
+  return out.replace(/(?<![\w.:/])\/(?:[\w.@+-]+\/)+[\w.@+-]+/g, (match) => {
     const anchor = match.match(REPO_ANCHOR)
     if (anchor === null) {
       return '<local path>'

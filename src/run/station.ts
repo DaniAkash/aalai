@@ -1,6 +1,8 @@
 import { streamText } from 'ai'
 import { createAcpxProvider } from 'acpx-ai-provider'
 import type { Config } from '@/config'
+import { emit } from '@/events/bus'
+import type { StationId } from '@/events/events.types'
 import { logger, raw } from '@/lib/log'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
@@ -14,6 +16,9 @@ export type StationPermission = 'approve-all' | 'approve-reads'
 export interface StationInput {
   /** Which ACP agent drives this station. */
   readonly agent: string
+  /** The run this station belongs to, so its activity reaches anything watching. */
+  readonly runId: string
+  readonly station: StationId
   /** Shown in the log, so a run reads as a pipeline rather than one blob. */
   readonly label: string
   readonly worktree: string
@@ -89,6 +94,13 @@ export async function runStation(input: StationInput): Promise<StationResult> {
           brokeForTool = streaming
           trace.push(part.toolName)
           log.info(`tool ${part.toolName}`, { call: trace.length })
+          emit({
+            type: 'agent.tool',
+            runId: input.runId,
+            station: input.station,
+            tool: part.toolName,
+            at: Date.now(),
+          })
           break
         case 'text-delta':
           if (!streaming) {
@@ -111,6 +123,22 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     }
     if (streaming) {
       raw('\n')
+    }
+    // Emitted once the turn settles rather than per token: a projector cannot
+    // read text arriving character by character, and it reads as a gimmick.
+    //
+    // The structured block is stripped because it is already emitted as its own
+    // typed event. Leaving it in means the reviewer's prose ends with a wall of
+    // raw JSON on screen.
+    const prose = text.replace(/```(?:json)?\s*\n[\s\S]*?```/g, '').trim()
+    if (prose !== '') {
+      emit({
+        type: 'agent.text',
+        runId: input.runId,
+        station: input.station,
+        text: prose,
+        at: Date.now(),
+      })
     }
 
     const [finishReason, usage] = await Promise.all([result.finishReason, result.totalUsage])

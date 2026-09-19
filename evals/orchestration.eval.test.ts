@@ -162,3 +162,42 @@ describe('an empty run never reaches the reviewer', () => {
     expect(trace).not.toContain('review')
   })
 })
+
+describe('the gate reconciles how a reviewer echoes a criterion', () => {
+  test('a leading list marker does not fail the match', async () => {
+    const numbered = review({
+      criteria_results: analysis.acceptance_criteria.map((criterion, i) => ({
+        // Criteria are numbered when shown to the reviewer, and agents echo
+        // that numbering back. A real run was refused over exactly this.
+        criterion: `${i + 1}. ${criterion}`,
+        pass: true,
+        evidence: 'checked',
+      })),
+    })
+    const { deps } = recorder([numbered])
+    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    expect(outcome.kind).toBe('approved')
+  })
+
+  test('a failed criterion is still refused however it is worded', async () => {
+    const failed = review({
+      criteria_results: analysis.acceptance_criteria.map((criterion, i) => ({
+        criterion: `${i + 1}. ${criterion}`,
+        pass: i === 0,
+        evidence: 'checked',
+      })),
+    })
+    const { deps } = recorder([failed])
+    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    expect(outcome.kind).toBe('stopped')
+  })
+
+  test('fewer results than criteria is still refused', async () => {
+    const short = review({
+      criteria_results: [{ criterion: 'something else entirely', pass: true, evidence: 'x' }],
+    })
+    const { deps } = recorder([short])
+    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    expect(outcome.kind).toBe('stopped')
+  })
+})

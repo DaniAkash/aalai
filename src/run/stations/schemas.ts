@@ -15,6 +15,37 @@ const looseText = z
   .pipe(z.string().min(1))
 
 /**
+ * A list an agent may reasonably hand back grouped rather than flat.
+ *
+ * A station asked for the surface a change touches will sometimes answer with
+ * `{ implementation: [...], public_interface: [...] }`, which is a better
+ * answer than a flat list and was being rejected for it. Grouping is flattened
+ * in declaration order, a bare string becomes a single entry, and everything
+ * else still fails.
+ *
+ * Be strict about shape that carries meaning and forgiving about how an agent
+ * chose to organise it. The alternative costs a second expensive turn and, on
+ * a retry that answers the same way, the whole run.
+ */
+const looseList = z
+  .union([
+    z.string(),
+    z.array(z.string()),
+    z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+  ])
+  .transform((value): string[] => {
+    const entries =
+      typeof value === 'string'
+        ? [value]
+        : Array.isArray(value)
+          ? value
+          : Object.values(value).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+    // Blank entries are dropped, so an empty string cannot pass a minimum-length
+    // check as one criterion that says nothing.
+    return entries.map((entry) => entry.trim()).filter((entry) => entry !== '')
+  })
+
+/**
  * The analyst's output, and the contract the reviewer is later handed.
  *
  * `acceptance_criteria` is the field that matters: it is written before any
@@ -24,10 +55,10 @@ const looseText = z
 export const analysisSchema = z.object({
   problem_statement: looseText,
   approach: looseText,
-  plan: z.array(z.string()).min(1),
-  affected_surface: z.array(z.string()),
-  risks: z.array(z.string()),
-  acceptance_criteria: z.array(z.string()).min(1),
+  plan: looseList.pipe(z.array(z.string()).min(1)),
+  affected_surface: looseList,
+  risks: looseList,
+  acceptance_criteria: looseList.pipe(z.array(z.string()).min(1)),
   test_strategy: looseText,
 })
 
@@ -53,7 +84,7 @@ export const reviewSchema = z.object({
   // gate checks coverage against the analyst's criteria; this only refuses the
   // degenerate case that would otherwise parse cleanly.
   criteria_results: z.array(criterionResultSchema).min(1),
-  blocking_findings: z.array(z.string()),
+  blocking_findings: looseList,
   summary: looseText,
 })
 

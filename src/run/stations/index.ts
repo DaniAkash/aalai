@@ -49,6 +49,7 @@ async function structuredStation<T>(
 }
 
 export interface AnalystInput {
+  readonly runId: string
   readonly repo: string
   readonly issue: GhIssue
   readonly worktree: string
@@ -62,6 +63,8 @@ export async function runAnalyst(
 ): Promise<{ analysis: Analysis; result: StationResult }> {
   const { value, result } = await structuredStation('analyst', {
     agent: input.config.agents.analyst,
+    runId: input.runId,
+    station: 'analyst',
     label: 'analyst',
     worktree: input.worktree,
     systemRules: buildStationRules('analyst'),
@@ -79,6 +82,7 @@ export async function runAnalyst(
 }
 
 export interface ImplementerInput {
+  readonly runId: string
   readonly repo: string
   readonly issue: GhIssue
   readonly worktree: string
@@ -92,6 +96,8 @@ export interface ImplementerInput {
 export async function runImplementer(input: ImplementerInput): Promise<StationResult> {
   return runStation({
     agent: input.config.agents.implementer,
+    runId: input.runId,
+    station: 'implementer',
     label: 'implementer',
     worktree: input.worktree,
     systemRules: buildStationRules('implementer'),
@@ -108,6 +114,7 @@ export async function runImplementer(input: ImplementerInput): Promise<StationRe
 }
 
 export interface ReviewerInput {
+  readonly runId: string
   readonly repo: string
   readonly issue: GhIssue
   /** An independent checkout of the branch, not the implementer's worktree. */
@@ -124,6 +131,8 @@ export async function runReviewer(
 ): Promise<{ review: Review; result: StationResult }> {
   const { value, result } = await structuredStation('reviewer', {
     agent: input.config.agents.reviewer,
+    runId: input.runId,
+    station: 'reviewer',
     label: 'reviewer',
     worktree: input.worktree,
     systemRules: buildStationRules('reviewer'),
