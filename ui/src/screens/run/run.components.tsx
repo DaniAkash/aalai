@@ -10,6 +10,11 @@ import type { RunView, StationView } from '@/screens/run/run.types'
  * shapes and learns one vocabulary: dashed is queued, solid violet is working,
  * thin white is done. No dots, no badges, no spinner.
  */
+/** The first line of a command, for a place that has room for exactly one. */
+function firstLine(text: string): string {
+  return text.split('\n')[0] ?? text
+}
+
 export function Station({ station }: { station: StationView }) {
   const { state } = station
   return (
@@ -32,9 +37,11 @@ export function Station({ station }: { station: StationView }) {
         >
           {station.label}
         </span>
-        <span className="text-[0.8em] text-ash">
+        <span className="truncate text-[0.8em] text-ash" title={station.tools.at(-1) ?? ''}>
           {state === 'queued' && 'queued'}
-          {state === 'working' && (station.tools.at(-1) ?? 'working')}
+          {/* One line. A real tool call is a multi-line shell pipeline, and
+              letting it wrap blows the station out and unbalances the line. */}
+          {state === 'working' && firstLine(station.tools.at(-1) ?? 'working')}
           {state === 'done' && (station.output ?? 'done')}
           {state === 'stopped' && 'stopped'}
         </span>
@@ -75,7 +82,7 @@ export function StationLine({ view }: { view: RunView }) {
 export function CriteriaPanel({ view }: { view: RunView }) {
   if (view.criteria.length === 0) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-3">
         <PanelLabel>acceptance criteria</PanelLabel>
         <p className="text-[0.85em] text-ash">
           The planning station has not written them yet.
@@ -85,7 +92,7 @@ export function CriteriaPanel({ view }: { view: RunView }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-5">
       <PanelLabel>
         acceptance criteria
         <span className="ml-3 normal-case tracking-normal text-ash/70">
@@ -134,14 +141,14 @@ export function ActivityPanel({ view }: { view: RunView }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-5">
       <PanelLabel>{station.label}</PanelLabel>
 
       {station.tools.length > 0 && (
-        <ul className="flex flex-col gap-1 font-mono text-[0.72em] text-ash">
+        <ul className="flex min-w-0 flex-col gap-1 font-mono text-[0.72em] text-ash">
           {station.tools.slice(-6).map((tool, i) => (
-            <li key={`${tool}-${i}`} className="truncate">
-              <span className="text-iris">▌</span> {tool}
+            <li key={`${tool}-${i}`} className="truncate" title={tool}>
+              <span className="text-iris">▌</span> {firstLine(tool)}
             </li>
           ))}
         </ul>
