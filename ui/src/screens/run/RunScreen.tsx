@@ -7,11 +7,11 @@ import {
 } from '@/screens/run/run.components'
 
 export function RunScreen() {
-  const { view, replaying, restart } = useRunData()
+  const { view, status, demo, toggleDemo } = useRunData()
 
   return (
-    <main className="stage flex min-h-svh flex-col gap-12 bg-void px-[4vw] py-[5vh] text-bone">
-      <header className="flex items-baseline justify-between gap-8">
+    <main className="stage flex h-svh flex-col gap-10 overflow-hidden bg-void px-[4vw] py-[4vh] text-bone">
+      <header className="flex shrink-0 items-baseline justify-between gap-8">
         <div className="flex flex-col gap-2">
           <span className="font-mono text-[0.62em] uppercase tracking-[0.2em] text-ash">
             aalai
@@ -22,25 +22,34 @@ export function RunScreen() {
             {view.title === '' ? 'Waiting for work' : view.title}
           </h1>
         </div>
-        {!replaying && (
-          <button
-            type="button"
-            onClick={restart}
-            className="rounded-full border border-hairline px-5 py-2 font-mono text-[0.6em] uppercase tracking-[0.2em] text-ash transition-colors hover:border-iris hover:text-bone"
+        <button
+          type="button"
+          onClick={toggleDemo}
+          className="shrink-0 rounded-full border border-hairline px-5 py-2 font-mono text-[0.6em] uppercase tracking-[0.2em] text-ash transition-colors hover:border-iris hover:text-bone"
+        >
+          {demo ? 'recorded run' : 'live'}
+          <span
+            className={
+              status === 'live' && !demo
+                ? 'ml-3 text-iris'
+                : status === 'offline'
+                  ? 'ml-3 text-spark'
+                  : 'ml-3 text-ash/50'
+            }
           >
-            replay
-          </button>
-        )}
+            {status === 'live' ? 'connected' : status}
+          </span>
+        </button>
       </header>
 
       <StationLine view={view} />
 
-      <section className="grid flex-1 grid-cols-1 gap-16 lg:grid-cols-[1.1fr_0.9fr]">
+      <section className="grid min-h-0 flex-1 grid-cols-1 gap-16 overflow-hidden lg:grid-cols-[1.1fr_0.9fr] [&>*]:min-w-0 [&>*]:min-h-0 [&>*]:overflow-y-auto">
         <CriteriaPanel view={view} />
         <ActivityPanel view={view} />
       </section>
 
-      <footer>
+      <footer className="shrink-0">
         <Outcome view={view} />
       </footer>
     </main>
