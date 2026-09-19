@@ -1,7 +1,7 @@
 import { CheckIcon, WarningIcon } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { resultFor } from '@/screens/run/run.helpers'
-import type { RunView, StationView } from '@/screens/run/run.types'
+import type { PastRun, RunView, StationView } from '@/screens/run/run.types'
 
 /**
  * One station on the line.
@@ -202,4 +202,92 @@ export function Outcome({ view }: { view: RunView }) {
     )
   }
   return null
+}
+
+/** Issues the gate turned away, so a refusal is visible rather than buried in a log. */
+export function Refusals({ view }: { view: RunView }) {
+  if (view.refusals.length === 0) {
+    return null
+  }
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <PanelLabel>turned away at the door</PanelLabel>
+      <ul className="flex flex-col gap-2">
+        {view.refusals.map((refusal) => (
+          <li key={`${refusal.repo}#${refusal.issue}@${refusal.at}`} className="flex gap-3">
+            <span className="shrink-0 font-mono text-[0.72em] text-ash">
+              {refusal.repo.split('/').at(-1)}#{refusal.issue}
+            </span>
+            <span className="min-w-0 truncate text-[0.8em] text-spark" title={refusal.reason}>
+              {refusal.reason}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** Finished runs and what they produced. */
+export function History({ runs, loading }: { runs: readonly PastRun[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="flex min-w-0 flex-col gap-4">
+        <PanelLabel>recent runs</PanelLabel>
+        <ul className="flex flex-col gap-3">
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="h-5 w-2/3 animate-pulse rounded bg-hairline" />
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  if (runs.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        <PanelLabel>recent runs</PanelLabel>
+        <p className="text-[0.85em] text-ash">
+          Nothing yet. Label an issue or hand one over directly, and it appears here.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-w-0 flex-col gap-4">
+      <PanelLabel>recent runs</PanelLabel>
+      <ul className="flex flex-col gap-4">
+        {runs.map((run) => (
+          <li key={`${run.repo}#${run.issue}`} className="flex min-w-0 items-baseline gap-4">
+            <span className="w-14 shrink-0 font-mono text-[0.72em] text-ash">#{run.issue}</span>
+            <span
+              className={cn(
+                'w-24 shrink-0 font-mono text-[0.68em] uppercase tracking-wide',
+                run.status === 'delivered' && 'text-iris',
+                run.status === 'failed' && 'text-spark',
+                run.status !== 'delivered' && run.status !== 'failed' && 'text-ash',
+              )}
+            >
+              {run.status}
+            </span>
+            {run.pr_url === null ? (
+              <span className="min-w-0 truncate text-[0.8em] text-ash">
+                {run.error ?? 'no pull request'}
+              </span>
+            ) : (
+              <a
+                href={run.pr_url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 truncate text-[0.8em] text-mist underline-offset-4 hover:text-bone hover:underline"
+              >
+                {run.pr_url.replace('https://github.com/', '')}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
