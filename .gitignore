@@ -8,3 +8,8 @@ aalai.config.json
 dist/
 .vite/
 target/
+
+# Compiled sidecar, produced by scripts/build-sidecar.ts
+app/native/src-tauri/binaries/
+# Tauri build output
+app/native/src-tauri/gen/
