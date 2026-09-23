@@ -4,7 +4,7 @@ import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
-import { startServer } from '@/server/serve'
+import { announceReady, startServer } from '@/server/serve'
 import { pollOnce } from '@/watch/poll'
 import { screenIssue } from '@/watch/intake'
 import { claimRun, completeRun, forgetRun, listRuns, openState } from '@/watch/state'
@@ -25,11 +25,33 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   })
 }
 
+/**
+ * Reads a flag the desktop shell passes when it spawns this process.
+ *
+ * The shell owns the port and the token so every launch gets a fresh pair.
+ * Falling back to the config keeps the terminal path working with no shell
+ * present, which is the property this whole layout protects.
+ */
+function flag(name: string): string | undefined {
+  const at = process.argv.indexOf(`--${name}`)
+  return at === -1 ? undefined : process.argv[at + 1]
+}
+
+/** Starts the API and, when a shell is listening, tells it where to connect. */
+function startApi(config: Config): void {
+  const requested = flag('port')
+  const handle = startServer(
+    requested === undefined ? config.uiPort : Number(requested),
+    flag('token'),
+  )
+  if (handle) announceReady(handle)
+}
+
 async function serve(config: Config): Promise<void> {
   const db = openState()
   const controller = new AbortController()
 
-  startServer(config.uiPort)
+  startApi(config)
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
@@ -75,7 +97,7 @@ async function once(config: Config): Promise<void> {
 async function runOne(config: Config, repo: string, issueNumber: number): Promise<void> {
   const db = openState()
   if (process.env.AALAI_NO_SERVER !== '1') {
-    startServer(config.uiPort)
+    startApi(config)
   }
   const issue = await getIssue(repo, issueNumber)
   const screening = screenIssue(issue, {
