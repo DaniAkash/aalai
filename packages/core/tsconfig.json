@@ -8,6 +8,10 @@
     },
     "types": [
       "bun"
+    ],
+    "lib": [
+      "ESNext",
+      "DOM"
     ]
   },
   "include": [

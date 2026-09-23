@@ -1,20 +1,26 @@
 [install]
-# Project-level override: allow packages >= 1 day old (default is 7 days).
-# Reason: this project tracks the AI SDK and acpx upstream closely; a 7-day
+# Project-level override: allow packages ≥ 1 day old (default is 7 days).
+# Reason: this package tracks the AI SDK and acpx upstream closely; a 7-day
 # gate would lock us out of fresh fixes during active development. Still
 # non-zero so we don't blindly install brand-new tarballs.
 minimumReleaseAge = 86400
 
-# Deliberately hoisted, and deliberately not using the global store.
+# Global virtual store: install packages once into a shared store and link them
+# into node_modules as symlinks, instead of copying a full tree per project.
+# node_modules shrinks to a few MB of symlinks, which is a big win for the
+# on-demand worktree workflow, and warm installs are much faster.
 #
-# The shared bunfig this file is derived from sets linker = "isolated" with
-# globalStore = true. Under that combination TypeScript resolves no @types/bun
-# at all: tsc --explainFiles loads only its own lib.*.d.ts, so Response and
-# Request fall back to the minimal built-in shapes and `bun run typecheck`
-# fails on Response.text and Request.url. The symlink into the store exists;
-# tsc will not follow it. Adding bun-types as a direct dependency does not
-# change it. Verified by flipping only this setting on an otherwise identical
-# tree: hoisted is clean, isolated fails.
+# Requires the isolated linker, which is already the workspace default; set
+# explicitly to make the intent clear. https://bun.com/docs/pm/global-store
+linker = "isolated"
+globalStore = true
+
+# Note for whoever hits a type error after touching this file.
 #
-# globalStore requires the isolated linker, so it goes with it.
-linker = "hoisted"
+# The isolated linker puts every package's realpath in the global store, and
+# TypeScript will not follow a `/// <reference types="..." />` chain from
+# there. @types/bun is only a reference to bun-types, which in turn references
+# node, so under this linker tsc ends up with a partial Response and Request.
+#
+# The fix lives in packages/core/tsconfig.json: lib includes DOM and types is
+# pinned to ["bun"]. Do not "simplify" either of them away.
