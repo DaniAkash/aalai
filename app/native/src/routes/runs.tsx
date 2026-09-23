@@ -1,14 +1,16 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { usePastRuns } from '@/modules/api/runs.hooks'
 
 export const Route = createFileRoute('/runs')({ component: RunsRoute })
 
+// Keyed on the statuses the core actually emits.
 const DOT: Record<string, string> = {
+  claimed: 'bg-primary',
   delivered: 'bg-chart-2',
-  running: 'bg-primary',
   failed: 'bg-destructive',
-  stopped: 'bg-muted-foreground',
+  skipped: 'bg-muted-foreground',
 }
 
 function RunsRoute() {
@@ -44,9 +46,13 @@ function RunsRoute() {
             </div>
           </div>
           {run.pr_url ? (
-            <Link to={run.pr_url} className="text-primary text-[12px] hover:underline">
+            <button
+              type="button"
+              onClick={() => void openUrl(run.pr_url as string)}
+              className="text-primary text-[12px] hover:underline"
+            >
               pull request
-            </Link>
+            </button>
           ) : null}
         </div>
       ))}

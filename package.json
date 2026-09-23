@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test",
+    "test": "bun run --filter 'aalai-core' test",
     "eval": "bun run --filter 'aalai-core' eval",
     "start": "bun run --filter 'aalai-core' start",
     "once": "bun run --filter 'aalai-core' once",

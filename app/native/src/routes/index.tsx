@@ -22,7 +22,9 @@ function InboxRoute() {
     )
   }
 
-  const waiting = runs.data.runs.filter((r) => r.status === 'running')
+  // 'claimed' is what the core emits for a run in flight. There is no
+  // 'running' status, so filtering on one silently showed an empty inbox.
+  const waiting = runs.data.runs.filter((r) => r.status === 'claimed')
 
   if (waiting.length === 0) {
     return (

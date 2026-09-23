@@ -1,10 +1,9 @@
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
-import { FileText, GitBranch, Inbox, PauseCircle, SlidersHorizontal, Workflow } from 'lucide-react'
+import { Inbox, Workflow } from 'lucide-react'
 import type { ComponentType } from 'react'
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
-  AnimatedSidebarFooter,
   AnimatedSidebarGroup,
   AnimatedSidebarGroupContent,
   AnimatedSidebarHeader,
@@ -21,11 +20,11 @@ interface NavItem {
   icon: ComponentType<{ className?: string }>
 }
 
+// Only routes that exist. Repos and Documents arrive with their routes
+// rather than as nav items that navigate nowhere.
 const NAV: NavItem[] = [
   { to: '/', label: 'Inbox', icon: Inbox },
   { to: '/runs', label: 'Runs', icon: Workflow },
-  { to: '/repos', label: 'Repos', icon: GitBranch },
-  { to: '/docs', label: 'Documents', icon: FileText },
 ]
 
 /**
@@ -73,20 +72,6 @@ export function AppShell({ pending }: { pending?: number }) {
             </AnimatedSidebarGroup>
           </AnimatedSidebarContent>
 
-          <AnimatedSidebarFooter>
-            <AnimatedSidebarMenu>
-              <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton icon={<SlidersHorizontal className="size-4" />}>
-                  Settings
-                </AnimatedSidebarMenuButton>
-              </AnimatedSidebarMenuItem>
-              <AnimatedSidebarMenuItem>
-                <AnimatedSidebarMenuButton icon={<PauseCircle className="size-4" />}>
-                  Pause factory
-                </AnimatedSidebarMenuButton>
-              </AnimatedSidebarMenuItem>
-            </AnimatedSidebarMenu>
-          </AnimatedSidebarFooter>
         </AnimatedSidebar>
 
         <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">

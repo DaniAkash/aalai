@@ -7,13 +7,12 @@ use tauri::{AppHandle, Manager};
 /// The window is where you go when a decision needs more than a click. The
 /// tray is where you find out that one is waiting.
 pub fn build(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    // Pause is deliberately absent until the factory exposes a control
+    // endpoint for it. A tray item that looks live and does nothing is worse
+    // than one that is not there.
     let open = MenuItem::with_id(app, "open", "Open aalai", true, None::<&str>)?;
-    let pause = MenuItem::with_id(app, "pause", "Pause factory", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit aalai", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&open, &pause, &PredefinedMenuItem::separator(app)?, &quit],
-    )?;
+    let menu = Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])?;
 
     TrayIconBuilder::with_id("aalai")
         .icon(app.default_window_icon().expect("no default icon").clone())

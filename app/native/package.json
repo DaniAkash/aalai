@@ -18,6 +18,7 @@
     "@tanstack/react-router": "^1.170.38",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-http": "^2.6.1",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "aalai-core": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
