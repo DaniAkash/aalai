@@ -1,0 +1,30 @@
+{
+  "name": "aalai-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./app": "./src/server/app.ts",
+    "./events": "./src/events/events.types.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "once": "bun run src/index.ts --once",
+    "run-issue": "bun run src/index.ts run",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test ./test/",
+    "eval": "bun test ./evals/",
+    "service": "bun run scripts/service.ts"
+  },
+  "dependencies": {
+    "acpx": "^0.17.0",
+    "acpx-ai-provider": "^1.0.0",
+    "ai": "^7.0.105",
+    "hono": "^4.13.8",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}

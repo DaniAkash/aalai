@@ -4,6 +4,14 @@
   "workspaces": {
     "": {
       "name": "aalai",
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
+        "typescript": "^7.0.2",
+      },
+    },
+    "packages/core": {
+      "name": "aalai-core",
+      "version": "0.1.0",
       "dependencies": {
         "acpx": "^0.17.0",
         "acpx-ai-provider": "^1.0.0",
@@ -147,6 +155,8 @@
     "@vercel/oidc": ["@vercel/oidc@3.2.0", "", {}, "sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug=="],
 
     "@workflow/serde": ["@workflow/serde@4.1.0", "", {}, "sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ=="],
+
+    "aalai-core": ["aalai-core@workspace:packages/core"],
 
     "acpx": ["acpx@0.17.0", "", { "dependencies": { "@agentclientprotocol/sdk": "^1.4.0", "@openclaw/fs-safe": "^0.10.0", "commander": "^15.0.0", "skillflag": "^0.2.1", "tsx": "^4.23.13", "zod": "^4.6.2" }, "bin": { "acpx": "dist/cli.js" } }, "sha512-Acg98gvOH+3PZsFvZD5m/0uE0ayNRQYcIy/nZ4S0yK/9Ovjw+jKIfYh3V7cnz1ShCxCBZK3EhkJND/fe9IjRXA=="],
 

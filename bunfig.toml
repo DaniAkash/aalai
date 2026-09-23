@@ -1,0 +1,20 @@
+[install]
+# Project-level override: allow packages >= 1 day old (default is 7 days).
+# Reason: this project tracks the AI SDK and acpx upstream closely; a 7-day
+# gate would lock us out of fresh fixes during active development. Still
+# non-zero so we don't blindly install brand-new tarballs.
+minimumReleaseAge = 86400
+
+# Deliberately hoisted, and deliberately not using the global store.
+#
+# The shared bunfig this file is derived from sets linker = "isolated" with
+# globalStore = true. Under that combination TypeScript resolves no @types/bun
+# at all: tsc --explainFiles loads only its own lib.*.d.ts, so Response and
+# Request fall back to the minimal built-in shapes and `bun run typecheck`
+# fails on Response.text and Request.url. The symlink into the store exists;
+# tsc will not follow it. Adding bun-types as a direct dependency does not
+# change it. Verified by flipping only this setting on an otherwise identical
+# tree: hoisted is clean, isolated fails.
+#
+# globalStore requires the isolated linker, so it goes with it.
+linker = "hoisted"
