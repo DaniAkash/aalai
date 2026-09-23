@@ -27,8 +27,10 @@ pub fn run() {
                 )?;
             }
 
-            // No dock icon. This is a tray app, and a dock icon for something
-            // that has no persistent window is just clutter.
+            // No dock icon: this lives in the menu bar. The window still
+            // shows on launch, because an app that starts with no window and
+            // no dock presence is indistinguishable from one that failed to
+            // start, which is exactly how it was first reported.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 

@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
@@ -17,7 +18,12 @@ export const configSchema = z.object({
     .never({ error: 'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }' })
     .optional(),
   pollSeconds: z.number().int().min(10).default(60),
-  watch: z.array(watchedRepoSchema).min(1),
+  /**
+   * Repos to watch. Empty is valid and is what a fresh install looks like:
+   * the app adds repos through its own interface rather than asking a person
+   * to write JSON before anything will start.
+   */
+  watch: z.array(watchedRepoSchema).default([]),
   /**
    * Which ACP agent drives each station.
    *
@@ -106,13 +112,37 @@ export async function loadConfig(path?: string): Promise<Config> {
     }
   }
   if (!file) {
-    throw new Error(
-      `No config found. Looked in:\n${candidates.map((c) => `  ${c}`).join('\n')}\nCopy aalai.config.example.json to one of them and edit it.`,
-    )
+    // A missing config is a first run, not an error. Write the defaults where
+    // the app expects them and carry on with nothing watched, so the thing
+    // that configures aalai is aalai.
+    const created = join(stateDir(), DEFAULT_CONFIG_PATH)
+    mkdirSync(stateDir(), { recursive: true })
+    await Bun.write(created, `${JSON.stringify(configSchema.parse({}), null, 2)}\n`)
+    file = Bun.file(created)
   }
   const parsed = configSchema.safeParse(await file.json())
   if (!parsed.success) {
     throw new Error(`Invalid config at ${file.name}:\n${z.prettifyError(parsed.error)}`)
   }
   return parsed.data
+}
+
+/** Where the config we loaded, or created, actually lives. */
+export function configPath(): string {
+  for (const candidate of configCandidates()) {
+    if (existsSync(candidate)) return candidate
+  }
+  return join(stateDir(), DEFAULT_CONFIG_PATH)
+}
+
+/**
+ * Persists a config.
+ *
+ * Validated before it is written, so a bad request cannot leave a file on disk
+ * that the next start refuses to read.
+ */
+export async function saveConfig(config: Config): Promise<void> {
+  const parsed = configSchema.parse(config)
+  mkdirSync(stateDir(), { recursive: true })
+  await Bun.write(configPath(), `${JSON.stringify(parsed, null, 2)}\n`)
 }

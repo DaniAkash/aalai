@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
-import { Inbox, Workflow } from 'lucide-react'
+import { GitBranch, Inbox, Workflow } from 'lucide-react'
 import type { ComponentType } from 'react'
 import {
   AnimatedSidebar,
@@ -25,6 +25,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/', label: 'Inbox', icon: Inbox },
   { to: '/runs', label: 'Runs', icon: Workflow },
+  { to: '/repos', label: 'Repos', icon: GitBranch },
 ]
 
 /**

@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ReposRouteImport } from './routes/repos'
 import { Route as RunsRouteImport } from './routes/runs'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReposRoute = ReposRouteImport.update({
+  id: '/repos',
+  path: '/repos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RunsRoute = RunsRouteImport.update({
@@ -25,27 +31,31 @@ const RunsRoute = RunsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/runs'
+  fullPaths: '/' | '/repos' | '/runs'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/runs'
-  id: '__root__' | '/' | '/runs'
+  to: '/' | '/repos' | '/runs'
+  id: '__root__' | '/' | '/repos' | '/runs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ReposRoute: typeof ReposRoute
   RunsRoute: typeof RunsRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/repos': {
+      id: '/repos'
+      path: '/repos'
+      fullPath: '/repos'
+      preLoaderRoute: typeof ReposRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/runs': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ReposRoute: ReposRoute,
   RunsRoute: RunsRoute,
 }
 export const routeTree = rootRouteImport

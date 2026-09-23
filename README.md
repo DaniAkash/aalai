@@ -31,7 +31,6 @@ scripts/
 ```sh
 bun install
 cd packages/core
-cp aalai.config.example.json aalai.config.json   # then name the repos to watch
 bun run src/index.ts doctor                      # gh, git and config check
 
 bun start                                        # watch loop
@@ -48,14 +47,21 @@ bun run service status
 bun run service uninstall
 ```
 
-State lives in `~/.aalai/`. A sleeping Mac does not poll: launchd restarts the process but will not wake the machine.
+Config and state both live in `~/.aalai/`. The config is created on first run
+if it is missing, and `aalai.config.json` in the working directory still wins
+if you prefer to keep one per project. A sleeping Mac does not poll: launchd
+restarts the process but will not wake the machine.
 
 ## The desktop app
 
 ```sh
-bun run build:sidecar          # compile the factory for this machine
-cd app/native && bun run tauri dev
+bun install
+bun run dev
 ```
+
+That is the whole setup. No config file to copy: the app writes its own on
+first run, watching nothing, and repos are added from the Repos screen by
+picking from what your `gh` account already owns.
 
 The shell spawns the factory, which binds an ephemeral port and reports it on stdout. Every launch also gets a fresh bearer token, required by every route except health. A localhost port that can open pull requests is reachable by any process on the machine, so it is not left open.
 

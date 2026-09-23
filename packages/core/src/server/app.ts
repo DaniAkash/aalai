@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { eventsRoute } from '@/server/routes/eventsRoute'
+import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
 
 /**
@@ -12,6 +13,7 @@ import { runsRoute } from '@/server/routes/runsRoute'
 export const app = new Hono()
   .get('/api/health', (c) => c.json({ ok: true }))
   .route('/api', runsRoute)
+  .route('/api', reposRoute)
   .route('/api', eventsRoute)
 
 /** The contract the UI's typed client is generated from. */

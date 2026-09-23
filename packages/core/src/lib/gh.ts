@@ -128,3 +128,23 @@ export async function createDraftPullRequest(input: DraftPullRequest): Promise<s
   }
   return url
 }
+
+export interface OwnedRepo {
+  readonly repo: string
+  readonly isPrivate: boolean
+}
+
+/**
+ * Repositories the signed in account can push to.
+ *
+ * Read through the CLI that is already authenticated, so the picker offers
+ * real choices rather than a text field the user has to spell correctly.
+ */
+export async function ownedRepos(limit = 200): Promise<OwnedRepo[]> {
+  const out = await execOrThrow(
+    ['gh', 'repo', 'list', '--limit', String(limit), '--json', 'nameWithOwner,isPrivate'],
+    { env: githubEnv() },
+  )
+  const parsed = JSON.parse(out) as { nameWithOwner: string; isPrivate: boolean }[]
+  return parsed.map((r) => ({ repo: r.nameWithOwner, isPrivate: r.isPrivate }))
+}
