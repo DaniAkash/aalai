@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["app/*", "packages/*"],
+  "workspaces": [
+    "app/*",
+    "packages/*"
+  ],
   "scripts": {
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
     "eval": "bun run --filter 'aalai-core' eval",
     "start": "bun run --filter 'aalai-core' start",
     "once": "bun run --filter 'aalai-core' once",
-    "service": "bun run --filter 'aalai-core' service"
+    "service": "bun run --filter 'aalai-core' service",
+    "build:sidecar": "bun scripts/build-sidecar.ts",
+    "dev:native": "bun run --filter aalai-native dev"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
