@@ -1,13 +1,24 @@
-import { Link, Outlet, useRouterState } from '@tanstack/react-router'
+import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { FileText, GitBranch, Inbox, PauseCircle, SlidersHorizontal, Workflow } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { cn } from '@/lib/utils'
+import {
+  AnimatedSidebar,
+  AnimatedSidebarContent,
+  AnimatedSidebarFooter,
+  AnimatedSidebarGroup,
+  AnimatedSidebarGroupContent,
+  AnimatedSidebarHeader,
+  AnimatedSidebarInset,
+  AnimatedSidebarMenu,
+  AnimatedSidebarMenuButton,
+  AnimatedSidebarMenuItem,
+  AnimatedSidebarProvider,
+} from '@/components/motion/animated-sidebar'
 
 interface NavItem {
   to: string
   label: string
   icon: ComponentType<{ className?: string }>
-  count?: number
 }
 
 const NAV: NavItem[] = [
@@ -18,72 +29,78 @@ const NAV: NavItem[] = [
 ]
 
 /**
- * The window frame. A sidebar that never changes and a body that does.
+ * The window frame: a sidebar that does not change and a body that does.
  *
- * The title bar is left empty on purpose: the window is dragged by it and the
+ * The title bar is left empty because the window is dragged by it and the
  * traffic lights sit there, so anything placed in it collides with the OS.
  */
 export function AppShell({ pending }: { pending?: number }) {
   const path = useRouterState({ select: (s) => s.location.pathname })
+  const navigate = useNavigate()
 
   return (
-    <div className="bg-background text-foreground grid h-dvh grid-cols-[200px_minmax(0,1fr)] grid-rows-[38px_minmax(0,1fr)] overflow-hidden">
-      <div
-        data-tauri-drag-region
-        className="border-border bg-sidebar col-span-2 flex items-center border-b px-3"
-      >
-        <span className="text-muted-foreground ml-16 font-mono text-[11px]">{crumb(path)}</span>
-      </div>
+    <AnimatedSidebarProvider
+      defaultOpen
+      className="bg-background text-foreground flex h-dvh w-full overflow-hidden"
+    >
+        <AnimatedSidebar collapsible="icon" ariaLabel="Sections">
+          <AnimatedSidebarHeader>
+            <span className="font-heading text-[15px] font-semibold tracking-tight">aalai</span>
+          </AnimatedSidebarHeader>
 
-      <nav className="border-border bg-sidebar flex flex-col gap-0.5 border-r p-2.5">
-        <div className="font-heading px-2 pt-1 pb-3 text-[15px] font-semibold tracking-tight">
-          aalai
-        </div>
-        {NAV.map((item) => {
-          const active = item.to === '/' ? path === '/' : path.startsWith(item.to)
-          const Icon = item.icon
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                'flex items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-1.5 text-[13px]',
-                active
-                  ? 'border-primary/30 bg-primary/10 text-foreground'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-              )}
-            >
-              <Icon className="size-4" />
-              {item.label}
-              {item.to === '/' && pending ? (
-                <span className="bg-chart-4 text-background ml-auto rounded-full px-1.5 font-mono text-[10px] font-semibold">
-                  {pending}
-                </span>
-              ) : null}
-            </Link>
-          )
-        })}
-        <div className="flex-1" />
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px]"
-        >
-          <SlidersHorizontal className="size-4" />
-          Settings
-        </button>
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px]"
-        >
-          <PauseCircle className="size-4" />
-          Pause factory
-        </button>
-      </nav>
+          <AnimatedSidebarContent>
+            <AnimatedSidebarGroup>
+              <AnimatedSidebarGroupContent>
+                <AnimatedSidebarMenu>
+                  {NAV.map((item) => {
+                    const Icon = item.icon
+                    const active = item.to === '/' ? path === '/' : path.startsWith(item.to)
+                    return (
+                      <AnimatedSidebarMenuItem key={item.to}>
+                        <AnimatedSidebarMenuButton
+                          icon={<Icon className="size-4" />}
+                          isActive={active}
+                          badge={item.to === '/' && pending ? pending : undefined}
+                          onSelect={() => void navigate({ to: item.to })}
+                        >
+                          {item.label}
+                        </AnimatedSidebarMenuButton>
+                      </AnimatedSidebarMenuItem>
+                    )
+                  })}
+                </AnimatedSidebarMenu>
+              </AnimatedSidebarGroupContent>
+            </AnimatedSidebarGroup>
+          </AnimatedSidebarContent>
 
-      <main className="overflow-y-auto px-6 py-5">
-        <Outlet />
-      </main>
-    </div>
+          <AnimatedSidebarFooter>
+            <AnimatedSidebarMenu>
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton icon={<SlidersHorizontal className="size-4" />}>
+                  Settings
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+              <AnimatedSidebarMenuItem>
+                <AnimatedSidebarMenuButton icon={<PauseCircle className="size-4" />}>
+                  Pause factory
+                </AnimatedSidebarMenuButton>
+              </AnimatedSidebarMenuItem>
+            </AnimatedSidebarMenu>
+          </AnimatedSidebarFooter>
+        </AnimatedSidebar>
+
+        <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+          <div
+            data-tauri-drag-region
+            className="border-border flex h-[38px] shrink-0 items-center border-b px-3"
+          >
+            <span className="text-muted-foreground font-mono text-[11px]">{crumb(path)}</span>
+          </div>
+          <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <Outlet />
+          </main>
+        </AnimatedSidebarInset>
+    </AnimatedSidebarProvider>
   )
 }
 
