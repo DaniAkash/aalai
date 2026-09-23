@@ -13,3 +13,6 @@ target/
 app/native/src-tauri/binaries/
 # Tauri build output
 app/native/src-tauri/gen/
+
+# bun build --compile scratch artifacts
+*.bun-build
