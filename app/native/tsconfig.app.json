@@ -2,13 +2,17 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",
-    "lib": ["ES2023", "DOM"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // "bun" is here because the RPC client type-imports AppType from the
+    // factory, and TypeScript must then check that file's transitive imports,
+    // which touch Bun globals. The cost is that Bun APIs also typecheck inside
+    // UI code; the alternative is mirroring the contract by hand, which is the
+    // drift this import exists to prevent.
+    "types": ["vite/client", "bun"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
-    /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
@@ -16,11 +20,15 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    "paths": {
+      "@/*": ["./src/*", "../../packages/core/src/*"]
+    }
   },
   "include": ["src"]
 }
