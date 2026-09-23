@@ -54,8 +54,20 @@ pub fn spawn(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = rx.recv().await {
-            let CommandEvent::Stdout(line) = event else {
-                continue;
+            // Stderr and an early exit are the only clues when the factory
+            // refuses to start. Dropping them on the floor turns a config
+            // problem into a window that simply never shows any data.
+            let line = match event {
+                CommandEvent::Stdout(line) => line,
+                CommandEvent::Stderr(line) => {
+                    log::warn!("factory: {}", String::from_utf8_lossy(&line).trim_end());
+                    continue;
+                }
+                CommandEvent::Terminated(payload) => {
+                    log::error!("factory exited early with {:?}", payload.code);
+                    continue;
+                }
+                _ => continue,
             };
             let text = String::from_utf8_lossy(&line);
             // The ready line is a contract, not a log line. Anything else on

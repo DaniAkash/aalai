@@ -15,7 +15,8 @@
     "once": "bun run --filter 'aalai-core' once",
     "service": "bun run --filter 'aalai-core' service",
     "build:sidecar": "bun scripts/build-sidecar.ts",
-    "dev:native": "bun run --filter aalai-native dev"
+    "dev:native": "bun run --filter aalai-native dev",
+    "dev": "bun run build:sidecar && bun run --filter aalai-native dev:app"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

@@ -77,14 +77,42 @@ export function workbenchDir(): string {
   return process.env.AALAI_WORKBENCH_DIR ?? join(homedir(), 'workbench')
 }
 
-export async function loadConfig(path = DEFAULT_CONFIG_PATH): Promise<Config> {
-  const file = Bun.file(resolve(path))
-  if (!(await file.exists())) {
-    throw new Error(`No config at ${resolve(path)}. Copy aalai.config.example.json and edit it.`)
+/**
+ * Where a config may live, in the order we look.
+ *
+ * The working directory comes first so running this in a terminal behaves as
+ * it always has. The state directory is the fallback because the desktop shell
+ * spawns the factory with whatever working directory the app happened to have,
+ * which is not somewhere a person would keep a config file.
+ */
+export function configCandidates(path?: string): string[] {
+  if (path) return [resolve(path)]
+  const fromEnv = process.env.AALAI_CONFIG
+  return [
+    ...(fromEnv ? [resolve(fromEnv)] : []),
+    resolve(DEFAULT_CONFIG_PATH),
+    join(stateDir(), DEFAULT_CONFIG_PATH),
+  ]
+}
+
+export async function loadConfig(path?: string): Promise<Config> {
+  const candidates = configCandidates(path)
+  let file: ReturnType<typeof Bun.file> | undefined
+  for (const candidate of candidates) {
+    const at = Bun.file(candidate)
+    if (await at.exists()) {
+      file = at
+      break
+    }
+  }
+  if (!file) {
+    throw new Error(
+      `No config found. Looked in:\n${candidates.map((c) => `  ${c}`).join('\n')}\nCopy aalai.config.example.json to one of them and edit it.`,
+    )
   }
   const parsed = configSchema.safeParse(await file.json())
   if (!parsed.success) {
-    throw new Error(`Invalid config at ${path}:\n${z.prettifyError(parsed.error)}`)
+    throw new Error(`Invalid config at ${file.name}:\n${z.prettifyError(parsed.error)}`)
   }
   return parsed.data
 }
