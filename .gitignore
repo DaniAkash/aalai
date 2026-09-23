@@ -5,3 +5,6 @@ node_modules/
 .aalai/
 .DS_Store
 aalai.config.json
+dist/
+.vite/
+target/
