@@ -27,12 +27,16 @@ pub fn run() {
                 )?;
             }
 
-            // No dock icon: this lives in the menu bar. The window still
-            // shows on launch, because an app that starts with no window and
-            // no dock presence is indistinguishable from one that failed to
-            // start, which is exactly how it was first reported.
+            // Regular while a window is open, Accessory once it is closed.
+            //
+            // Accessory removes the dock icon and also removes the app from
+            // cmd-tab, which is wrong for something with a real window: you
+            // cannot switch back to it. Regular all the time is the other
+            // extreme, leaving a dock icon for a factory that mostly sits in
+            // the background. Switching with window visibility gives a normal
+            // app while you are using it and a quiet one when you are not.
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             tray::build(app.handle())?;
             sidecar::spawn(app.handle())?;
@@ -44,6 +48,10 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
+                #[cfg(target_os = "macos")]
+                let _ = window
+                    .app_handle()
+                    .set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
         })
         .build(tauri::generate_context!())

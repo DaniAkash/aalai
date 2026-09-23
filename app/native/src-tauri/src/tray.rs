@@ -33,6 +33,10 @@ pub fn build(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn show_main(app: &AppHandle) {
+    // Back to a normal app while a window is up, so cmd-tab can reach it.
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
