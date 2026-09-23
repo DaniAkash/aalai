@@ -2,6 +2,7 @@ import { loadConfig, stateDir, type Config } from '@/config'
 import { captureInheritedTokens, githubEnv } from '@/lib/credentials'
 import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
+import { exitWithParent } from '@/lib/parent'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
 import { announceReady, startServer } from '@/server/serve'
@@ -39,6 +40,9 @@ function flag(name: string): string | undefined {
 
 /** Starts the API and, when a shell is listening, tells it where to connect. */
 function startApi(config: Config): void {
+  // Spawned by the desktop shell rather than run by hand.
+  if (flag('port') !== undefined) exitWithParent()
+
   const requested = flag('port')
   const handle = startServer(
     requested === undefined ? config.uiPort : Number(requested),
