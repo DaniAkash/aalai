@@ -1,18 +1,30 @@
+# Dependencies
 node_modules/
+
+# Build output
+dist/
+target/
+.vite/
+*.tsbuildinfo
+
+# Tool caches and generated scratch
+.tanstack/
+.turbo/
+.cache/
+
+# Tauri: generated schemas, and the compiled sidecar from scripts/build-sidecar.ts
+app/native/src-tauri/gen/
+app/native/src-tauri/binaries/
+
+# bun build --compile leaves these next to the working directory
+*.bun-build
+
+# Local runtime state and secrets
 .env
 .env.*
 *.log
 .aalai/
-.DS_Store
 aalai.config.json
-dist/
-.vite/
-target/
 
-# Compiled sidecar, produced by scripts/build-sidecar.ts
-app/native/src-tauri/binaries/
-# Tauri build output
-app/native/src-tauri/gen/
-
-# bun build --compile scratch artifacts
-*.bun-build
+# macOS
+.DS_Store
