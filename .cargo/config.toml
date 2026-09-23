@@ -1,0 +1,14 @@
+[build]
+# Keep intermediate artifacts outside the checkout so every clone and worktree
+# on this machine shares one copy instead of each rebuilding the dependency
+# graph. A Tauri dependency tree is large and this repo is worked on in
+# worktrees, so the duplication is the dominant disk cost.
+#
+# {cargo-cache-home} expands to CARGO_HOME, so this stays portable: no absolute
+# path and no assumption about where the repo lives. Cargo does not expand ~ or
+# $HOME, and target-dir has no templating, so build-dir is the only form that
+# gets this.
+#
+# Final artifacts still land in <checkout>/target, so anything locating a built
+# binary by path keeps working, including tauri's own bundling.
+build-dir = "{cargo-cache-home}/build/aalai"
