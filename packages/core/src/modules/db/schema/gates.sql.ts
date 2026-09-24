@@ -5,7 +5,7 @@ export const GATE_DECISIONS = ['approved', 'rejected', 'changes'] as const
 export type GateDecision = (typeof GATE_DECISIONS)[number]
 
 /**
- * A point where a run stops and waits for a person, filled from phase 3.
+ * A point where a run stops and waits for a person.
  *
  * The artifact version is stored alongside the path because approval pins to
  * the bytes that were approved: a plan revised after the fact must not inherit

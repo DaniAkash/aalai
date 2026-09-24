@@ -10,9 +10,9 @@ export const ATTEMPT_STATUSES = [
 export type AttemptStatus = (typeof ATTEMPT_STATUSES)[number]
 
 /**
- * One row per attempt at a station, and the idempotency key phase 2 needs: a
- * transition that is retried must be able to tell whether the work already
- * happened rather than doing it twice.
+ * One row per attempt at a station, and the idempotency key a retried
+ * transition needs: it has to be able to tell whether the work already happened
+ * rather than doing it twice.
  */
 export const attempts = sqliteTable('attempts', {
   id: text('id').primaryKey(),

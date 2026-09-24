@@ -46,7 +46,8 @@ const agentsDomain = z.object({
 const limitsDomain = z.object({
   /** Most times the reviewer may send work back before the run gives up. */
   maxRevisions: z.number().int().min(0).max(5).default(2),
-  /** Phase 5 reads this. Stored now so the setting does not arrive with it. */
+  /** Read once a failing check is retried automatically. Stored now so the
+   * setting does not have to arrive alongside the behaviour. */
   maxCiFixes: z.number().int().min(0).max(5).default(2),
   turnTimeoutMs: z.number().int().min(60_000).default(900_000),
 })

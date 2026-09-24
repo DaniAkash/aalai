@@ -7,7 +7,7 @@ export const watchedRepos = sqliteTable('watched_repos', {
   repo: text('repo').primaryKey(),
   /** Per repository label gate, overriding the global default when set. */
   requireLabel: text('require_label'),
-  /** Reserved for the trust policy phase 3 attaches to a repository. */
+  /** Reserved for a per repository trust policy. */
   policy: text('policy'),
   /** Paused stops new runs. Muted keeps running but stops notifying. */
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
