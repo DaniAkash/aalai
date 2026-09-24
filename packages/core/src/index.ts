@@ -1,5 +1,6 @@
 import { doctor, showStatus } from '@/commands'
 import { type Config, loadConfig } from '@/config'
+import { answerGateCommand, showGate, showGates } from '@/gateCommands'
 import { captureInheritedTokens } from '@/lib/credentials'
 import { serverDisabled } from '@/lib/env'
 import { getIssue } from '@/lib/gh'
@@ -245,6 +246,28 @@ async function main(): Promise<void> {
   }
   if (command === 'doctor') {
     await doctor()
+    return
+  }
+  // Answering needs no factory running and no window open, which is the
+  // property that makes a gate a property of the run rather than of an app.
+  if (command === 'gates') {
+    showGates(rest)
+    return
+  }
+  if (command === 'show') {
+    await showGate(rest)
+    return
+  }
+  if (command === 'approve') {
+    await answerGateCommand('approved', rest)
+    return
+  }
+  if (command === 'reject') {
+    await answerGateCommand('rejected', rest)
+    return
+  }
+  if (command === 'changes') {
+    await answerGateCommand('changes', rest)
     return
   }
 
