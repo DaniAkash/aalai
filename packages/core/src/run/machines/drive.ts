@@ -29,16 +29,22 @@ export async function driveIssueWork(input: {
     },
   })
 
-  const pending: Promise<void>[] = []
+  // Chained rather than collected. Each transition overwrites the same row and
+  // the same document, so letting them race means a later state can be
+  // overwritten by an earlier one finishing second, and the snapshot then
+  // describes a run that has already moved on.
+  let writes: Promise<void> = Promise.resolve()
   actor.subscribe((snapshot) => {
-    pending.push(
+    const value = String(snapshot.value)
+    const persisted = actor.getPersistedSnapshot()
+    writes = writes.then(() =>
       persistSnapshot({
         db: input.deps.db,
         run: input.run,
         runId: input.runId,
         machine: 'issueWork',
-        value: String(snapshot.value),
-        snapshot: actor.getPersistedSnapshot(),
+        value,
+        snapshot: persisted,
       }),
     )
   })
@@ -48,7 +54,7 @@ export async function driveIssueWork(input: {
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: Number.POSITIVE_INFINITY,
     })
-    await Promise.all(pending)
+    await writes
 
     // `approved` carries the plan, the verdict and the report delivery needs;
     // `finished` carries why it stopped. The caller tells them apart by state

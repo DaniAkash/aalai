@@ -91,8 +91,16 @@ export async function readOutbound(ref: RunRef): Promise<OutboundIntent[]> {
   const dir = join(runDir(ref), 'outbox')
   const glob = new Bun.Glob('*.json')
   const intents: OutboundIntent[] = []
-  for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
-    intents.push((await Bun.file(join(dir, name)).json()) as OutboundIntent)
+  try {
+    for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
+      intents.push((await Bun.file(join(dir, name)).json()) as OutboundIntent)
+    }
+  } catch (error) {
+    // A run that queued nothing has no outbox, and asking what it queued is
+    // an ordinary question with the answer "nothing".
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
   }
   return intents.sort((a, b) => a.queuedAt.localeCompare(b.queuedAt))
 }

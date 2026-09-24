@@ -178,6 +178,7 @@ function openToolSurface(input: StationInput): {
     subject: input.subject,
     run: { subject: input.subject, runId: input.runId },
     station: input.station,
+    worktreePath: input.worktree,
   })
   return {
     grant,

@@ -20,6 +20,8 @@ export interface ToolContext {
   readonly subject: Subject
   readonly run: RunRef
   readonly station: StationId
+  /** The worktree paths are redacted against, so nothing stored leaks one. */
+  readonly worktreePath: string
   /** What the tools wrote during this turn, in call order. */
   readonly written: ArtifactRef[]
   readonly queued: OutboundIntent[]
