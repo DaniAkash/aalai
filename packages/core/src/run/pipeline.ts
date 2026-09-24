@@ -32,7 +32,10 @@ const log = logger('pipeline')
  * permission problem under the work directory is not a reason to throw that
  * away. The failure is logged loudly rather than swallowed quietly.
  */
-async function record(what: string, write: () => Promise<void>): Promise<void> {
+async function record(
+  what: string,
+  write: () => Promise<unknown>,
+): Promise<void> {
   try {
     await write()
   } catch (error) {

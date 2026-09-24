@@ -1,5 +1,16 @@
-import type { GhIssue } from '@/lib/gh'
-import { writeArtifact } from '@/modules/work/artifacts'
+/**
+ * The little of an issue an artifact's heading needs.
+ *
+ * Narrower than GhIssue on purpose: a tool call knows the subject it is
+ * writing for without having fetched the issue again, and GhIssue satisfies
+ * this structurally so every existing caller is unchanged.
+ */
+export interface SubjectHeading {
+  readonly number: number
+  readonly title: string
+}
+
+import { type ArtifactRef, writeArtifact } from '@/modules/work/artifacts'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { writeJson } from '@/modules/work/store'
 import type { PipelineResult } from '@/run/pipeline'
@@ -28,7 +39,7 @@ function numbered(items: readonly string[]): string {
 }
 
 function planMarkdown(
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
   runId: string,
 ): string {
@@ -67,7 +78,7 @@ ${analysis.test_strategy}
 }
 
 function criteriaMarkdown(
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
   runId: string,
 ): string {
@@ -85,7 +96,11 @@ ${analysis.acceptance_criteria.map((c) => `- [ ] ${c}`).join('\n')}
 `
 }
 
-function reviewMarkdown(issue: GhIssue, review: Review, runId: string): string {
+function reviewMarkdown(
+  issue: SubjectHeading,
+  review: Review,
+  runId: string,
+): string {
   const results = review.criteria_results
     .map(
       (result) =>
@@ -124,30 +139,36 @@ ${findings}
 export async function recordAnalysis(
   subject: Subject,
   run: RunRef,
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
-): Promise<void> {
-  await writeArtifact(subject, 'plan', planMarkdown(issue, analysis, run.runId))
-  await writeArtifact(
+): Promise<{ plan: ArtifactRef; criteria: ArtifactRef }> {
+  const plan = await writeArtifact(
+    subject,
+    'plan',
+    planMarkdown(issue, analysis, run.runId),
+  )
+  const criteria = await writeArtifact(
     subject,
     'criteria',
     criteriaMarkdown(issue, analysis, run.runId),
   )
   await writeJson(run, 'analysis', analysis)
+  return { plan, criteria }
 }
 
 export async function recordReview(
   subject: Subject,
   run: RunRef,
-  issue: GhIssue,
+  issue: SubjectHeading,
   review: Review,
-): Promise<void> {
-  await writeArtifact(
+): Promise<{ review: ArtifactRef }> {
+  const written = await writeArtifact(
     subject,
     'review',
     reviewMarkdown(issue, review, run.runId),
   )
   await writeJson(run, 'review', review)
+  return { review: written }
 }
 
 export interface RunSnapshot {

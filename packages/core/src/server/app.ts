@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { eventsRoute } from '@/server/routes/eventsRoute'
 import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
+import { toolsRoute } from '@/server/routes/toolsRoute'
 
 /**
  * The service's own HTTP surface.
@@ -15,6 +16,7 @@ export const app = new Hono()
   .route('/api', runsRoute)
   .route('/api', reposRoute)
   .route('/api', eventsRoute)
+  .route('/api', toolsRoute)
 
 /** The contract the UI's typed client is generated from. */
 export type AppType = typeof app

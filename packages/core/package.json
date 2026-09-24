@@ -17,6 +17,7 @@
     "service": "bun run scripts/service.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "acpx": "^0.17.0",
     "acpx-ai-provider": "^1.0.0",
     "ai": "^7.0.105",

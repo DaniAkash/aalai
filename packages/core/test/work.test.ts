@@ -154,6 +154,14 @@ describe('finding artifacts without an index', () => {
     expect(found.map((f) => f.subject.kind)).toEqual(['pr'])
   })
 
+  test('asking about a subject nothing was written for answers none', async () => {
+    // The directory does not exist at all, which is an ordinary question with
+    // the answer "none" rather than an error.
+    expect(await findArtifacts({ subject: ISSUE })).toEqual([])
+    expect(await findArtifacts({ repo: 'acme/widgets' })).toEqual([])
+    expect(await findSubjects('acme/widgets')).toEqual([])
+  })
+
   test('subjects are discovered from the tree', async () => {
     await writeArtifact(ISSUE, 'plan', 'p')
     await writeArtifact(PULL, 'plan', 'p')

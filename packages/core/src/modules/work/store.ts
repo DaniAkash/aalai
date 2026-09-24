@@ -61,3 +61,38 @@ export async function readJson<T>(
   }
   return (await file.json()) as T
 }
+
+/**
+ * An intent to say something outside this machine, written down rather than sent.
+ *
+ * A station that can post is a station that can post from a poisoned issue
+ * body, so anything outbound lands here and is delivered by aalai once whoever
+ * has to see it has seen it.
+ */
+export interface OutboundIntent {
+  readonly kind: 'comment_on_issue' | 'reply_to_review'
+  readonly body: string
+  readonly threadId?: string
+  readonly station: string
+  readonly queuedAt: string
+}
+
+export async function queueOutbound(
+  ref: RunRef,
+  intent: OutboundIntent,
+): Promise<string> {
+  const path = join(runDir(ref), 'outbox', `${crypto.randomUUID()}.json`)
+  await writeAtomic(path, `${JSON.stringify(intent, null, 2)}\n`)
+  return path
+}
+
+/** Everything queued for this run, oldest first. */
+export async function readOutbound(ref: RunRef): Promise<OutboundIntent[]> {
+  const dir = join(runDir(ref), 'outbox')
+  const glob = new Bun.Glob('*.json')
+  const intents: OutboundIntent[] = []
+  for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
+    intents.push((await Bun.file(join(dir, name)).json()) as OutboundIntent)
+  }
+  return intents.sort((a, b) => a.queuedAt.localeCompare(b.queuedAt))
+}
