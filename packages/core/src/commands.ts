@@ -1,5 +1,6 @@
-import { loadConfig, stateDir } from '@/config'
+import { loadConfig } from '@/config'
 import { githubEnv } from '@/lib/credentials'
+import { stateDir } from '@/lib/env'
 import { authenticatedLogin } from '@/lib/gh'
 import { bad, heading, link, note, ok, table } from '@/lib/output'
 import { exec } from '@/lib/proc'

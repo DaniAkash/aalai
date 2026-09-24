@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { workbenchDir } from '@/config'
 import { githubEnv } from '@/lib/credentials'
+import { workbenchDir } from '@/lib/env'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
 import { exec, execOrThrow } from '@/lib/proc'

@@ -1,10 +1,20 @@
-import { Database } from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { stateDir } from '@/config'
+import type { Database } from 'bun:sqlite'
+import { and, desc, eq, lt } from 'drizzle-orm'
+import { openDb } from '@/modules/db/db'
+import { query } from '@/modules/db/query'
+import { cursor, runs } from '@/modules/db/schema/schema'
 
-export type RunStatus = 'claimed' | 'delivered' | 'failed' | 'skipped'
+export type { RunStatus } from '@/modules/db/schema/schema'
 
+import type { RunStatus } from '@/modules/db/schema/schema'
+
+/**
+ * The shape the interface and the API already render.
+ *
+ * Snake case and `issue` rather than the schema's `subject_number`, because
+ * every issue is a subject but the callers of this module only deal in issues
+ * until pull requests arrive as runs of their own.
+ */
 export interface RunRecord {
   readonly repo: string
   readonly issue: number
@@ -14,56 +24,28 @@ export interface RunRecord {
   readonly error: string | null
 }
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS cursor (
-  repo TEXT PRIMARY KEY,
-  last_seen_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS runs (
-  repo TEXT NOT NULL,
-  issue INTEGER NOT NULL,
-  status TEXT NOT NULL,
-  branch TEXT,
-  pr_url TEXT,
-  error TEXT,
-  lease TEXT,
-  started_at TEXT NOT NULL,
-  finished_at TEXT,
-  PRIMARY KEY (repo, issue)
-);
-`
+/** Every run this module claims is about an issue. Pull requests arrive later. */
+const ISSUE = 'issue' as const
 
 export function openState(path?: string): Database {
-  const file = path ?? join(stateDir(), 'aalai.sqlite')
-  if (file !== ':memory:') {
-    mkdirSync(stateDir(), { recursive: true })
-  }
-  const db = new Database(file, { create: true })
-  db.exec('PRAGMA journal_mode = WAL;')
-  db.exec(SCHEMA)
-  try {
-    // Databases created before leases existed need the column added.
-    db.exec('ALTER TABLE runs ADD COLUMN lease TEXT')
-  } catch {
-    // Already present.
-  }
-  return db
+  return openDb(path).sqlite
 }
 
 export function readCursor(db: Database, repo: string): string | null {
-  const row = db
-    .query<{ last_seen_at: string }, [string]>(
-      'SELECT last_seen_at FROM cursor WHERE repo = ?',
-    )
-    .get(repo)
-  return row?.last_seen_at ?? null
+  const row = query(db)
+    .select({ lastSeenAt: cursor.lastSeenAt })
+    .from(cursor)
+    .where(eq(cursor.repo, repo))
+    .get()
+  return row?.lastSeenAt ?? null
 }
 
 export function writeCursor(db: Database, repo: string, iso: string): void {
-  db.query(
-    `INSERT INTO cursor (repo, last_seen_at) VALUES (?, ?)
-     ON CONFLICT(repo) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
-  ).run(repo, iso)
+  query(db)
+    .insert(cursor)
+    .values({ repo, lastSeenAt: iso })
+    .onConflictDoUpdate({ target: cursor.repo, set: { lastSeenAt: iso } })
+    .run()
 }
 
 /**
@@ -75,7 +57,7 @@ export function writeCursor(db: Database, repo: string, iso: string): void {
  * mid-run leaves a row stuck in `claimed`, and without a lease every later poll
  * would read that row as a completed duplicate and skip the issue forever.
  *
- * @returns True when this caller now owns the run.
+ * @returns The lease token when this caller now owns the run.
  */
 export function claimRun(
   db: Database,
@@ -85,21 +67,28 @@ export function claimRun(
 ): string | null {
   const now = new Date()
   const lease = crypto.randomUUID()
-  const result = db
-    .query(
-      `INSERT INTO runs (repo, issue, status, lease, started_at)
-     VALUES ($repo, $issue, 'claimed', $lease, $now)
-     ON CONFLICT(repo, issue) DO UPDATE SET started_at = $now, lease = $lease, error = NULL
-     WHERE runs.status = 'claimed' AND runs.started_at < $staleBefore`,
-    )
-    .run({
-      $repo: repo,
-      $issue: issue,
-      $lease: lease,
-      $now: now.toISOString(),
-      $staleBefore: new Date(now.getTime() - staleAfterMs).toISOString(),
+  const staleBefore = new Date(now.getTime() - staleAfterMs).toISOString()
+  const result = query(db)
+    .insert(runs)
+    .values({
+      repo,
+      subjectKind: ISSUE,
+      subjectNumber: issue,
+      status: 'claimed',
+      lease,
+      startedAt: now.toISOString(),
     })
-  return result.changes > 0 ? lease : null
+    .onConflictDoUpdate({
+      target: [runs.repo, runs.subjectKind, runs.subjectNumber],
+      set: { startedAt: now.toISOString(), lease, error: null },
+      setWhere: and(
+        eq(runs.status, 'claimed'),
+        lt(runs.startedAt, staleBefore),
+      ),
+    })
+    .returning({ lease: runs.lease })
+    .all()
+  return result.length > 0 ? lease : null
 }
 
 /**
@@ -107,7 +96,7 @@ export function claimRun(
  *
  * The lease is the fence. A run that outlives its lease can have its issue taken
  * over by a later pass, and without checking the token the original worker would
- * later overwrite the newer run's result, because `(repo, issue)` alone matches
+ * later overwrite the newer run's result, because the subject alone matches
  * both. A stale worker's write is dropped instead.
  *
  * @returns Whether the write was applied.
@@ -124,40 +113,59 @@ export function completeRun(
     readonly lease?: string
   },
 ): boolean {
-  const finishedAt = new Date().toISOString()
-  const set = `UPDATE runs SET status = ?, branch = ?, pr_url = ?, error = ?, finished_at = ?`
-  const values = [
-    outcome.status,
-    outcome.branch ?? null,
-    outcome.prUrl ?? null,
-    outcome.error ?? null,
-    finishedAt,
-    repo,
-    issue,
-  ] as const
-
-  const result =
-    outcome.lease === undefined
-      ? db.query(`${set} WHERE repo = ? AND issue = ?`).run(...values)
-      : db
-          .query(`${set} WHERE repo = ? AND issue = ? AND lease = ?`)
-          .run(...values, outcome.lease)
-  return result.changes > 0
+  const subject = and(
+    eq(runs.repo, repo),
+    eq(runs.subjectKind, ISSUE),
+    eq(runs.subjectNumber, issue),
+  )
+  const result = query(db)
+    .update(runs)
+    .set({
+      status: outcome.status,
+      branch: outcome.branch ?? null,
+      prUrl: outcome.prUrl ?? null,
+      error: outcome.error ?? null,
+      finishedAt: new Date().toISOString(),
+    })
+    .where(
+      outcome.lease === undefined
+        ? subject
+        : and(subject, eq(runs.lease, outcome.lease)),
+    )
+    .returning({ repo: runs.repo })
+    .all()
+  return result.length > 0
 }
 
 export function listRuns(db: Database, limit = 20): RunRecord[] {
-  return db
-    .query<RunRecord, [number]>(
-      `SELECT repo, issue, status, branch, pr_url, error FROM runs
-     ORDER BY started_at DESC LIMIT ?`,
-    )
-    .all(limit)
+  return query(db)
+    .select({
+      repo: runs.repo,
+      issue: runs.subjectNumber,
+      status: runs.status,
+      branch: runs.branch,
+      pr_url: runs.prUrl,
+      error: runs.error,
+    })
+    .from(runs)
+    .where(eq(runs.subjectKind, ISSUE))
+    .orderBy(desc(runs.startedAt))
+    .limit(limit)
+    .all()
 }
 
 /** Removes a run record so the issue can be picked up again. The manual retry path. */
 export function forgetRun(db: Database, repo: string, issue: number): boolean {
-  const result = db
-    .query('DELETE FROM runs WHERE repo = ? AND issue = ?')
-    .run(repo, issue)
-  return result.changes > 0
+  const result = query(db)
+    .delete(runs)
+    .where(
+      and(
+        eq(runs.repo, repo),
+        eq(runs.subjectKind, ISSUE),
+        eq(runs.subjectNumber, issue),
+      ),
+    )
+    .returning({ repo: runs.repo })
+    .all()
+  return result.length > 0
 }

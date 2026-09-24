@@ -33,5 +33,8 @@
       "react-dom": ["./node_modules/@types/react-dom"]
     }
   },
-  "include": ["src"]
+  // The factory's ambient declarations come along for the same reason its Bun
+  // globals do: the RPC client type-imports AppType, so this project ends up
+  // checking the factory's own files, including its `.sql` text imports.
+  "include": ["src", "../../packages/core/src/types"]
 }

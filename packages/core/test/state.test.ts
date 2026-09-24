@@ -61,11 +61,9 @@ function backdateClaim(
   issue: number,
   minutesAgo: number,
 ): void {
-  db.query('UPDATE runs SET started_at = ? WHERE repo = ? AND issue = ?').run(
-    new Date(Date.now() - minutesAgo * 60_000).toISOString(),
-    repo,
-    issue,
-  )
+  db.query(
+    'UPDATE runs SET started_at = ? WHERE repo = ? AND subject_number = ?',
+  ).run(new Date(Date.now() - minutesAgo * 60_000).toISOString(), repo, issue)
 }
 
 describe('stale claims', () => {
