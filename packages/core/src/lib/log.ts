@@ -2,7 +2,7 @@ import { logLevelName } from '@/config'
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const
 
-export type LogLevel = keyof typeof LEVELS
+type LogLevel = keyof typeof LEVELS
 
 const COLOR: Record<LogLevel, string> = {
   debug: '\x1b[2m',

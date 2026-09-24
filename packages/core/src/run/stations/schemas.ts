@@ -67,7 +67,7 @@ export const analysisSchema = z.object({
 export type Analysis = z.infer<typeof analysisSchema>
 
 /** One acceptance criterion, judged on its own, with a pointer into the diff. */
-export const criterionResultSchema = z.object({
+const criterionResultSchema = z.object({
   criterion: z.string().min(1),
   pass: z.boolean(),
   evidence: looseText,
@@ -91,4 +91,3 @@ export const reviewSchema = z.object({
 })
 
 export type Review = z.infer<typeof reviewSchema>
-export type CriterionResult = z.infer<typeof criterionResultSchema>

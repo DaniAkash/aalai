@@ -1,4 +1,4 @@
-export class ProcError extends Error {
+class ProcError extends Error {
   readonly exitCode: number
   readonly stderr: string
   readonly command: string

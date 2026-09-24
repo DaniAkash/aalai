@@ -20,7 +20,7 @@ export interface CriterionResultEvent {
   readonly evidence: string
 }
 
-interface Base {
+export interface Base {
   readonly runId: string
   /** Milliseconds since the epoch, stamped at emit. */
   readonly at: number

@@ -30,12 +30,12 @@ function splitRepo(repo: string): { owner: string; name: string } {
   return { owner, name }
 }
 
-export function clonePathFor(repo: string): string {
+function clonePathFor(repo: string): string {
   const { owner, name } = splitRepo(repo)
   return join(workbenchDir(), owner, name)
 }
 
-export function worktreePathFor(
+function worktreePathFor(
   repo: string,
   issueNumber: number,
   suffix = '',
@@ -58,7 +58,7 @@ export function worktreePathFor(
  * probing with a subprocess would fail before git could answer, and the very
  * first run against a new repository could never get as far as cloning it.
  */
-export async function ensureClone(repo: string): Promise<string> {
+async function ensureClone(repo: string): Promise<string> {
   const clonePath = clonePathFor(repo)
   const { owner } = splitRepo(repo)
   mkdirSync(join(workbenchDir(), owner), { recursive: true })

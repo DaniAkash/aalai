@@ -7,7 +7,7 @@ const RING_SIZE = 400
 /** How many finished runs stay in memory for the UI to scroll back through. */
 const MAX_RUNS = 20
 
-type Listener = (event: RunEvent) => void
+export type Listener = (event: RunEvent) => void
 
 const listeners = new Set<Listener>()
 const logs = new Map<string, RunEvent[]>()

@@ -37,9 +37,3 @@ export async function api() {
     headers: { authorization: `Bearer ${token}` },
   })
 }
-
-/** Where the event stream lives, for the pieces that subscribe rather than query. */
-export async function eventsUrl(): Promise<string> {
-  const { port } = await info()
-  return `http://127.0.0.1:${port}/api/events`
-}

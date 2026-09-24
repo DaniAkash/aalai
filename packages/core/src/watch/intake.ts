@@ -5,7 +5,7 @@ import type { GhIssue } from '@/lib/gh'
  * this set (CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, NONE, MANNEQUIN) is an account
  * the repo has not trusted, so its issue body must not become agent instructions.
  */
-export const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
+const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
   'OWNER',
   'MEMBER',
   'COLLABORATOR',

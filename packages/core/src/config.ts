@@ -10,7 +10,7 @@ const watchedRepoSchema = z.object({
     .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
 })
 
-export const configSchema = z.object({
+const configSchema = z.object({
   /**
    * Refused rather than ignored. This was replaced by `agents`, and zod would
    * otherwise strip it, so a config asking for a non-codex agent would silently
@@ -80,9 +80,8 @@ export const configSchema = z.object({
 })
 
 export type Config = z.infer<typeof configSchema>
-export type WatchedRepo = z.infer<typeof watchedRepoSchema>
 
-export const DEFAULT_CONFIG_PATH = 'aalai.config.json'
+const DEFAULT_CONFIG_PATH = 'aalai.config.json'
 
 export function stateDir(): string {
   return process.env.AALAI_STATE_DIR ?? join(homedir(), '.aalai')
@@ -110,7 +109,7 @@ export function workbenchDir(): string {
  * spawns the factory with whatever working directory the app happened to have,
  * which is not somewhere a person would keep a config file.
  */
-export function configCandidates(path?: string): string[] {
+function configCandidates(path?: string): string[] {
   if (path) return [resolve(path)]
   const fromEnv = process.env.AALAI_CONFIG
   return [
@@ -152,7 +151,7 @@ export async function loadConfig(path?: string): Promise<Config> {
 }
 
 /** Where the config we loaded, or created, actually lives. */
-export function configPath(): string {
+function configPath(): string {
   for (const candidate of configCandidates()) {
     if (existsSync(candidate)) return candidate
   }

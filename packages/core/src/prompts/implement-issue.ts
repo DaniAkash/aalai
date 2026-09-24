@@ -78,7 +78,7 @@ const TYPE_BY_LABEL: ReadonlyArray<readonly [RegExp, string]> = [
  * a judgment call. `fix` is the default because an unlabelled issue on a repo
  * that uses aalai is far more often a defect report than anything else.
  */
-export function commitTypeForIssue(issue: GhIssue): string {
+function commitTypeForIssue(issue: GhIssue): string {
   for (const label of issue.labels) {
     for (const [pattern, type] of TYPE_BY_LABEL) {
       if (pattern.test(label.name)) {

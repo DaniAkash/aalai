@@ -18,7 +18,7 @@ import {
 
 const log = logger('stations')
 
-export class StationOutputError extends Error {
+class StationOutputError extends Error {
   constructor(station: string, detail: string) {
     super(
       `the ${station} returned output that does not match its schema: ${detail}`,

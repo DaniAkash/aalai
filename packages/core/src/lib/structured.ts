@@ -7,7 +7,7 @@ import type { z } from 'zod'
  * it rather than bare JSON. The last fenced block wins, because an agent that
  * revises itself leaves the earlier attempt above the final one.
  */
-export function extractJsonBlock(text: string): string | null {
+function extractJsonBlock(text: string): string | null {
   const fences = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)]
   const last = fences.at(-1)
   if (last?.[1] !== undefined) {
