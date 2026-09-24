@@ -37,7 +37,7 @@ A poll loop per repository, with a cursor, so it sees issues once rather than re
 
 An issue body is instructions for an agent with shell access, and on a public repository anyone can write one. By default only `OWNER`, `MEMBER` and `COLLABORATOR` issues start a run, and you can narrow further to a label.
 
-### Three stations, one disposable worktree
+### Three stations, one worktree per run
 
 ```text
 analyst      plans, writes the acceptance criteria, modifies nothing
@@ -46,7 +46,7 @@ reviewer     judges the committed diff from its own checkout
 deliver      pushes and opens a draft, only on an approved verdict
 ```
 
-The analyst and the reviewer run without write permission, so "the analyst plans, it does not implement" is a property of the run rather than a line in a prompt. Every run gets its own worktree, branched from the default branch and thrown away after.
+The analyst and the reviewer run without write permission, so "the analyst plans, it does not implement" is a property of the run rather than a line in a prompt. Every run gets its own worktree, branched from the default branch. A delivered run always cleans it up; a failed one keeps it by default, because the checkout is the evidence, and `keepWorktreeOnFailure` turns that off.
 
 ### Stations record by calling tools, not by writing prose
 
@@ -54,7 +54,7 @@ Each station is handed a small MCP surface scoped to its own job, over a loopbac
 
 ### Artifacts are the memory
 
-The plan, the acceptance criteria, the review and the conversation are versioned markdown on disk. `plan.v2.md` lands beside `plan.v1.md` rather than over it, because approval pins to a version. A later station reads what an earlier one wrote through the same tool a person would use to read it.
+The plan, the acceptance criteria, the review and the conversation are versioned markdown on disk. `plan.v2.md` lands beside `plan.v1.md` rather than over it, because approval pins to a version. A later station reads what an earlier one wrote through the same tool a person would use to read it, and it can recall across the whole repository, so a new issue starts with what earlier ones already worked out.
 
 ### It survives a restart
 
@@ -62,7 +62,7 @@ A run is a persisted state machine. Quit in the middle of the reviewer and the n
 
 ### Nothing merges
 
-The draft pull request is the artefact. aalai reviews the diff and pushes; the agent cannot.
+The draft pull request is the artefact. Pushing and opening it are aalai's, outside the tool surface any station is served, and no station is asked to do either. That is a property of the design rather than a wall: see the sandbox note below.
 
 ---
 
@@ -150,7 +150,7 @@ The two suites answer different questions. **Tests** cover pure seams: the intak
 
 **The stations are not sandboxed.** An agent has shell access and runs as the same user, so an already authenticated `gh` remains reachable to it. The controls that actually hold are the disposable worktree, the independent review of the committed diff, the gate that requires every criterion to pass, and the draft status of every pull request. A sandboxed agent backend is the change that would make it a boundary.
 
-**Nothing carries between subjects.** Artifacts are the memory within an issue, but what a run learns about a repository does not yet reach the next one.
+**Nothing carries between repositories.** Artifacts are the memory, and a station can recall across the whole repository it is working in, so a later issue can read an earlier one's plan or review. Nothing reaches past that repository, and there is no summarised, cross-repository memory yet.
 
 ## Roadmap
 

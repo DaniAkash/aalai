@@ -139,7 +139,9 @@ attempt already succeeded  station=analyst
 
 > **SQLite holds what aalai queries. The filesystem holds what aalai reads.**
 
-Artifacts are versioned and never overwritten: `plan.v2.md` lands beside `plan.v1.md`, because approval pins to a version. There is no index table, because the paths are predictable enough that the filesystem is the index, and a table would be a cache that can lie. Deleting a subject directory by hand is safe: no row points into it.
+Artifacts are versioned and never overwritten: `plan.v2.md` lands beside `plan.v1.md`, because approval pins to a version. Artifacts themselves are not indexed in the database: the paths are predictable enough that the filesystem is the index, and a table would be a cache that can lie.
+
+Run state is different. `machine_snapshots.snapshot_path`, `attempts.outcome_path` and `gates.artifact_path` each hold a path under `work/`, so deleting a subject directory by hand is only safe once nothing under it is live. Do it to a finished subject and you lose the artifacts and leave rows pointing at files that are gone; do it to an unfinished run and that run can no longer resume.
 
 ---
 
@@ -153,7 +155,7 @@ Settings live in the database, one row per domain, and the desktop app writes th
 | `agents` | `analyst` `implementer` `reviewer` all `codex` · `reasoningEffort` high |
 | `limits` | `maxRevisions` 2 · `maxCiFixes` 2 · `turnTimeoutMs` 900000 |
 | `trust` | `trustedAuthorsOnly` true · `requireLabel` null |
-| `commit` | `commitName` aalai · `commitEmail` |
+| `commit` | `commitName` aalai · `commitEmail` the repository owner's GitHub noreply address |
 | `ui` | `uiPort` 4173 · `notifications` true · `theme` system |
 
 **Importing an existing config file.** Drop an `aalai.config.json` in the working directory or in `~/.aalai`, and the first start that finds empty settings imports it and renames it to `.imported`. It happens once, so editing the renamed file afterwards changes nothing.
@@ -166,7 +168,7 @@ Settings live in the database, one row per domain, and the desktop app writes th
 }
 ```
 
-**Running headless from a checked-in file.** `AALAI_CONFIG` points at a file and bypasses the database entirely, which is how this runs on a server where the settings belong to the deployment.
+**Running headless from a checked-in file.** `AALAI_CONFIG` points at a file, and settings are then read from it rather than from the database, which is how this runs on a server where the settings belong to the deployment. Only settings move: the database is still opened, and claims, runs, machine snapshots and sessions are still kept there.
 
 ### Environment
 
@@ -174,9 +176,9 @@ Settings live in the database, one row per domain, and the desktop app writes th
 | --- | --- | --- |
 | `AALAI_STATE_DIR` | `~/.aalai` | Database, artifacts, run state |
 | `AALAI_WORKBENCH_DIR` | `~/workbench` | Clones and worktrees |
-| `AALAI_CONFIG` | unset | Read settings from this file instead of the database |
+| `AALAI_CONFIG` | unset | Read settings from this file instead of the settings tables. Other state still goes to the database |
 | `AALAI_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
-| `AALAI_NO_SERVER` | unset | `1` disables the HTTP surface. The evals use it |
+| `AALAI_NO_SERVER` | unset | `1` skips the HTTP surface for `run` and the one-shot pass, not for watching. The evals use it |
 
 ---
 
@@ -188,13 +190,20 @@ An issue body is instructions to an agent with file and shell access, and on a p
 - **Tools that reach the outside world queue rather than send.** A station records what it would say; aalai decides whether it is said.
 - **A station writes only where its run token says.** It never names its own target, so a poisoned issue body cannot talk one into writing onto another repository.
 
-`GH_TOKEN` and friends are moved out of the ambient environment at start and handed back only to aalai's own `gh` and `git` calls, so a spawned agent does not inherit them. That narrows exposure, it is not a boundary: an agent with shell access runs as you and can call an already authenticated `gh`. The boundary that actually holds is delivery. aalai reviews the diff and pushes; the agent cannot.
+`GH_TOKEN` and friends are moved out of the ambient environment at start and handed back only to aalai's own `gh` and `git` calls, so a spawned agent does not inherit them. That narrows exposure, it is not a boundary: an agent with shell access runs as you and can call an already authenticated `gh`. What holds instead is delivery. Pushing and opening the pull request are aalai's, outside the tool surface any station is served, and no station is asked to do either. That is the shape of the design, not a wall an agent with a shell could not step over, and it is why every pull request is a draft.
 
 ---
 
 ## The HTTP surface
 
-Always bound to `127.0.0.1`. Watching uses `uiPort`, or the port and bearer token the desktop app passes when it spawns this process, so every launch of the app gets a fresh pair. A one-shot command binds an ephemeral port behind a random token instead and takes it down when the pass ends: nothing is waiting for a handshake there, it exists so a headless run records through the same tools a watched one does. Every route but `/api/health` requires the token when one is set.
+Always bound to `127.0.0.1`, and which port depends on the command:
+
+| Command | Port | Token |
+| --- | --- | --- |
+| watch, and `run` | `uiPort`, or the `--port` the desktop app passes | the `--token` the app passes, when it spawns this process |
+| `--once` / `once` | an ephemeral port, torn down when the pass ends | a fresh random one |
+
+The app owns the pair it passes, so every launch of it gets a new one. The one-shot path announces nothing because nothing is waiting for a handshake there; it exists so a headless pass records through the same tools a watched one does. Every route but `/api/health` requires the token when one is set. `AALAI_NO_SERVER=1` skips the server for `run` and the one-shot pass, which is how the evals run; watching always serves, because serving the app is what watching is for.
 
 ```text
 GET  /api/health
