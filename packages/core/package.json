@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     "./app": "./src/server/app.ts",
-    "./events": "./src/events/events.types.ts"
+    "./events": "./src/events/events.types.ts",
+    "./client": "./src/server/client.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
@@ -15,9 +16,13 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test ./test/",
     "eval": "bun test ./evals/",
-    "service": "bun run scripts/service.ts"
+    "service": "bun run scripts/service.ts",
+    "e2e:gates": "bun run scripts/gate-e2e.ts",
+    "e2e:api": "bun run scripts/gate-api-e2e.ts",
+    "e2e": "bun run e2e:gates && bun run e2e:api"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "acpx": "^0.17.0",
     "acpx-ai-provider": "^1.0.0",

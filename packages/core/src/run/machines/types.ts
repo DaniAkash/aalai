@@ -30,6 +30,12 @@ export interface IssueWorkContext {
   readonly premiseBody: string
   /** How often the premise is rechecked. Lowered by tests. */
   readonly premiseIntervalMs?: number
+  /** Whether this repository's policy asks a person to approve the plan. */
+  readonly planGated?: boolean
+  /** The gate currently being waited on, if any. */
+  readonly gateId?: string
+  /** How often a parked run rechecks its gate. Lowered by tests. */
+  readonly gatePollMs?: number
 }
 
 /**
@@ -51,6 +57,10 @@ export interface IssueWorkInput {
   readonly premiseBody: string
   /** How often the premise is rechecked. Lowered by tests. */
   readonly premiseIntervalMs?: number
+  /** Whether this repository's policy asks a person to approve the plan. */
+  readonly planGated?: boolean
+  /** How often a parked run rechecks its gate. Lowered by tests. */
+  readonly gatePollMs?: number
 }
 
 /**

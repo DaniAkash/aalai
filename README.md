@@ -60,6 +60,21 @@ The plan, the acceptance criteria, the review and the conversation are versioned
 
 A run is a persisted state machine. Quit in the middle of the reviewer and the next pass resumes it: the worktree is adopted rather than rebuilt, and a station that already finished answers from what it recorded instead of spending another agent turn.
 
+### It stops for you when you ask it to
+
+A repository's policy decides how much happens unattended: straight through to a
+draft pull request, or parked after the analyst until a person approves the plan
+and the acceptance criteria. Parked means parked in the database, not in a
+process, so quitting costs nothing and the answer can come from anywhere:
+
+```sh
+aalai gates                    # what is waiting on you
+aalai approve <gate>           # works with the app closed
+```
+
+Approval pins to a version, so a plan rewritten afterwards does not inherit the
+approval its predecessor was given.
+
 ### Nothing merges
 
 The draft pull request is the artefact. Pushing and opening it are aalai's, outside the tool surface any station is served, and no station is asked to do either. That is a property of the design rather than a wall: see the sandbox note below.
@@ -161,11 +176,11 @@ Already shipped:
 - ✅ A state machine per run, persisted, resumable across process restarts
 - ✅ An MCP tool surface per station, scoped and token gated
 - ✅ Trust screening, redaction, and outbound intents that queue rather than send
+- ✅ Human gates: a run parks for a person and is answerable from a terminal
 
 Coming next:
 
 - 🚧 The desktop app: live runs, approvals and settings
-- 🚧 Human gates: pause for a person before the work continues
 - 🚧 Pull request lifecycle: review comments and CI failures back into the loop
 - 🚧 Notifications and packaging
 

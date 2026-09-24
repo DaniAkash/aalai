@@ -4,7 +4,11 @@ import { z } from 'zod'
 import { configOverride, stateDir } from '@/lib/env'
 import { logger } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
-import { DOMAINS, type Domains } from '@/modules/settings/domains'
+import {
+  DOMAINS,
+  type Domains,
+  runPolicySchema,
+} from '@/modules/settings/domains'
 import {
   readAllDomains,
   readWatchedRepos,
@@ -22,6 +26,8 @@ const watchedRepoSchema = z.object({
     .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
   /** Per repo label gate, overriding the global default when set. */
   requireLabel: z.string().optional(),
+  /** Per repo run policy, overriding the global default when set. */
+  policy: runPolicySchema.optional(),
 })
 
 /**
@@ -96,6 +102,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     maxIssuesPerPoll: domains.factory.maxIssuesPerPoll,
     staleClaimMinutes: domains.factory.staleClaimMinutes,
     keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
+    defaultPolicy: domains.factory.defaultPolicy,
     agents: {
       analyst: domains.agents.analyst,
       implementer: domains.agents.implementer,
@@ -106,6 +113,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     maxCiFixes: domains.limits.maxCiFixes,
     turnTimeoutMs: domains.limits.turnTimeoutMs,
     trustedAuthorsOnly: domains.trust.trustedAuthorsOnly,
+    askOnPermission: domains.trust.askOnPermission,
     requireLabel: domains.trust.requireLabel,
     commitName: domains.commit.commitName,
     commitEmail: domains.commit.commitEmail,
@@ -122,6 +130,7 @@ function toDomains(config: Config): Domains {
       maxIssuesPerPoll: config.maxIssuesPerPoll,
       staleClaimMinutes: config.staleClaimMinutes,
       keepWorktreeOnFailure: config.keepWorktreeOnFailure,
+      defaultPolicy: config.defaultPolicy,
     },
     agents: {
       analyst: config.agents.analyst,
@@ -137,6 +146,7 @@ function toDomains(config: Config): Domains {
     trust: {
       trustedAuthorsOnly: config.trustedAuthorsOnly,
       requireLabel: config.requireLabel,
+      askOnPermission: config.askOnPermission,
     },
     commit: {
       commitName: config.commitName,

@@ -87,6 +87,28 @@ export type RunEvent = Base &
         readonly prUrl: string
         readonly branch: string
       }
+    | {
+        /**
+         * A run parked and is waiting for a person.
+         *
+         * Distinct from `gate.refused`, which is the trust screen turning an
+         * issue away before any run exists.
+         */
+        readonly type: 'gate.opened'
+        readonly gateId: string
+        readonly kind: string
+        readonly repo: string
+        readonly issue: number
+        /** What is being asked, when the gate has no artifact to point at. */
+        readonly summary?: string
+      }
+    | {
+        readonly type: 'gate.answered'
+        readonly gateId: string
+        readonly decision: 'approved' | 'rejected' | 'changes'
+        /** Which surface answered: the app, a terminal, a comment. */
+        readonly answeredOn: string
+      }
     | { readonly type: 'run.stopped'; readonly reason: string }
     | { readonly type: 'run.failed'; readonly error: string }
   )

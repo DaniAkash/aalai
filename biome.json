@@ -116,7 +116,11 @@
       }
     },
     {
-      "includes": ["packages/core/evals/**", "packages/core/test/**"],
+      "includes": [
+        "packages/core/evals/**",
+        "packages/core/test/**",
+        "packages/core/scripts/**"
+      ],
       "linter": {
         "rules": {
           "style": {

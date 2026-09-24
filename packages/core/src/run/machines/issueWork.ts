@@ -1,48 +1,26 @@
 import { assign, setup, stateIn } from 'xstate'
-import { emit } from '@/events/bus'
-import { logger } from '@/lib/log'
-import type { CommitOutcome } from '@/run/commit'
-import { reviewGate } from '@/run/gate'
 import { analyst, implementer, premise, reviewer } from './actors'
+import { entered, revisionStarted, verdictReached } from './announce'
+import { initialContext } from './context'
+import type { IssueWorkEvent } from './events'
+import { gateKeeper } from './gateActor'
+import { guards } from './guards'
 import { messageOf, stopReason } from './outcome'
+import { startAFreshPlan } from './replan'
 import type { IssueWorkContext, IssueWorkInput } from './types'
-
-const log = logger('pipeline')
 
 export const issueWorkMachine = setup({
   types: {
     context: {} as IssueWorkContext,
     input: {} as IssueWorkInput,
+    events: {} as IssueWorkEvent,
   },
-  actors: { analyst, implementer, reviewer, premise },
-  guards: {
-    committed: (_, params: { commit: CommitOutcome }) =>
-      params.commit === 'committed',
-    approved: ({ context }) =>
-      context.review !== undefined &&
-      context.analysis !== undefined &&
-      reviewGate(context.review, context.analysis).ok,
-    rejected: ({ context }) => context.review?.verdict === 'reject',
-    revisable: ({ context }) =>
-      context.review?.verdict === 'request_changes' &&
-      context.revision < context.maxRevisions,
-  },
+  actors: { analyst, implementer, reviewer, premise, gateKeeper },
+  guards,
 }).createMachine({
   id: 'issueWork',
   type: 'parallel',
-  context: ({ input }) => ({
-    runId: input.runId,
-    repo: input.repo,
-    issueNumber: input.issueNumber,
-    maxRevisions: input.maxRevisions,
-    revision: 0,
-    planGeneration: 0,
-    implementerReport: '',
-    premiseBody: input.premiseBody,
-    ...(input.premiseIntervalMs === undefined
-      ? {}
-      : { premiseIntervalMs: input.premiseIntervalMs }),
-  }),
+  context: ({ input }) => initialContext(input),
   states: {
     /**
      * Watches for the ground moving, for the machine's whole life.
@@ -85,51 +63,43 @@ export const issueWorkMachine = setup({
           actions: assign({
             outcome: ({ event }) => ({
               kind: 'stopped' as const,
-              reason: String(
-                (event as { reason?: string }).reason ?? 'the premise expired',
-              ),
+              reason: event.reason || 'the premise expired',
             }),
           }),
         },
         PREMISE_REPLAN: {
           target: '.planning',
           actions: assign({
-            // A new plan, not another revision of the old one. The generation
-            // moves so the analyst runs a fresh attempt rather than returning
-            // the plan it already recorded.
-            planGeneration: ({ context }) => context.planGeneration + 1,
-            // The implementation cycle starts over: the issue is a different
-            // request now, so a verdict about the old one is not guidance, and
-            // the revisions already spent were spent on something else.
-            revision: () => 0,
-            review: () => undefined,
-            implementerReport: () => '',
+            ...startAFreshPlan,
             // The rewritten text becomes the premise, or the watcher keeps
             // comparing against what the run started with and replans forever.
             premiseBody: ({ context, event }) =>
-              String((event as { body?: string }).body ?? context.premiseBody),
+              'body' in event
+                ? event.body || context.premiseBody
+                : context.premiseBody,
           }),
         },
       },
       states: {
         planning: {
-          entry: ({ context }) =>
-            emit({
-              type: 'stage.entered',
-              runId: context.runId,
-              stage: 'analyst',
-              at: Date.now(),
-            }),
+          entry: ({ context }) => entered(context, 'analyst'),
           invoke: {
             src: 'analyst',
             input: ({ context }) => ({
               runId: context.runId,
               planGeneration: context.planGeneration,
             }),
-            onDone: {
-              target: 'implementing',
-              actions: assign({ analysis: ({ event }) => event.output }),
-            },
+            onDone: [
+              {
+                target: 'gatingPlan',
+                guard: 'planNeedsApproval',
+                actions: assign({ analysis: ({ event }) => event.output }),
+              },
+              {
+                target: 'implementing',
+                actions: assign({ analysis: ({ event }) => event.output }),
+              },
+            ],
             onError: {
               target: 'finished',
               actions: assign({
@@ -142,23 +112,71 @@ export const issueWorkMachine = setup({
           },
         },
 
+        /**
+         * Parked, waiting for a person, with nothing in flight.
+         *
+         * The one state a restart costs nothing: restoring re-runs invocations,
+         * and this invocation only listens. Re-entering it re-reads the row,
+         * which is the source of truth anyway.
+         */
+        gatingPlan: {
+          invoke: {
+            src: 'gateKeeper',
+            input: ({ context }) => ({
+              runId: context.runId,
+              repo: context.repo,
+              issue: context.issueNumber,
+              kind: 'plan',
+              ...(context.gatePollMs === undefined
+                ? {}
+                : { pollMs: context.gatePollMs }),
+            }),
+          },
+          on: {
+            GATE_OPENED: {
+              actions: assign({ gateId: ({ event }) => event.gateId }),
+            },
+            GATE_ANSWERED: [
+              {
+                target: 'implementing',
+                guard: 'answeredApproved',
+              },
+              {
+                // A new plan rather than another revision of the old one, the
+                // same shape a rewritten issue takes.
+                target: 'planning',
+                guard: 'answeredChanges',
+                actions: assign({
+                  ...startAFreshPlan,
+                  gateId: () => undefined,
+                }),
+              },
+              {
+                target: 'finished',
+                actions: assign({
+                  outcome: ({ event }) => ({
+                    kind: 'stopped' as const,
+                    reason:
+                      ('reason' in event ? event.reason : '') ||
+                      'the plan was rejected',
+                  }),
+                }),
+              },
+            ],
+            // The artifact moved under the question. Ask again at the version
+            // that now stands rather than stalling on one nobody can answer.
+            GATE_SUPERSEDED: {
+              target: 'gatingPlan',
+              actions: assign({ gateId: () => undefined }),
+              reenter: true,
+            },
+          },
+        },
+
         implementing: {
           entry: ({ context }) => {
-            emit({
-              type: 'stage.entered',
-              runId: context.runId,
-              stage: 'implementer',
-              at: Date.now(),
-            })
-            if (context.revision > 0 && context.review !== undefined) {
-              emit({
-                type: 'revision.started',
-                runId: context.runId,
-                attempt: context.revision,
-                findings: context.review.blocking_findings,
-                at: Date.now(),
-              })
-            }
+            entered(context, 'implementer')
+            revisionStarted(context)
           },
           invoke: {
             src: 'implementer',
@@ -207,13 +225,7 @@ export const issueWorkMachine = setup({
         },
 
         reviewing: {
-          entry: ({ context }) =>
-            emit({
-              type: 'stage.entered',
-              runId: context.runId,
-              stage: 'reviewer',
-              at: Date.now(),
-            }),
+          entry: ({ context }) => entered(context, 'reviewer'),
           invoke: {
             src: 'reviewer',
             input: ({ context }) => ({
@@ -242,23 +254,7 @@ export const issueWorkMachine = setup({
         },
 
         judging: {
-          entry: ({ context }) => {
-            const review = context.review
-            if (review === undefined) return
-            const passed = review.criteria_results.filter((r) => r.pass).length
-            log.info('verdict', {
-              verdict: review.verdict,
-              criteria: `${passed}/${review.criteria_results.length}`,
-              blocking: review.blocking_findings.length,
-            })
-            emit({
-              type: 'review.verdict',
-              runId: context.runId,
-              verdict: review.verdict,
-              results: review.criteria_results,
-              at: Date.now(),
-            })
-          },
+          entry: ({ context }) => verdictReached(context),
           always: [
             { guard: 'approved', target: 'approved' },
             {

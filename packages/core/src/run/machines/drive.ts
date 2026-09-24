@@ -1,5 +1,6 @@
 import { createActor, type Snapshot, waitFor } from 'xstate'
 import type { RunRef } from '@/modules/work/paths'
+import { planIsGated, policyForRepo } from '@/run/policy'
 import type { RunDeps } from './deps'
 import { provideRunDeps, releaseRunDeps } from './deps'
 import { issueWorkMachine } from './issueWork'
@@ -28,6 +29,8 @@ export async function driveIssueWork(input: {
   snapshot?: unknown
   /** Lowered by tests so the premise check does not wait a minute. */
   premiseIntervalMs?: number
+  /** Lowered by tests so a parked gate is noticed promptly. */
+  gatePollMs?: number
 }): Promise<{ state: string; context: IssueWorkContext }> {
   // Cancelled when the machine settles, so a turn still in flight for a run
   // that has already stopped does not spend another few minutes and commit
@@ -44,9 +47,13 @@ export async function driveIssueWork(input: {
       issueNumber: input.issueNumber,
       maxRevisions: input.deps.config.maxRevisions,
       premiseBody: input.deps.issue.body ?? '',
+      planGated: planIsGated(policyForRepo(input.deps.config, input.repo)),
       ...(input.premiseIntervalMs === undefined
         ? {}
         : { premiseIntervalMs: input.premiseIntervalMs }),
+      ...(input.gatePollMs === undefined
+        ? {}
+        : { gatePollMs: input.gatePollMs }),
     },
     ...(input.snapshot === undefined
       ? {}
