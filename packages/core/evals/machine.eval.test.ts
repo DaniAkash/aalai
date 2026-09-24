@@ -64,7 +64,7 @@ function drive(options: {
         trace.calls.push('reviewer')
         const next = options.reviews[reviewIndex] ?? review()
         reviewIndex += 1
-        return { review: next, worktree: '/tmp/review' }
+        return { review: next }
       }),
     },
   })

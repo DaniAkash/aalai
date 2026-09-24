@@ -1,6 +1,8 @@
 import { fromPromise } from 'xstate'
+import { diffNames } from '@/lib/git'
 import { logger } from '@/lib/log'
 import { redactDeep } from '@/lib/redact'
+import { readJson } from '@/modules/work/store'
 import { recordAnalysis, recordReview } from '@/run/artifacts'
 import type { CommitOutcome } from '@/run/commit'
 import { commitImplementerWork } from '@/run/commit'
@@ -41,6 +43,10 @@ export const analyst = fromPromise(
       runId: input.runId,
       station: 'analyst',
       revision: 0,
+      // The plan is on disk under this run, so an attempt that started and
+      // never settled can be answered from what it already produced rather
+      // than by spending another turn asking for the same plan.
+      reconcile: async () => await readJson<Analysis>(deps.run, 'analysis'),
       execute: async () => {
         const { analysis, result } = await runAnalyst({
           runId: input.runId,
@@ -79,6 +85,18 @@ export const implementer = fromPromise(
         runId: input.runId,
         station: 'implementer',
         revision: input.revision,
+        // A commit on the branch is the work having landed. The report is lost
+        // with the turn that produced it, which costs a paragraph in the pull
+        // request body and saves writing the change on top of itself.
+        reconcile: async () => {
+          const changed = await diffNames(
+            deps.workspace.worktreePath,
+            deps.workspace.base,
+          )
+          return changed.length === 0
+            ? undefined
+            : { report: '', commit: 'committed' as const }
+        },
         execute: async () => {
           const analysis = await requireAnalysis(input.runId)
           const turn = await runImplementer({
@@ -115,14 +133,22 @@ export const reviewer = fromPromise(
     input,
   }: {
     input: { runId: string; revision: number }
-  }): Promise<{ review: Review; worktree: string }> => {
+  }): Promise<{ review: Review; worktree?: string }> => {
     const deps = runDeps(input.runId)
-    const outcome = await runAttempt<{ review: Review; worktree: string }>({
+    const outcome = await runAttempt<{ review: Review; worktree?: string }>({
       db: deps.db,
       run: deps.run,
       runId: input.runId,
       station: 'reviewer',
       revision: input.revision,
+      // The verdict is on disk under this run for the same reason the plan is.
+      // No worktree comes back with it: one is only needed to produce a review,
+      // and this attempt already produced one. Rebuilding a checkout to hand
+      // back a path that only exists to be deleted would be work for nothing.
+      reconcile: async () => {
+        const recorded = await readJson<Review>(deps.run, 'review')
+        return recorded === undefined ? undefined : { review: recorded }
+      },
       execute: async () => {
         const analysis = await requireAnalysis(input.runId)
         const worktree = await prepareReviewWorkspace(deps.workspace)

@@ -70,7 +70,7 @@ function recorder(reviews: Review[], commit: CommitOutcome = 'committed') {
         trace.push('review')
         const next = reviews[Math.min(reviewIndex, reviews.length - 1)]
         reviewIndex += 1
-        return { review: next ?? review(), worktree: '/tmp/review' }
+        return { review: next ?? review() }
       }),
     },
   })

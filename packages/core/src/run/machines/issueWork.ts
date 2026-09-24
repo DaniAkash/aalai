@@ -181,7 +181,8 @@ export const issueWorkMachine = setup({
           target: 'judging',
           actions: assign({
             review: ({ event }) => event.output.review,
-            reviewWorktree: ({ event }) => event.output.worktree,
+            reviewWorktree: ({ event, context }) =>
+              event.output.worktree ?? context.reviewWorktree,
           }),
         },
         onError: {
