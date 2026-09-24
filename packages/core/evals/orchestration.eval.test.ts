@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { createActor, fromPromise, waitFor } from 'xstate'
+import type { GhIssue } from '@/lib/gh'
 import type { CommitOutcome } from '@/run/commit'
 import { issueWorkMachine } from '@/run/machines/issueWork'
 import { workState } from '@/run/machines/types'
 import type { Analysis, Review } from '@/run/stations/schemas'
+import { workableIssues } from '@/watch/poll'
 
 /**
  * These drive the real machine with recording fakes.
@@ -273,5 +275,26 @@ describe('the gate reconciles how a reviewer echoes a criterion', () => {
     const built = recorder([short])
     const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
+  })
+})
+
+describe('what the batch cap counts', () => {
+  const issue = (number: number, isPull = false) =>
+    ({
+      number,
+      ...(isPull ? { pull_request: { url: 'https://example.test/pull' } } : {}),
+    }) as GhIssue
+
+  test('pull requests are not counted against the cap meant for issues', () => {
+    // The endpoint returns both. At a cap of one, counting pull requests means
+    // a busy queue starves the issues, which is what happened on the
+    // throwaway repo and cost two end to end runs.
+    const workable = workableIssues([issue(48, true), issue(49)])
+    expect(workable.map((i) => i.number)).toEqual([49])
+  })
+
+  test('issues are left in the order they arrived', () => {
+    const workable = workableIssues([issue(1), issue(2, true), issue(3)])
+    expect(workable.map((i) => i.number)).toEqual([1, 3])
   })
 })
