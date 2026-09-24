@@ -118,7 +118,12 @@ describe('the premise region', () => {
     // Back to the analyst, because the plan was made against text that no
     // longer exists. The run still finishes rather than being thrown away.
     expect(trace.filter((c) => c === 'analyst').length).toBeGreaterThan(1)
-    expect(context.revision).toBeGreaterThan(0)
+    // A new plan, not another revision of the old one: the generation moves,
+    // and the implementation cycle starts over rather than carrying the
+    // revisions that were spent on a different request. The review is set
+    // again by the end, because the replanned run went on to be approved.
+    expect(context.planGeneration).toBeGreaterThan(0)
+    expect(context.revision).toBe(0)
     expect(state).toBe('approved')
   })
 
@@ -175,6 +180,63 @@ describe('the premise region', () => {
     await waitFor(actor, (s) => s.status === 'done')
 
     expect(cancelled).toBe(true)
+  })
+
+  test('a replan drops the verdict that was about the old request', async () => {
+    // Observed at the moment of the replan rather than at the end, because a
+    // run that goes on to be approved has a verdict again by then. Carrying
+    // the old one forward would hand the implementer revision guidance about
+    // an issue that no longer says that.
+    const seen: (string | undefined)[] = []
+    const machine = issueWorkMachine.provide({
+      actors: {
+        premise: fromCallback(({ sendBack }) => {
+          const timer = setTimeout(
+            () =>
+              sendBack({
+                type: 'PREMISE_REPLAN',
+                reason: 'rewritten',
+                body: 'the new issue text',
+              }),
+            25,
+          )
+          return () => clearTimeout(timer)
+        }),
+        analyst: fromPromise(async () => analysis),
+        implementer: fromPromise(
+          async (): Promise<{ report: string; commit: CommitOutcome }> => {
+            // Long enough that the replan lands while it is working, which is
+            // the case the assertion is about.
+            await new Promise((resolve) => setTimeout(resolve, 60))
+            return { report: 'r', commit: 'committed' }
+          },
+        ),
+        reviewer: fromPromise(async () => ({ review: approval })),
+      },
+    })
+
+    const actor = createActor(machine, {
+      input: {
+        runId: 'acme/widgets#7@1',
+        repo: 'acme/widgets',
+        issueNumber: 7,
+        maxRevisions: 1,
+        premiseBody: 'the issue text',
+      },
+    })
+    actor.subscribe((snap) => {
+      if (workState(snap.value) === 'planning') {
+        seen.push(snap.context.review?.verdict)
+      }
+    })
+    actor.start()
+    const settled = await waitFor(actor, (s) => s.status === 'done')
+
+    // Planning was entered twice: once at the start, once on the replan. The
+    // second time carries no verdict, and the rewritten body is the premise.
+    expect(seen.length).toBeGreaterThan(1)
+    expect(seen.at(-1)).toBeUndefined()
+    expect(settled.context.premiseBody).toBe('the new issue text')
   })
 
   test('the machine only finishes when both regions do', async () => {

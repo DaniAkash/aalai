@@ -123,20 +123,30 @@ export async function adoptWorkspace(
     return undefined
   }
 
-  const branch = git.issueBranchName(issueNumber, issueTitle)
   const base = await git.defaultBranch(clonePath)
   const onBranch = await exec(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], {
     cwd: worktreePath,
   })
-  if (onBranch.exitCode !== 0 || onBranch.stdout.trim() !== branch) {
+  const branch = onBranch.stdout.trim()
+
+  // Matched on the issue the branch is for, not on the whole name. The name
+  // carries a slug of the title, and a title can be edited while the process
+  // is down; insisting on the recomputed name would fail adoption and send
+  // this to prepareWorkspace, which rebuilds the checkout and destroys the
+  // commits resuming exists to keep.
+  const expected = `aalai/issue-${issueNumber}-`
+  if (onBranch.exitCode !== 0 || !branch.startsWith(expected)) {
     // A worktree on some other branch is not this run's worktree. Adopting it
     // would mean committing this run's work on top of somebody else's.
     log.warn('worktree found but on another branch, not adopting', {
       path: worktreePath,
-      found: onBranch.stdout.trim(),
-      expected: branch,
+      found: branch,
+      expected: `${expected}…`,
     })
     return undefined
+  }
+  if (branch !== git.issueBranchName(issueNumber, issueTitle)) {
+    log.info('adopting a branch whose title has since changed', { branch })
   }
 
   log.info('worktree adopted', { path: worktreePath, branch, base })

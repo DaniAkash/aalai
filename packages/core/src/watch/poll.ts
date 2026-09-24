@@ -5,8 +5,8 @@ import type { GhIssue } from '@/lib/gh'
 import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
-import { resumeUnfinished } from '@/run/resume'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
+import { resumeUnfinished } from '@/watch/resume'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
 const log = logger('poll')

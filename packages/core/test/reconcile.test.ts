@@ -113,7 +113,10 @@ describe('an attempt that started and never settled', () => {
       station: 'analyst',
     })
 
-    const settled = await settle<Analysis>(analyst, { runId: RUN_ID })
+    const settled = await settle<Analysis>(analyst, {
+      runId: RUN_ID,
+      planGeneration: 0,
+    })
 
     expect(settled.status).toBe('done')
     expect(settled.output?.problem_statement).toBe('recovered from disk')
@@ -129,7 +132,7 @@ describe('an attempt that started and never settled', () => {
 
     const settled = await settle<{ review: Review; worktree?: string }>(
       reviewer,
-      { runId: RUN_ID, revision: 0 },
+      { runId: RUN_ID, revision: 0, planGeneration: 0 },
     )
 
     expect(settled.status).toBe('done')
@@ -154,6 +157,7 @@ describe('an attempt that started and never settled', () => {
     const settled = await settle<{ review: Review }>(reviewer, {
       runId: RUN_ID,
       revision: 1,
+      planGeneration: 0,
     })
 
     // Nothing new was written, so reconciling answers nothing and the station

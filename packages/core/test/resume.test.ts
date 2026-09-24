@@ -13,8 +13,8 @@ import {
   unfinishedRuns,
 } from '@/run/machines/snapshots'
 import { workState } from '@/run/machines/types'
-import { parseRunId } from '@/run/resume'
 import type { Analysis, Review } from '@/run/stations/schemas'
+import { parseRunId } from '@/watch/resume'
 
 let dir: string
 let db: ReturnType<typeof openDb>

@@ -56,7 +56,12 @@ function recorder(reviews: Review[], commit: CommitOutcome = 'committed') {
         async ({
           input,
         }: {
-          input: { runId: string; revision: number; review?: Review }
+          input: {
+            runId: string
+            revision: number
+            planGeneration: number
+            review?: Review
+          }
         }) => {
           trace.push(
             input.revision === 0
