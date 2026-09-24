@@ -7,7 +7,7 @@ import type { RunPolicy } from '@/modules/settings/domains'
  * A repository's own setting overrides the global default, the same way its
  * label gate does, so a toy repository and the day job do not have to agree.
  */
-export function policyFor(config: Config, watched?: WatchedRepo): RunPolicy {
+function policyFor(config: Config, watched?: WatchedRepo): RunPolicy {
   return watched?.policy ?? config.defaultPolicy
 }
 

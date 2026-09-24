@@ -1,7 +1,8 @@
 import { loadConfig } from '@/config'
+import { localUser } from '@/lib/env'
 import { logger } from '@/lib/log'
 import { bad, block, heading, note, ok, table } from '@/lib/output'
-import type { GateDecision, GateRow } from '@/modules/db/schema/schema'
+import type { GateDecision } from '@/modules/db/schema/schema'
 import {
   type AnswerResult,
   type AnswerSource,
@@ -111,7 +112,7 @@ export async function answerGateCommand(
     return
   }
   const reason = flagValue(args, '--reason')
-  const answeredBy = process.env.USER ?? 'maintainer'
+  const answeredBy = localUser()
 
   const viaApi = await answerThroughApi(gateId, decision, reason, answeredBy)
   const result =
@@ -209,5 +210,3 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
   const at = args.indexOf(flag)
   return at === -1 ? undefined : args[at + 1]
 }
-
-export type { GateRow }

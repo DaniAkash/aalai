@@ -7,7 +7,6 @@ import { getDb } from '@/modules/db/db'
 import {
   DOMAINS,
   type Domains,
-  type RunPolicy,
   runPolicySchema,
 } from '@/modules/settings/domains'
 import {

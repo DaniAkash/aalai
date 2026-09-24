@@ -1,8 +1,8 @@
 import type { GateRow } from '@/modules/db/schema/schema'
 
-type Listener = (gate: GateRow) => void
+export type GateListener = (gate: GateRow) => void
 
-const listeners = new Set<Listener>()
+const listeners = new Set<GateListener>()
 
 /**
  * Tells anything in this process that a gate was answered.
@@ -23,7 +23,7 @@ export function publishGateAnswered(gate: GateRow): void {
   }
 }
 
-export function subscribeGateAnswered(listener: Listener): () => void {
+export function subscribeGateAnswered(listener: GateListener): () => void {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }

@@ -36,3 +36,13 @@ export function workbenchDir(): string {
 export function configOverride(): string | undefined {
   return process.env.AALAI_CONFIG
 }
+
+/**
+ * Who a decision is recorded against when a person answers from a terminal.
+ *
+ * The audit field on a gate, not an identity: it says which account was at the
+ * keyboard, and it stays local to this machine's database.
+ */
+export function localUser(): string {
+  return process.env.USER ?? process.env.USERNAME ?? 'maintainer'
+}
