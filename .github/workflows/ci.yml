@@ -67,7 +67,7 @@ jobs:
       # rust-cache expects.
       CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/app/native/src-tauri/target
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # fallow's health hotspots rank files by git churn, which needs
           # real history. The default shallow clone reports none.
