@@ -12,6 +12,7 @@ import {
   readSnapshot,
   unfinishedRuns,
 } from '@/run/machines/snapshots'
+import { workState } from '@/run/machines/types'
 import { parseRunId } from '@/run/resume'
 import type { Analysis, Review } from '@/run/stations/schemas'
 
@@ -157,6 +158,7 @@ describe('carrying a run on from its snapshot', () => {
         repo: 'acme/widgets',
         issueNumber: 7,
         maxRevisions: 2,
+        premiseBody: 'the issue text',
       },
     })
     first.start()
@@ -164,7 +166,7 @@ describe('carrying a run on from its snapshot', () => {
     const snapshot = JSON.parse(JSON.stringify(first.getPersistedSnapshot()))
     first.stop()
 
-    expect(String(settled.value)).toBe('approved')
+    expect(workState(settled.value)).toBe('approved')
 
     // What a restart does: the same machine, restored, invocations restarted.
     const resumed = createActor(build(turns), {
@@ -173,6 +175,7 @@ describe('carrying a run on from its snapshot', () => {
         repo: 'acme/widgets',
         issueNumber: 7,
         maxRevisions: 2,
+        premiseBody: 'the issue text',
       },
       snapshot,
     })
@@ -183,6 +186,6 @@ describe('carrying a run on from its snapshot', () => {
     // resuming different from starting over.
     expect(again.context.analysis?.acceptance_criteria).toEqual(['it works'])
     expect(again.context.review?.verdict).toBe('approve')
-    expect(String(again.value)).toBe('approved')
+    expect(workState(again.value)).toBe('approved')
   })
 })

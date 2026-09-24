@@ -1,4 +1,5 @@
-import { fromPromise } from 'xstate'
+import { fromCallback, fromPromise } from 'xstate'
+import { getIssue } from '@/lib/gh'
 import { headSha } from '@/lib/git'
 import { redactDeep } from '@/lib/redact'
 import { latestArtifact } from '@/modules/work/artifacts'
@@ -198,3 +199,58 @@ async function requireAnalysis(runId: string): Promise<Analysis> {
   })
   return outcome.value
 }
+
+/** How often the premise is re-checked while a run works. */
+const PREMISE_INTERVAL_MS = 60_000
+
+/**
+ * Watches for the ground moving under a run.
+ *
+ * Every station has a reason for existing, and that reason can stop being true
+ * while it works: the issue gets closed, or its text is rewritten into a
+ * different request. Modelling that as a transition out of every station would
+ * be unreadable, so it lives in a region of its own that runs for the whole
+ * life of the machine and raises into the work region when it finds something.
+ *
+ * Cheap on purpose. It asks GitHub one question on a timer and holds no state
+ * beyond the body it started with.
+ */
+export const premise = fromCallback<
+  { type: string },
+  { runId: string; body: string; intervalMs?: number }
+>(({ input, sendBack }) => {
+  const every = input.intervalMs ?? PREMISE_INTERVAL_MS
+  let checking = false
+
+  const check = async (): Promise<void> => {
+    if (checking) {
+      return
+    }
+    checking = true
+    try {
+      const deps = runDeps(input.runId)
+      const issue = await getIssue(deps.repo, deps.issue.number)
+      if (issue.state !== 'open') {
+        sendBack({
+          type: 'PREMISE_ABORT',
+          reason: `the issue was ${issue.state} while the run was working`,
+        })
+        return
+      }
+      if ((issue.body ?? '') !== input.body) {
+        sendBack({
+          type: 'PREMISE_REPLAN',
+          reason: 'the issue was rewritten while the run was working',
+        })
+      }
+    } catch {
+      // A failed check is not a failed premise. GitHub being briefly
+      // unreachable must not abort work that is otherwise fine.
+    } finally {
+      checking = false
+    }
+  }
+
+  const timer = setInterval(() => void check(), every)
+  return () => clearInterval(timer)
+})

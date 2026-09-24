@@ -75,6 +75,7 @@ function drive(options: {
       repo: 'acme/widgets',
       issueNumber: 7,
       maxRevisions: options.maxRevisions ?? 2,
+      premiseBody: 'the issue text',
     },
   })
   actor.start()

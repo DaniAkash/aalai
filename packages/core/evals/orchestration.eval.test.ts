@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createActor, fromPromise, waitFor } from 'xstate'
 import type { CommitOutcome } from '@/run/commit'
 import { issueWorkMachine } from '@/run/machines/issueWork'
+import { workState } from '@/run/machines/types'
 import type { Analysis, Review } from '@/run/stations/schemas'
 
 /**
@@ -89,11 +90,12 @@ async function runReviewLoop(
       repo: 'acme/widgets',
       issueNumber: 1,
       maxRevisions: config.maxRevisions,
+      premiseBody: 'the issue text',
     },
   })
   actor.start()
   const settled = await waitFor(actor, (s) => s.status === 'done')
-  if (String(settled.value) === 'approved') {
+  if (workState(settled.value) === 'approved') {
     return { kind: 'approved' }
   }
   const outcome = settled.context.outcome

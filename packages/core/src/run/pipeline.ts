@@ -8,7 +8,7 @@ import { recordBestEffort, recordRun, snapshotOf } from '@/run/artifacts'
 import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
 import { driveIssueWork } from '@/run/machines/drive'
-import type { IssueWorkContext } from '@/run/machines/issueWork'
+import type { IssueWorkContext } from '@/run/machines/types'
 import {
   adoptWorkspace,
   discardPath,

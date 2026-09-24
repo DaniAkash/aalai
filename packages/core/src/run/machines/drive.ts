@@ -2,8 +2,9 @@ import { createActor, type Snapshot, waitFor } from 'xstate'
 import type { RunRef } from '@/modules/work/paths'
 import type { RunDeps } from './deps'
 import { provideRunDeps, releaseRunDeps } from './deps'
-import { type IssueWorkContext, issueWorkMachine } from './issueWork'
+import { issueWorkMachine } from './issueWork'
 import { persistSnapshot } from './snapshots'
+import { type IssueWorkContext, workState } from './types'
 
 /**
  * Runs one issue's machine to a final state, persisting as it goes.
@@ -25,6 +26,8 @@ export async function driveIssueWork(input: {
    * what it already produced rather than doing it twice.
    */
   snapshot?: unknown
+  /** Lowered by tests so the premise check does not wait a minute. */
+  premiseIntervalMs?: number
 }): Promise<{ state: string; context: IssueWorkContext }> {
   provideRunDeps(input.runId, input.deps)
 
@@ -36,6 +39,10 @@ export async function driveIssueWork(input: {
       repo: input.repo,
       issueNumber: input.issueNumber,
       maxRevisions: input.deps.config.maxRevisions,
+      premiseBody: input.deps.issue.body ?? '',
+      ...(input.premiseIntervalMs === undefined
+        ? {}
+        : { premiseIntervalMs: input.premiseIntervalMs }),
     },
     ...(input.snapshot === undefined
       ? {}
@@ -48,7 +55,7 @@ export async function driveIssueWork(input: {
   // describes a run that has already moved on.
   let writes: Promise<void> = Promise.resolve()
   actor.subscribe((snapshot) => {
-    const value = String(snapshot.value)
+    const value = workState(snapshot.value)
     const persisted = actor.getPersistedSnapshot()
     writes = writes.then(() =>
       persistSnapshot({
@@ -72,7 +79,7 @@ export async function driveIssueWork(input: {
     // `approved` carries the plan, the verdict and the report delivery needs;
     // `finished` carries why it stopped. The caller tells them apart by state
     // rather than by guessing from which fields are populated.
-    return { state: String(settled.value), context: settled.context }
+    return { state: workState(settled.value), context: settled.context }
   } finally {
     actor.stop()
     releaseRunDeps(input.runId)
