@@ -2,6 +2,7 @@ import init from './0000_init_schema.sql' with { type: 'text' }
 import gateStatus from './0001_add_gate_status_and_indexes.sql' with {
   type: 'text',
 }
+import gateSummary from './0002_add_gate_summary.sql' with { type: 'text' }
 
 export interface Migration {
   readonly name: string
@@ -19,4 +20,5 @@ export interface Migration {
 export const MIGRATIONS: readonly Migration[] = [
   { name: '0000_init_schema', sql: init },
   { name: '0001_add_gate_status_and_indexes', sql: gateStatus },
+  { name: '0002_add_gate_summary', sql: gateSummary },
 ]

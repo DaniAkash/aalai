@@ -1,0 +1,1 @@
+ALTER TABLE `gates` ADD `summary` text;

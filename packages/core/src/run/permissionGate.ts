@@ -37,26 +37,15 @@ export function permissionGate(input: PermissionGateInput) {
     request: AcpPermissionRequest,
     context: { signal: AbortSignal },
   ): Promise<AcpPermissionDecision | undefined> => {
-    const gateId = openGate(input.db, {
-      runId: input.runId,
-      kind: 'permission',
-      artifactVersion: String(Date.now()),
-    })
     const asked = describe(request)
-    log.info('asking before the agent proceeds', {
-      gateId,
-      station: input.station,
-      tool: asked,
-    })
-    emit({
-      type: 'gate.opened',
-      runId: input.runId,
-      gateId,
-      kind: 'permission',
-      repo: input.repo,
-      issue: input.issue,
-      at: Date.now(),
-    })
+    // Opening is inside the fallback too. A database that cannot be written is
+    // a reason to let the station's permission mode decide, never a reason to
+    // fail the turn: this feature must not be able to break a run it was only
+    // supposed to supervise.
+    const gateId = ask(input, asked)
+    if (gateId === undefined) {
+      return undefined
+    }
 
     const decision = await waitForDecision(input, gateId, context.signal)
     if (decision === undefined) {
@@ -81,6 +70,46 @@ export function permissionGate(input: PermissionGateInput) {
 }
 
 type Outcome = 'allow_once' | 'reject_once'
+
+/**
+ * Opens the question, or gives up quietly.
+ *
+ * Every failure here returns undefined so the caller falls through, which is
+ * the same outcome as the feature being switched off.
+ */
+function ask(input: PermissionGateInput, summary: string): string | undefined {
+  try {
+    const gateId = openGate(input.db, {
+      runId: input.runId,
+      kind: 'permission',
+      // Its own identity, not a clock reading. Two asks in one millisecond
+      // would share an id, and one answer would then silently decide both.
+      nonce: crypto.randomUUID(),
+      summary,
+    })
+    log.info('asking before the agent proceeds', {
+      gateId,
+      station: input.station,
+      asking: summary,
+    })
+    emit({
+      type: 'gate.opened',
+      runId: input.runId,
+      gateId,
+      kind: 'permission',
+      repo: input.repo,
+      issue: input.issue,
+      summary,
+      at: Date.now(),
+    })
+    return gateId
+  } catch (error) {
+    log.warn('could not open a permission gate, falling through', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
 
 async function waitForDecision(
   input: PermissionGateInput,

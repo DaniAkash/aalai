@@ -16,7 +16,10 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test ./test/",
     "eval": "bun test ./evals/",
-    "service": "bun run scripts/service.ts"
+    "service": "bun run scripts/service.ts",
+    "e2e:gates": "bun run scripts/gate-e2e.ts",
+    "e2e:api": "bun run scripts/gate-api-e2e.ts",
+    "e2e": "bun run e2e:gates && bun run e2e:api"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

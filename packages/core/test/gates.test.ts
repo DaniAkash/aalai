@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { openDb } from '@/modules/db/db'
 import {
   answerGate,
+  expireGate,
   gateId,
   listGates,
   openGate,
@@ -193,7 +194,7 @@ describe('superseding, which is what stops an approval transferring', () => {
 })
 
 describe('listing, which is what the inbox asks', () => {
-  test('open gates only, newest first', () => {
+  test('open gates only, oldest first', () => {
     const a = openGate(db, {
       runId: 'a#1@1',
       kind: 'plan',
@@ -225,5 +226,121 @@ describe('the id', () => {
 
     expect(again).toBe(one)
     expect(next).not.toBe(one)
+  })
+})
+
+describe('terminal states stay terminal', () => {
+  test('an expired question cannot be answered later', () => {
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'permission',
+      nonce: 'n1',
+      summary: 'delete build/',
+    })
+    expect(expireGate(db, id)).toBe(true)
+
+    const late = answerGate(db, {
+      gateId: id,
+      decision: 'approved',
+      answeredBy: 'maintainer',
+      answeredOn: 'cli',
+    })
+
+    expect(late.ok).toBe(false)
+    if (late.ok) throw new Error('unreachable')
+    expect(late.refusal.kind).toBe('expired')
+    // A permission ask does not outlive its turn, so no decision may land here.
+    expect(readGate(db, id)?.decision).toBeNull()
+    expect(readGate(db, id)?.status).toBe('expired')
+  })
+
+  test('expiring an answered gate does not overwrite the answer', () => {
+    const id = openGate(db, { runId: RUN_ID, kind: 'permission', nonce: 'n2' })
+    answerGate(db, {
+      gateId: id,
+      decision: 'approved',
+      answeredBy: 'maintainer',
+      answeredOn: 'cli',
+    })
+
+    expect(expireGate(db, id)).toBe(false)
+    expect(readGate(db, id)?.status).toBe('answered')
+    expect(readGate(db, id)?.decision).toBe('approved')
+  })
+
+  test('superseding an answered gate does not overwrite the answer', () => {
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
+    answerGate(db, {
+      gateId: id,
+      decision: 'approved',
+      answeredBy: 'maintainer',
+      answeredOn: 'cli',
+    })
+
+    expect(supersedeOpenGates(db, RUN_ID, 'plan')).toBe(0)
+    expect(readGate(db, id)?.status).toBe('answered')
+    expect(readGate(db, id)?.decision).toBe('approved')
+  })
+})
+
+describe('a question that has no artifact to identify it', () => {
+  test('two asks in the same millisecond are two different questions', () => {
+    const a = openGate(db, {
+      runId: RUN_ID,
+      kind: 'permission',
+      nonce: crypto.randomUUID(),
+      summary: 'write src/index.ts',
+    })
+    const b = openGate(db, {
+      runId: RUN_ID,
+      kind: 'permission',
+      nonce: crypto.randomUUID(),
+      summary: 'delete build/',
+    })
+
+    expect(b).not.toBe(a)
+    expect(listGates(db, { runId: RUN_ID })).toHaveLength(2)
+
+    // The property that matters: answering one must not answer the other.
+    answerGate(db, {
+      gateId: a,
+      decision: 'approved',
+      answeredBy: 'maintainer',
+      answeredOn: 'cli',
+    })
+    expect(readGate(db, b)?.status).toBe('open')
+    expect(readGate(db, b)?.decision).toBeNull()
+  })
+
+  test('what is being asked is stored, not only logged', () => {
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'permission',
+      nonce: 'n3',
+      summary: 'run rm -rf build',
+    })
+
+    expect(readGate(db, id)?.summary).toBe('run rm -rf build')
+  })
+
+  test('superseding can spare the gate that now stands', () => {
+    const old = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
+    const current = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '2',
+    })
+
+    expect(supersedeOpenGates(db, RUN_ID, 'plan', { except: current })).toBe(1)
+    expect(readGate(db, old)?.status).toBe('superseded')
+    expect(readGate(db, current)?.status).toBe('open')
   })
 })

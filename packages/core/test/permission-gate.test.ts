@@ -119,3 +119,66 @@ async function waitForGate(): Promise<void> {
   }
   throw new Error('the gate never opened')
 }
+
+describe('every ask is its own question', () => {
+  test('a burst of asks produces one gate each, not one shared gate', async () => {
+    // Fired together so they land inside the same millisecond, which is what a
+    // run of tool calls looks like and what a clock based id cannot separate.
+    const asks = Array.from({ length: 25 }, () =>
+      gate(200)(request, { signal: new AbortController().signal }),
+    )
+    await waitForGate()
+    const opened = listGates(handle.sqlite, { limit: 200 }).filter(
+      (row) => row.kind === 'permission',
+    )
+
+    // One row per question. Anything fewer means two different actions were
+    // collapsed into one, and a single answer would decide both.
+    expect(opened).toHaveLength(asks.length)
+    await Promise.all(asks)
+  })
+})
+
+describe('never breaking the run it supervises', () => {
+  test('a database it cannot write falls through instead of throwing', async () => {
+    // The station must keep its own permission mode when this feature cannot
+    // do its job, rather than the turn failing on a supervision feature.
+    const broken = {
+      query: () => {
+        throw new Error('database is locked')
+      },
+      transaction: () => {
+        throw new Error('database is locked')
+      },
+    } as unknown as typeof handle.sqlite
+
+    const decision = await permissionGate({
+      db: broken,
+      runId: RUN_ID,
+      repo: 'acme/widgets',
+      issue: 7,
+      station: 'implementer',
+      waitMs: 500,
+    })(request, { signal: new AbortController().signal })
+
+    expect(decision).toBeUndefined()
+  })
+
+  test('the question records what it is asking', async () => {
+    const pending = gate(5000)(request, {
+      signal: new AbortController().signal,
+    })
+    await waitForGate()
+    const [open] = listGates(handle.sqlite, { status: 'open' })
+
+    expect(open?.summary).toBe('edit')
+
+    answerGate(handle.sqlite, {
+      gateId: open?.id ?? '',
+      decision: 'approved',
+      answeredBy: 'maintainer',
+      answeredOn: 'cli',
+    })
+    await pending
+  })
+})

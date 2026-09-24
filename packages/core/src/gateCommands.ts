@@ -2,7 +2,7 @@ import { loadConfig } from '@/config'
 import { localUser } from '@/lib/env'
 import { logger } from '@/lib/log'
 import { bad, block, heading, note, ok, table } from '@/lib/output'
-import type { GateDecision } from '@/modules/db/schema/schema'
+import type { GateDecision, GateRow } from '@/modules/db/schema/schema'
 import {
   type AnswerResult,
   type AnswerSource,
@@ -18,6 +18,21 @@ const log = logger('gates')
 /** `acme/widgets#7@1790…` back into something a person reads. */
 function subjectOf(runId: string): string {
   return runId.split('@')[0] ?? runId
+}
+
+/**
+ * What this gate is asking, in one cell.
+ *
+ * A plan gate points at an artifact a person reads; a permission ask has none,
+ * so without the stored summary the row would say only how long it has waited.
+ */
+function asking(gate: GateRow): string {
+  if (gate.summary !== null && gate.summary !== '') {
+    return gate.summary
+  }
+  return gate.kind === 'plan'
+    ? `approve the plan (v${gate.artifactVersion ?? '?'})`
+    : gate.kind
 }
 
 function waitedFor(openedAt: string): string {
@@ -47,12 +62,11 @@ export function showGates(args: readonly string[]): void {
   }
   heading('waiting on you')
   table(
-    ['gate', 'subject', 'kind', 'version', 'waiting'],
+    ['gate', 'subject', 'asking', 'waiting'],
     gates.map((gate) => [
       gate.id,
       subjectOf(gate.runId),
-      gate.kind,
-      gate.artifactVersion ?? '',
+      asking(gate),
       waitedFor(gate.openedAt),
     ]),
   )
@@ -77,6 +91,7 @@ export async function showGate(args: readonly string[]): Promise<void> {
   heading(`${gate.kind} gate`)
   note('subject', subjectOf(gate.runId))
   note('status', gate.status)
+  note('asking', asking(gate))
   note('version', gate.artifactVersion ?? 'none')
   if (gate.decision !== null) {
     note('decision', `${gate.decision} by ${gate.answeredBy ?? 'someone'}`)
@@ -189,10 +204,15 @@ function report(result: AnswerResult, decision: GateDecision): void {
       'already answered',
       `${result.refusal.gate.decision} by ${result.refusal.gate.answeredBy ?? 'someone'} on ${result.refusal.gate.answeredOn ?? 'another surface'}`,
     )
-  } else {
+  } else if (result.refusal.kind === 'superseded') {
     bad(
       'the plan changed under this gate',
       'run `aalai gates` for the version that now stands',
+    )
+  } else {
+    bad(
+      'this question expired',
+      'a permission ask only stands while its turn is open',
     )
   }
   process.exitCode = 1

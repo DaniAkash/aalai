@@ -33,16 +33,13 @@ export const reposRoute = new Hono()
     // real choices instead of a free text field and a hope.
     return c.json({ repos: await ownedRepos() })
   })
-  .post('/repos', async (c) => {
-    const body = addSchema.safeParse(await c.req.json())
-    if (!body.success)
-      return c.json({ error: z.prettifyError(body.error) }, 400)
-
+  .post('/repos', zValidator('json', addSchema), async (c) => {
+    const body = c.req.valid('json')
     const config = await loadConfig()
-    if (config.watch.some((w) => w.repo === body.data.repo)) {
+    if (config.watch.some((w) => w.repo === body.repo)) {
       return c.json({ error: 'already watched' }, 409)
     }
-    const next = { ...config, watch: [...config.watch, body.data] }
+    const next = { ...config, watch: [...config.watch, body] }
     await saveConfig(next)
     return c.json({ repos: next.watch })
   })

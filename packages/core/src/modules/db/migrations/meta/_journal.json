@@ -15,6 +15,13 @@
       "when": 1790251369553,
       "tag": "0001_add_gate_status_and_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790254241850,
+      "tag": "0002_add_gate_summary",
+      "breakpoints": true
     }
   ]
 }

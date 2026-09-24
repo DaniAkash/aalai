@@ -52,6 +52,7 @@ bun run once               # a single pass
 bun run run-issue acme/widgets 27
 bun run test               # unit tests
 bun run eval               # orchestration and prompt evals
+bun run e2e                # the gate, driven through the real CLI and API
 bun run service install    # run at login via launchd, macOS
 ```
 
@@ -125,7 +126,9 @@ superseded and answering it is refused, so approval given to one plan cannot
 transfer to its replacement.
 
 **A second answer is refused and the first stands.** Three surfaces can answer
-the same gate and two of them racing is expected rather than exceptional.
+the same gate and two of them racing is expected rather than exceptional. The
+same holds for a gate that was superseded or that expired: only an open gate is
+answerable, and a terminal state is terminal.
 
 ### Asking before the agent acts
 

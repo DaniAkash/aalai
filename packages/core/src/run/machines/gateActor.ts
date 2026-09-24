@@ -1,7 +1,12 @@
 import { fromCallback } from 'xstate'
 import { emit } from '@/events/bus'
 import { logger } from '@/lib/log'
-import { openGate, readGate, subscribeGateAnswered } from '@/modules/gates'
+import {
+  openGate,
+  readGate,
+  subscribeGateAnswered,
+  supersedeOpenGates,
+} from '@/modules/gates'
 import { latestArtifact } from '@/modules/work/artifacts'
 import { runDeps } from './deps'
 
@@ -92,6 +97,18 @@ export const gateKeeper = fromCallback<
             artifactVersion: String(artifact.version),
           }),
     })
+    // Anything this run left open on an earlier version is retired here, and
+    // only here, because this is the one place that knows which version now
+    // stands. A run can leave this state without answering (the issue being
+    // rewritten underneath it does exactly that), and without this the old
+    // question stays in the inbox forever as something nobody can usefully
+    // answer.
+    const retired = supersedeOpenGates(deps.db, input.runId, 'plan', {
+      except: gateId,
+    })
+    if (retired > 0) {
+      log.info('retired gates asked about an older version', { retired })
+    }
     sendBack({ type: 'GATE_OPENED', gateId })
     log.info('waiting for a person', {
       gateId,

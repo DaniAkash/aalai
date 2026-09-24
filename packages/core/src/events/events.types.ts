@@ -99,6 +99,8 @@ export type RunEvent = Base &
         readonly kind: string
         readonly repo: string
         readonly issue: number
+        /** What is being asked, when the gate has no artifact to point at. */
+        readonly summary?: string
       }
     | {
         readonly type: 'gate.answered'

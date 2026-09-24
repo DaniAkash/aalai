@@ -41,6 +41,14 @@ export const gates = sqliteTable(
     status: text('status').$type<GateStatus>().notNull().default('open'),
     artifactPath: text('artifact_path'),
     artifactVersion: text('artifact_version'),
+    /**
+     * What the person is being asked to allow, in their words not the agent's.
+     *
+     * A plan gate points at an artifact a person can read. A permission ask has
+     * no artifact, so without this the surfaces can only show a timestamp and
+     * nobody can tell what they are approving.
+     */
+    summary: text('summary'),
     openedAt: text('opened_at').notNull().default(sql`(current_timestamp)`),
     answeredAt: text('answered_at'),
     answeredBy: text('answered_by'),

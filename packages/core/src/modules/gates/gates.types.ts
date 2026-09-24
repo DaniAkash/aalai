@@ -14,6 +14,19 @@ export interface OpenGateInput {
   readonly kind: GateKind
   readonly artifactPath?: string
   readonly artifactVersion?: string
+  /**
+   * A question's own identity, when no artifact version can supply one.
+   *
+   * A plan gate is identified by the bytes it asks about, so re-entering the
+   * state adopts the gate already open. A permission ask has no artifact, and
+   * two of them in the same turn are two different questions even though they
+   * share a run and a kind, so the caller supplies something unique. A clock
+   * reading is not unique: two asks in one millisecond would collide and one
+   * answer would silently decide both.
+   */
+  readonly nonce?: string
+  /** What the person is being asked to allow, for a surface to render. */
+  readonly summary?: string
 }
 
 export interface AnswerGateInput {
@@ -35,6 +48,7 @@ export type AnswerRefusal =
   | { readonly kind: 'not_found' }
   | { readonly kind: 'already_answered'; readonly gate: GateRow }
   | { readonly kind: 'superseded'; readonly gate: GateRow }
+  | { readonly kind: 'expired'; readonly gate: GateRow }
 
 export type AnswerResult =
   | { readonly ok: true; readonly gate: GateRow }
