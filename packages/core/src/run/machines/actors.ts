@@ -14,14 +14,24 @@ import { runDeps } from './deps'
 import { runAttempt } from './runner'
 
 export const analyst = fromPromise(
-  async ({ input }: { input: { runId: string } }): Promise<Analysis> => {
+  async ({
+    input,
+    signal,
+  }: {
+    input: { runId: string; planGeneration: number }
+    signal: AbortSignal
+  }): Promise<Analysis> => {
     const deps = runDeps(input.runId)
     const outcome = await runAttempt<Analysis>({
       db: deps.db,
       run: deps.run,
       runId: input.runId,
       station: 'analyst',
-      revision: 0,
+      // Keyed by plan generation, not by revision. A revision is another pass
+      // at the implementation and must reuse the same plan; a replan is a new
+      // plan because the issue itself changed. Sharing one counter would make
+      // a revision replan, or a replan reuse the plan it was told is stale.
+      revision: input.planGeneration,
       // The plan is on disk under this run, so an attempt that started and
       // never settled can be answered from what it already produced rather
       // than by spending another turn asking for the same plan.
@@ -34,7 +44,7 @@ export const analyst = fromPromise(
           worktree: deps.workspace.worktreePath,
           conventionFiles: deps.conventionFiles,
           config: deps.config,
-          ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+          signal,
         })
         // Only when the station did not record it itself. A tool call already
         // wrote the plan and the criteria, and writing them again would make a
@@ -54,8 +64,15 @@ export const analyst = fromPromise(
 export const implementer = fromPromise(
   async ({
     input,
+    signal,
   }: {
-    input: { runId: string; revision: number; review?: Review }
+    input: {
+      runId: string
+      revision: number
+      planGeneration: number
+      review?: Review
+    }
+    signal: AbortSignal
   }): Promise<{ report: string; commit: CommitOutcome }> => {
     const deps = runDeps(input.runId)
     const outcome = await runAttempt<
@@ -83,7 +100,10 @@ export const implementer = fromPromise(
           : { report: '', commit: 'committed' as const }
       },
       execute: async () => {
-        const analysis = await requireAnalysis(input.runId)
+        const analysis = await requireAnalysis(
+          input.runId,
+          input.planGeneration,
+        )
         const turn = await runImplementer({
           runId: input.runId,
           repo: deps.repo,
@@ -97,6 +117,7 @@ export const implementer = fromPromise(
                 revision: { review: input.review, attempt: input.revision },
               }),
           config: deps.config,
+          signal,
         })
         const commit = await commitImplementerWork(
           input.runId,
@@ -115,8 +136,10 @@ export const implementer = fromPromise(
 export const reviewer = fromPromise(
   async ({
     input,
+    signal,
   }: {
-    input: { runId: string; revision: number }
+    input: { runId: string; revision: number; planGeneration: number }
+    signal: AbortSignal
   }): Promise<{ review: Review; worktree?: string }> => {
     const deps = runDeps(input.runId)
     const outcome = await runAttempt<
@@ -153,7 +176,10 @@ export const reviewer = fromPromise(
         return recorded === undefined ? undefined : { review: recorded }
       },
       execute: async () => {
-        const analysis = await requireAnalysis(input.runId)
+        const analysis = await requireAnalysis(
+          input.runId,
+          input.planGeneration,
+        )
         const worktree = await prepareReviewWorkspace(deps.workspace)
         const { review, result } = await runReviewer({
           runId: input.runId,
@@ -164,7 +190,7 @@ export const reviewer = fromPromise(
           base: deps.workspace.base,
           branch: deps.workspace.branch,
           config: deps.config,
-          ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+          signal,
         })
         // Redacted at the boundary: every field below is published, either in
         // the pull request body or in an issue comment on a stopped run.
@@ -187,14 +213,17 @@ export const reviewer = fromPromise(
  * Read from the attempt record rather than passed down, so a station resumed
  * after a restart works to the same plan the first pass produced.
  */
-async function requireAnalysis(runId: string): Promise<Analysis> {
+async function requireAnalysis(
+  runId: string,
+  planGeneration: number,
+): Promise<Analysis> {
   const deps = runDeps(runId)
   const outcome = await runAttempt<Analysis>({
     db: deps.db,
     run: deps.run,
     runId,
     station: 'analyst',
-    revision: 0,
+    revision: planGeneration,
     execute: async () => {
       throw new Error('the plan is missing and cannot be recovered')
     },
@@ -223,6 +252,7 @@ export const premise = fromCallback<
 >(({ input, sendBack }) => {
   const every = input.intervalMs ?? PREMISE_INTERVAL_MS
   let checking = false
+  let current = input.body
 
   const check = async (): Promise<void> => {
     if (checking) {
@@ -239,10 +269,16 @@ export const premise = fromCallback<
         })
         return
       }
-      if ((issue.body ?? '') !== input.body) {
+      const body = issue.body ?? ''
+      if (body !== current) {
+        // The new text travels with the event, so the machine can make it the
+        // premise. Without that the watcher keeps comparing against the text
+        // the run started with and replans on every interval, forever.
+        current = body
         sendBack({
           type: 'PREMISE_REPLAN',
           reason: 'the issue was rewritten while the run was working',
+          body,
         })
       }
     } catch {

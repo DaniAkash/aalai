@@ -13,6 +13,14 @@ export interface IssueWorkContext {
   readonly issueNumber: number
   readonly maxRevisions: number
   readonly revision: number
+  /**
+   * Which plan this run is working to.
+   *
+   * Separate from revision because they mean different things: a revision is
+   * another pass at the implementation against the same plan, a generation is
+   * a new plan because the issue itself changed.
+   */
+  readonly planGeneration: number
   readonly analysis?: Analysis
   readonly review?: Review
   readonly implementerReport: string

@@ -36,6 +36,7 @@ export const issueWorkMachine = setup({
     issueNumber: input.issueNumber,
     maxRevisions: input.maxRevisions,
     revision: 0,
+    planGeneration: 0,
     implementerReport: '',
     premiseBody: input.premiseBody,
     ...(input.premiseIntervalMs === undefined
@@ -93,10 +94,20 @@ export const issueWorkMachine = setup({
         PREMISE_REPLAN: {
           target: '.planning',
           actions: assign({
-            // The plan was made against text that no longer exists, so it is
-            // replanned rather than abandoned. The analyst runs again, which
-            // its attempt record allows because the revision moves with it.
-            revision: ({ context }) => context.revision + 1,
+            // A new plan, not another revision of the old one. The generation
+            // moves so the analyst runs a fresh attempt rather than returning
+            // the plan it already recorded.
+            planGeneration: ({ context }) => context.planGeneration + 1,
+            // The implementation cycle starts over: the issue is a different
+            // request now, so a verdict about the old one is not guidance, and
+            // the revisions already spent were spent on something else.
+            revision: () => 0,
+            review: () => undefined,
+            implementerReport: () => '',
+            // The rewritten text becomes the premise, or the watcher keeps
+            // comparing against what the run started with and replans forever.
+            premiseBody: ({ context, event }) =>
+              String((event as { body?: string }).body ?? context.premiseBody),
           }),
         },
       },
@@ -111,7 +122,10 @@ export const issueWorkMachine = setup({
             }),
           invoke: {
             src: 'analyst',
-            input: ({ context }) => ({ runId: context.runId }),
+            input: ({ context }) => ({
+              runId: context.runId,
+              planGeneration: context.planGeneration,
+            }),
             onDone: {
               target: 'implementing',
               actions: assign({ analysis: ({ event }) => event.output }),
@@ -151,6 +165,7 @@ export const issueWorkMachine = setup({
             input: ({ context }) => ({
               runId: context.runId,
               revision: context.revision,
+              planGeneration: context.planGeneration,
               ...(context.review === undefined
                 ? {}
                 : { review: context.review }),
@@ -204,6 +219,7 @@ export const issueWorkMachine = setup({
             input: ({ context }) => ({
               runId: context.runId,
               revision: context.revision,
+              planGeneration: context.planGeneration,
             }),
             onDone: {
               target: 'judging',
