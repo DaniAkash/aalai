@@ -8,6 +8,8 @@ const watchedRepoSchema = z.object({
   repo: z
     .string()
     .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
+  /** Per repo label gate. Absent from the schema, it was parsed away on write. */
+  requireLabel: z.string().optional(),
 })
 
 const configSchema = z.object({
