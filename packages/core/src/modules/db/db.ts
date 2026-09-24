@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
+import type { drizzle } from 'drizzle-orm/bun-sqlite'
 import { stateDir } from '@/lib/env'
 import { logger } from '@/lib/log'
 import {
@@ -11,7 +11,8 @@ import {
 } from './legacy'
 import { applyMigrations, pendingMigrations } from './migrate'
 import { MIGRATIONS, type Migration } from './migrations/journal'
-import * as schema from './schema/schema'
+import { query } from './query'
+import type * as schema from './schema/schema'
 
 const log = logger('db')
 
@@ -101,7 +102,7 @@ export function openDb(path?: string): DbHandle {
   sqlite.exec('PRAGMA journal_mode = WAL;')
   sqlite.exec('PRAGMA foreign_keys = ON;')
   migrateWithBackup(sqlite, file)
-  return { sqlite, db: drizzle(sqlite, { schema }) }
+  return { sqlite, db: query(sqlite) }
 }
 
 let handle: DbHandle | undefined

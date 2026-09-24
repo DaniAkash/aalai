@@ -97,7 +97,17 @@ export async function runIssue(
       error: `workspace setup failed: ${message}`,
       at: Date.now(),
     })
-    return { status: 'failed', error: `workspace setup failed: ${message}` }
+    // This return is before the try below, so it never reaches that finally.
+    // Recorded here instead: a run that failed before it had a workspace is
+    // still a run, and its outcome is the only thing left of it.
+    const failed: PipelineResult = {
+      status: 'failed',
+      error: `workspace setup failed: ${message}`,
+    }
+    await record('run', () =>
+      recordRun(run, snapshotOf(runId, repo, issue.number, failed)),
+    )
+    return failed
   }
 
   let reviewWorktree: string | null = null
