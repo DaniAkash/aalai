@@ -85,6 +85,8 @@ export interface AnalystInput {
   readonly worktree: string
   readonly conventionFiles: readonly string[]
   readonly config: Config
+  /** Cancels the turn when the run it belongs to stops. */
+  readonly signal?: AbortSignal
 }
 
 /** Plans the change and writes the acceptance criteria. Modifies nothing. */
@@ -97,6 +99,7 @@ export async function runAnalyst(
       agent: input.config.agents.analyst,
       runId: input.runId,
       station: 'analyst',
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
       subject: { repo: input.repo, kind: 'issue', number: input.issue.number },
       title: input.issue.title,
       label: 'analyst',
@@ -128,6 +131,8 @@ export interface ImplementerInput {
   readonly conventionFiles: readonly string[]
   readonly revision?: { readonly review: Review; readonly attempt: number }
   readonly config: Config
+  /** Cancels the turn when the run it belongs to stops. */
+  readonly signal?: AbortSignal
 }
 
 /** Writes the code against the plan. The only station that may modify files. */
@@ -138,6 +143,7 @@ export async function runImplementer(
     agent: input.config.agents.implementer,
     runId: input.runId,
     station: 'implementer',
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
     subject: { repo: input.repo, kind: 'issue', number: input.issue.number },
     title: input.issue.title,
     label: 'implementer',
@@ -165,6 +171,8 @@ export interface ReviewerInput {
   readonly base: string
   readonly branch: string
   readonly config: Config
+  /** Cancels the turn when the run it belongs to stops. */
+  readonly signal?: AbortSignal
 }
 
 /** Judges the real diff against the criteria. Modifies nothing. */
@@ -177,6 +185,7 @@ export async function runReviewer(
       agent: input.config.agents.reviewer,
       runId: input.runId,
       station: 'reviewer',
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
       subject: { repo: input.repo, kind: 'issue', number: input.issue.number },
       title: input.issue.title,
       label: 'reviewer',

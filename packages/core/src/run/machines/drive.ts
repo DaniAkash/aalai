@@ -29,7 +29,11 @@ export async function driveIssueWork(input: {
   /** Lowered by tests so the premise check does not wait a minute. */
   premiseIntervalMs?: number
 }): Promise<{ state: string; context: IssueWorkContext }> {
-  provideRunDeps(input.runId, input.deps)
+  // Cancelled when the machine settles, so a turn still in flight for a run
+  // that has already stopped does not spend another few minutes and commit
+  // work nobody will use.
+  const stopping = new AbortController()
+  provideRunDeps(input.runId, { ...input.deps, signal: stopping.signal })
 
   // Input is required either way. When a snapshot is given it wins, and the
   // input is only what the machine would have used had there been none.
@@ -81,6 +85,7 @@ export async function driveIssueWork(input: {
     // rather than by guessing from which fields are populated.
     return { state: workState(settled.value), context: settled.context }
   } finally {
+    stopping.abort()
     actor.stop()
     releaseRunDeps(input.runId)
   }

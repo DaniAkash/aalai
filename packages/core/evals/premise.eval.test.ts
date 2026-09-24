@@ -122,6 +122,61 @@ describe('the premise region', () => {
     expect(state).toBe('approved')
   })
 
+  test('an abort cancels work still in flight rather than letting it finish', async () => {
+    // A promise cannot be un-awaited, so the station is told to stop through a
+    // signal. Without it an aborted run spends another few minutes of agent
+    // time and commits work nobody will use.
+    let cancelled = false
+    const machine = issueWorkMachine.provide({
+      actors: {
+        premise: fromCallback(({ sendBack }) => {
+          // Late enough that the implementer is already working, which is the
+          // only case where there is anything in flight to cancel.
+          const timer = setTimeout(
+            () =>
+              sendBack({
+                type: 'PREMISE_ABORT',
+                reason: 'the issue was closed',
+              }),
+            30,
+          )
+          return () => clearTimeout(timer)
+        }),
+        analyst: fromPromise(async () => analysis),
+        implementer: fromPromise(
+          async ({
+            signal,
+          }): Promise<{ report: string; commit: CommitOutcome }> => {
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, 500)
+              signal?.addEventListener('abort', () => {
+                clearTimeout(timer)
+                cancelled = true
+                reject(new Error('aborted'))
+              })
+            })
+            return { report: 'r', commit: 'committed' }
+          },
+        ),
+        reviewer: fromPromise(async () => ({ review: approval })),
+      },
+    })
+
+    const actor = createActor(machine, {
+      input: {
+        runId: 'acme/widgets#7@1',
+        repo: 'acme/widgets',
+        issueNumber: 7,
+        maxRevisions: 2,
+        premiseBody: 'the issue text',
+      },
+    })
+    actor.start()
+    await waitFor(actor, (s) => s.status === 'done')
+
+    expect(cancelled).toBe(true)
+  })
+
   test('the machine only finishes when both regions do', async () => {
     // A parallel machine is done when every region is final, so a premise that
     // never settled would leave a finished run looking like a running one.

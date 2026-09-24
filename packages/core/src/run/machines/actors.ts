@@ -34,6 +34,7 @@ export const analyst = fromPromise(
           worktree: deps.workspace.worktreePath,
           conventionFiles: deps.conventionFiles,
           config: deps.config,
+          ...(deps.signal === undefined ? {} : { signal: deps.signal }),
         })
         // Only when the station did not record it itself. A tool call already
         // wrote the plan and the criteria, and writing them again would make a
@@ -163,6 +164,7 @@ export const reviewer = fromPromise(
           base: deps.workspace.base,
           branch: deps.workspace.branch,
           config: deps.config,
+          ...(deps.signal === undefined ? {} : { signal: deps.signal }),
         })
         // Redacted at the boundary: every field below is published, either in
         // the pull request body or in an issue comment on a stopped run.

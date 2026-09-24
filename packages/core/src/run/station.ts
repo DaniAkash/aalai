@@ -48,6 +48,8 @@ export interface StationInput {
   readonly subject: Subject
   /** The subject's title, for artifact headings. */
   readonly title: string
+  /** Cancels the turn when the run stops for a reason this station cannot see. */
+  readonly signal?: AbortSignal
 }
 
 export interface StationResult {
@@ -234,7 +236,14 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     const result = streamText({
       model: provider.languageModel(),
       messages: [{ role: 'user', content: input.task }],
-      abortSignal: AbortSignal.timeout(input.config.turnTimeoutMs),
+      // Either the turn runs too long, or the run it belongs to stopped.
+      abortSignal:
+        input.signal === undefined
+          ? AbortSignal.timeout(input.config.turnTimeoutMs)
+          : AbortSignal.any([
+              AbortSignal.timeout(input.config.turnTimeoutMs),
+              input.signal,
+            ]),
     })
 
     const { text, trace } = await consumeStream(result.fullStream, input, log)

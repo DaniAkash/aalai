@@ -21,6 +21,15 @@ export interface RunDeps {
   readonly workspace: Workspace
   readonly run: RunRef
   readonly conventionFiles: readonly string[]
+  /**
+   * Cancelled when the run stops for a reason the station cannot see.
+   *
+   * A premise that expires transitions the machine, but an agent turn already
+   * in flight keeps going: a promise cannot be un-awaited. Without this, an
+   * aborted run spends another few minutes of agent time and commits work
+   * nobody will use.
+   */
+  readonly signal?: AbortSignal
 }
 
 const registry = new Map<string, RunDeps>()
