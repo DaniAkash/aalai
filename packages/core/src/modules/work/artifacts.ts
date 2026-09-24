@@ -1,4 +1,4 @@
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFile, link, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SubjectKind } from '@/modules/db/schema/schema'
 import {
@@ -12,7 +12,7 @@ import {
   subjectSegment,
   workRoot,
 } from './paths'
-import { writeAtomic } from './store'
+import { stagingPath } from './store'
 
 /**
  * Artifacts are versioned files, and the filesystem is their index.
@@ -85,23 +85,36 @@ export async function writeArtifact(
   const dir = artifactsDir(subject)
   await mkdir(dir, { recursive: true })
 
-  const existing = await listVersions(subject, kind)
-  let version = (existing.at(-1)?.version ?? 0) + 1
+  // Staged first, then linked into place. link() fails if the name is taken,
+  // which makes claiming a version one atomic step rather than a check and a
+  // write with a gap between them: two writers scanning at the same moment
+  // would both pick the same next number, and rename would silently replace
+  // the first document.
+  const staging = stagingPath(join(dir, `${kind}.pending`))
+  await Bun.write(staging, content)
 
-  // Two writers allocating the same number would silently lose one of the two
-  // documents, so the name is claimed by finding one nobody has taken.
-  while (await Bun.file(join(dir, artifactFilename(kind, version))).exists()) {
-    version += 1
-  }
-
-  const filename = artifactFilename(kind, version)
-  await writeAtomic(join(dir, filename), content)
-  return {
-    id: artifactId(subject, filename),
-    subject,
-    kind,
-    version,
-    path: join(dir, filename),
+  try {
+    let version = ((await listVersions(subject, kind)).at(-1)?.version ?? 0) + 1
+    for (;;) {
+      const filename = artifactFilename(kind, version)
+      try {
+        await link(staging, join(dir, filename))
+        return {
+          id: artifactId(subject, filename),
+          subject,
+          kind,
+          version,
+          path: join(dir, filename),
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+          throw error
+        }
+        version += 1
+      }
+    }
+  } finally {
+    await rm(staging, { force: true })
   }
 }
 

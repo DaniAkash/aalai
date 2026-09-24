@@ -92,6 +92,32 @@ describe('versioned artifacts', () => {
     expect(await readArtifact(ref.id)).toBe('a verdict')
   })
 
+  test('concurrent writes each get their own version, none lost', async () => {
+    const writes = Array.from({ length: 12 }, (_, i) =>
+      writeArtifact(ISSUE, 'plan', `body ${i}`),
+    )
+    const refs = await Promise.all(writes)
+
+    const versions = refs.map((ref) => ref.version).sort((a, b) => a - b)
+    expect(versions).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+    // Every body is still readable at the version it was told it got, which is
+    // the guarantee that matters: an approval pinned to one cannot be replaced.
+    const bodies = await Promise.all(refs.map((ref) => readArtifact(ref.id)))
+    expect(new Set(bodies).size).toBe(12)
+  })
+
+  test('no staging files are left behind', async () => {
+    await Promise.all([
+      writeArtifact(ISSUE, 'plan', 'a'),
+      writeArtifact(ISSUE, 'plan', 'b'),
+    ])
+    const left = readdirSync(artifactsDir(ISSUE)).filter((f) =>
+      f.includes('.tmp'),
+    )
+    expect(left).toEqual([])
+  })
+
   test('a missing artifact reads as undefined rather than throwing', async () => {
     expect(
       await readArtifact('acme__widgets/issue-1/artifacts/plan.v9.md'),

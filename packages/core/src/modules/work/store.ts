@@ -2,6 +2,11 @@ import { mkdir, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { type RunRef, runDir } from './paths'
 
+/** A staging name nothing else will pick, in the target's own directory. */
+export function stagingPath(path: string): string {
+  return `${path}.${process.pid}.${crypto.randomUUID()}.tmp`
+}
+
 /**
  * Writes that either land whole or not at all.
  *
@@ -15,7 +20,10 @@ export async function writeAtomic(
   content: string,
 ): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${process.pid}.tmp`
+  // Unique per call, not just per process: two writes to the same target from
+  // one process would otherwise share a staging file, and each could rename or
+  // remove the bytes the other was still writing.
+  const temporary = stagingPath(path)
   try {
     await Bun.write(temporary, content)
     await rename(temporary, path)
