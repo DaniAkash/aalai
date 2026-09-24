@@ -1,45 +1,94 @@
+<div align="center">
+
 # aalai (ஆலை)
 
-A software factory that sits in your menu bar. It watches your GitHub repositories, picks up new issues, and delivers a reviewed draft pull request for each one. It runs on your own machine, using the GitHub CLI you are already signed into and coding agents over the Agent Client Protocol.
+**A software factory in your menu bar. Issues in, reviewed draft pull requests out, on your own machine.**
 
-Nothing merges without you. A draft pull request is the ceiling for anything the factory does unattended, and merge is not in its tool surface at all.
+[![Status](https://img.shields.io/badge/status-work%20in%20progress-orange)](#status)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)](#requirements)
+[![Built with Bun](https://img.shields.io/badge/built%20with-Bun-000?logo=bun&logoColor=white)](https://bun.sh)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 
-## Layout
+</div>
 
+---
+
+## Status
+
+> 🚧 **Work in progress.** The factory runs end to end from a terminal today: it polls, plans, implements, reviews and opens draft pull requests, and it survives being killed mid-run. The desktop app around it is still being built.
+
+## Why this exists
+
+Coding agents are good enough now that the interesting question is no longer "can it write the code". It is: **who is watching, and what happens when nobody is?**
+
+The usual answers are a cloud service that wants your repository, or a terminal you have to sit in front of. aalai is neither. It runs on your laptop, signs in as nothing more than the `gh` you already use, drives whichever coding agents you already have, and turns issues into reviewed draft pull requests while you do something else.
+
+**Nothing merges without you.** A draft pull request is the ceiling for anything it does unattended, and merge is not in its tool surface at all.
+
+---
+
+## What it does
+
+### Watches the repositories you pick
+
+A poll loop per repository, with a cursor, so it sees issues once rather than repeatedly. A claim is a single row with a lease, so two observations of the same issue produce one run.
+
+### Screens before it spends anything
+
+An issue body is instructions for an agent with shell access, and on a public repository anyone can write one. By default only `OWNER`, `MEMBER` and `COLLABORATOR` issues start a run, and you can narrow further to a label.
+
+### Three stations, one disposable worktree
+
+```text
+analyst      plans, writes the acceptance criteria, modifies nothing
+implementer  writes the code against that plan, commits locally
+reviewer     judges the committed diff from its own checkout
+deliver      pushes and opens a draft, only on an approved verdict
 ```
-app/
-  native/            the desktop app
-    src/             React, TanStack Router, shadcn, beUI motion components
-    src-tauri/       the Rust shell: tray, window, sidecar supervision
-packages/
-  core/              the factory. Polls, plans, implements, reviews, delivers.
-scripts/
-  build-sidecar.ts   compiles the factory into the binary the app bundles
-```
 
-**The factory runs without the app.** `packages/core` is a normal Bun project with its own tests and evals, and none of them know a desktop app exists. The app bundles a compiled copy of it as a sidecar and supervises it; it never contains factory logic. If the shell is broken or absent, the factory still runs from a terminal.
+The analyst and the reviewer run without write permission, so "the analyst plans, it does not implement" is a property of the run rather than a line in a prompt. Every run gets its own worktree, branched from the default branch and thrown away after.
+
+### Stations record by calling tools, not by writing prose
+
+Each station is handed a small MCP surface scoped to its own job, over a loopback port with a per-run token. The analyst is the only one that can write a plan; the reviewer is the only one that can write a verdict. Nothing has to parse an agent's paragraph to find out what it decided.
+
+### Artifacts are the memory
+
+The plan, the acceptance criteria, the review and the conversation are versioned markdown on disk. `plan.v2.md` lands beside `plan.v1.md` rather than over it, because approval pins to a version. A later station reads what an earlier one wrote through the same tool a person would use to read it.
+
+### It survives a restart
+
+A run is a persisted state machine. Quit in the middle of the reviewer and the next pass resumes it: the worktree is adopted rather than rebuilt, and a station that already finished answers from what it recorded instead of spending another agent turn.
+
+### Nothing merges
+
+The draft pull request is the artefact. aalai reviews the diff and pushes; the agent cannot.
+
+---
 
 ## Requirements
 
 - [Bun](https://bun.sh) 1.3 or newer
 - The [GitHub CLI](https://cli.github.com), authenticated: `gh auth status`
-- A coding agent that speaks ACP. All three stations default to `codex`.
-- For the desktop app: Rust 1.77 or newer and the Xcode command line tools on macOS.
+- A coding agent that speaks the [Agent Client Protocol](https://agentclientprotocol.com). All three stations default to `codex`
+- For the desktop app: Rust 1.77 or newer, plus the Xcode command line tools on macOS
 
 ## The factory, on its own
+
+`packages/core` is a normal Bun project with its own tests and evals, and none of them know a desktop app exists. Everything below works with no app installed.
 
 ```sh
 bun install
 cd packages/core
-bun run src/index.ts doctor                      # gh, git and config check
 
-bun start                                        # watch loop
-bun run once                                     # one polling pass
-bun run src/index.ts run owner/repo 12           # one issue, now
-bun run src/index.ts status                      # recent runs
+bun run src/index.ts doctor            # gh, git and settings check
+bun run src/index.ts --once            # one polling pass, then exit
+bun run src/index.ts                   # watch until interrupted
+bun run src/index.ts run owner/repo 12 # one issue, now
+bun run src/index.ts status            # recent runs
 ```
 
-Install it as a background service with launchd:
+Run it in the background with launchd:
 
 ```sh
 bun run service install
@@ -47,10 +96,9 @@ bun run service status
 bun run service uninstall
 ```
 
-Config and state both live in `~/.aalai/`. The config is created on first run
-if it is missing, and `aalai.config.json` in the working directory still wins
-if you prefer to keep one per project. A sleeping Mac does not poll: launchd
-restarts the process but will not wake the machine.
+A sleeping Mac does not poll: launchd restarts the process but will not wake the machine.
+
+→ **[packages/core/README.md](./packages/core/README.md)** for the full CLI guide: every command, every setting, the storage layout and the tool surface.
 
 ## The desktop app
 
@@ -59,11 +107,9 @@ bun install
 bun run dev
 ```
 
-That is the whole setup. No config file to copy: the app writes its own on
-first run, watching nothing, and repos are added from the Repos screen by
-picking from what your `gh` account already owns.
+That is the whole setup. There is no config file to copy: settings live in the database, and repositories are added by picking from what your `gh` account already owns.
 
-The shell spawns the factory, which binds an ephemeral port and reports it on stdout. Every launch also gets a fresh bearer token, required by every route except health. A localhost port that can open pull requests is reachable by any process on the machine, so it is not left open.
+The shell spawns the factory, which binds a port and reports it on stdout. Every launch also gets a fresh bearer token, required by every route except health. A localhost port that can open pull requests is reachable by any process on the machine, so it is not left open.
 
 Cross compile the sidecar for another platform by naming its target triple:
 
@@ -71,22 +117,62 @@ Cross compile the sidecar for another platform by naming its target triple:
 bun scripts/build-sidecar.ts x86_64-pc-windows-msvc
 ```
 
+---
+
+## Layout
+
+```text
+app/
+  native/            the desktop app
+    src/             React, TanStack Router, shadcn, beUI motion components
+    src-tauri/       the Rust shell: tray, window, sidecar supervision
+packages/
+  core/              the factory. Polls, plans, implements, reviews, delivers
+scripts/
+  build-sidecar.ts   compiles the factory into the binary the app bundles
+```
+
+**The factory runs without the app.** The app bundles a compiled copy of it as a sidecar and supervises it; it holds no factory logic. If the shell is broken or absent, the factory still runs from a terminal.
+
 ## Development
 
 ```sh
-bun run typecheck              # every workspace
-bun run --filter aalai-core test
-bun run --filter aalai-core eval
+bun run check      # biome, typecheck, tests, evals, clippy and dead-code, in one pass
+bun run test
+bun run eval
 ```
 
-The two suites answer different questions. **Tests** cover pure seams: the intake screen against recorded API payloads, claim and lease semantics, convention detection, path redaction. **Evals** assert on what the factory *did*: that the stations run in order, that an approval which does not clear the gate never ships, that revisions are bounded, that an untrusted author is refused. Neither touches the network.
+The two suites answer different questions. **Tests** cover pure seams: the intake screen against recorded API payloads, claim and lease semantics, atomic writes, path redaction. **Evals** assert on what the factory *did*: that the stations run in order, that an approval which does not clear the gate never ships, that a resumed run does not re-run a station that already succeeded, that an untrusted author is refused. Neither touches the network.
+
+---
 
 ## What this is not, yet
 
-The stations are not sandboxed. An agent has shell access and runs as the same user, so an already-authenticated `gh` remains reachable to it. The controls that actually hold are the disposable worktree, the independent review of the committed diff, the gate that requires every criterion to pass, and the draft status of every pull request. A sandboxed backend is the change that would make it a boundary.
+**The stations are not sandboxed.** An agent has shell access and runs as the same user, so an already authenticated `gh` remains reachable to it. The controls that actually hold are the disposable worktree, the independent review of the committed diff, the gate that requires every criterion to pass, and the draft status of every pull request. A sandboxed agent backend is the change that would make it a boundary.
 
-There is no durable memory between runs, so nothing a run learns about a repository carries into the next one.
+**Nothing carries between subjects.** Artifacts are the memory within an issue, but what a run learns about a repository does not yet reach the next one.
+
+## Roadmap
+
+Already shipped:
+
+- ✅ Durable storage: claims, leases, cursors and versioned artifacts that survive a crash
+- ✅ The full station pipeline, end to end, to a draft pull request
+- ✅ A state machine per run, persisted, resumable across process restarts
+- ✅ An MCP tool surface per station, scoped and token gated
+- ✅ Trust screening, redaction, and outbound intents that queue rather than send
+
+Coming next:
+
+- 🚧 The desktop app: live runs, approvals and settings
+- 🚧 Human gates: pause for a person before the work continues
+- 🚧 Pull request lifecycle: review comments and CI failures back into the loop
+- 🚧 Notifications and packaging
+
+---
 
 ## License
 
-MIT
+MIT, see [LICENSE](./LICENSE).
+
+Copyright © 2026 [Dani Akash](https://github.com/DaniAkash). If you build on this project, please retain the copyright notice as required by the MIT License.
