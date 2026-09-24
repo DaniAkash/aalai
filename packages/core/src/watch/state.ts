@@ -1,8 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { and, desc, eq, lt } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { openDb } from '@/modules/db/db'
-import * as schema from '@/modules/db/schema/schema'
+import { query } from '@/modules/db/query'
 import { cursor, runs } from '@/modules/db/schema/schema'
 
 export type { RunStatus } from '@/modules/db/schema/schema'
@@ -27,10 +26,6 @@ export interface RunRecord {
 
 /** Every run this module claims is about an issue. Pull requests arrive later. */
 const ISSUE = 'issue' as const
-
-function query(db: Database) {
-  return drizzle(db, { schema })
-}
 
 export function openState(path?: string): Database {
   return openDb(path).sqlite

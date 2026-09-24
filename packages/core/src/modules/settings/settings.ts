@@ -1,16 +1,11 @@
 import type { Database } from 'bun:sqlite'
 import { eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { logger } from '@/lib/log'
-import * as schema from '@/modules/db/schema/schema'
+import { query } from '@/modules/db/query'
 import { settings, watchedRepos } from '@/modules/db/schema/schema'
 import { DOMAIN_NAMES, DOMAINS, type DomainName, type Domains } from './domains'
 
 const log = logger('settings')
-
-function query(db: Database) {
-  return drizzle(db, { schema })
-}
 
 /**
  * One domain, or its defaults.

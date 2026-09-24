@@ -1,9 +1,8 @@
 import type { Database } from 'bun:sqlite'
 import type { createAcpxProvider } from 'acpx-ai-provider'
 import { and, eq } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { logger } from '@/lib/log'
-import * as schema from '@/modules/db/schema/schema'
+import { query } from '@/modules/db/query'
 import { stationSessions } from '@/modules/db/schema/schema'
 
 const log = logger('sessions')
@@ -23,10 +22,6 @@ export interface StationSession {
   readonly acpxSessionId: string | null
   readonly acpxRecordId: string | null
   readonly agentSessionId: string | null
-}
-
-function query(db: Database) {
-  return drizzle(db, { schema })
 }
 
 /**
