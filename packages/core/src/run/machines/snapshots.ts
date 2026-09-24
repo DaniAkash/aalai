@@ -3,7 +3,7 @@ import { logger } from '@/lib/log'
 import { query } from '@/modules/db/query'
 import { machineSnapshots } from '@/modules/db/schema/schema'
 import type { RunRef } from '@/modules/work/paths'
-import { writeJson } from '@/modules/work/store'
+import { readJson, writeJson } from '@/modules/work/store'
 
 const log = logger('snapshot')
 
@@ -47,4 +47,39 @@ export async function persistSnapshot(input: {
       error: error instanceof Error ? error.message : String(error),
     })
   }
+}
+
+export interface ResumableRun {
+  readonly runId: string
+  readonly machine: string
+  readonly value: string
+  readonly snapshotPath: string
+}
+
+/**
+ * Runs whose machine stopped somewhere other than an end state.
+ *
+ * `value` is the compact state in the row, which is the whole reason phase 1
+ * stored it separately: asking what is unfinished must not mean opening a
+ * document per run.
+ */
+export function unfinishedRuns(db: Database): ResumableRun[] {
+  return query(db)
+    .select({
+      runId: machineSnapshots.runId,
+      machine: machineSnapshots.machine,
+      value: machineSnapshots.value,
+      snapshotPath: machineSnapshots.snapshotPath,
+    })
+    .from(machineSnapshots)
+    .all()
+    .filter((row) => !FINAL.has(row.value))
+}
+
+/** States the machine does not come back from. */
+const FINAL = new Set(['approved', 'finished'])
+
+/** The persisted snapshot itself, or undefined if the document is gone. */
+export async function readSnapshot(run: RunRef): Promise<unknown | undefined> {
+  return await readJson<unknown>(run, 'machine')
 }

@@ -42,6 +42,11 @@ export type RunEvent = Base &
       }
     | { readonly type: 'stage.entered'; readonly stage: Stage }
     | {
+        /** A run picked back up after the process that started it went away. */
+        readonly type: 'run.resumed'
+        readonly state: string
+      }
+    | {
         readonly type: 'workspace.ready'
         readonly branch: string
         readonly base: string

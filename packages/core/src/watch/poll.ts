@@ -5,6 +5,7 @@ import type { GhIssue } from '@/lib/gh'
 import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
+import { resumeUnfinished } from '@/run/resume'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
@@ -14,7 +15,11 @@ const log = logger('poll')
 const COLD_START_LOOKBACK_MS = 10 * 60 * 1000
 
 export async function pollOnce(db: Database, config: Config): Promise<number> {
-  let handled = 0
+  // Before anything new is claimed. A run whose process went away is still
+  // claimed and still has a branch, so picking it up first is what stops a
+  // restart looking like an abandoned issue.
+  const resumed = await resumeUnfinished(db, config)
+  let handled = resumed
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
   }

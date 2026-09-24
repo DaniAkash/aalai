@@ -1,3 +1,4 @@
+import { logger } from '@/lib/log'
 /**
  * The little of an issue an artifact's heading needs.
  *
@@ -24,6 +25,27 @@ import type { Analysis, Review } from '@/run/stations/schemas'
  * one fact not derivable from its path, so it travels in the frontmatter with
  * the content rather than in a row that could drift from it.
  */
+
+/**
+ * Writes an artifact, and carries on if it cannot.
+ *
+ * A run that produced a pull request has done its job, and a full disk under
+ * the work directory is not a reason to throw that away. The failure is logged
+ * loudly rather than swallowed quietly.
+ */
+export async function recordBestEffort(
+  what: string,
+  write: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await write()
+  } catch (error) {
+    logger('pipeline').error('could not write artifacts', {
+      what,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 function frontmatter(fields: Record<string, string>): string {
   const lines = Object.entries(fields).map(([key, value]) => `${key}: ${value}`)

@@ -1,10 +1,9 @@
 import { fromPromise } from 'xstate'
 import { headSha } from '@/lib/git'
-import { logger } from '@/lib/log'
 import { redactDeep } from '@/lib/redact'
 import { latestArtifact } from '@/modules/work/artifacts'
 import { readJson } from '@/modules/work/store'
-import { recordAnalysis, recordReview } from '@/run/artifacts'
+import { recordAnalysis, recordBestEffort, recordReview } from '@/run/artifacts'
 import type { CommitOutcome } from '@/run/commit'
 import { commitImplementerWork } from '@/run/commit'
 import { runAnalyst, runImplementer, runReviewer } from '@/run/stations'
@@ -12,28 +11,6 @@ import type { Analysis, Review } from '@/run/stations/schemas'
 import { prepareReviewWorkspace } from '@/run/workspace'
 import { runDeps } from './deps'
 import { runAttempt } from './runner'
-
-const log = logger('pipeline')
-
-/**
- * Artifacts are written best effort.
- *
- * A run that produced a pull request has done its job, and a full disk under
- * the work directory is not a reason to throw that away.
- */
-async function recordArtifacts(
-  what: string,
-  write: () => Promise<unknown>,
-): Promise<void> {
-  try {
-    await write()
-  } catch (error) {
-    log.error('could not write artifacts', {
-      what,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
 
 export const analyst = fromPromise(
   async ({ input }: { input: { runId: string } }): Promise<Analysis> => {
@@ -61,7 +38,7 @@ export const analyst = fromPromise(
         // wrote the plan and the criteria, and writing them again would make a
         // second version of each for one run.
         if (result.recorded.analysis === undefined) {
-          await recordArtifacts('analysis', () =>
+          await recordBestEffort('analysis', () =>
             recordAnalysis(deps.run.subject, deps.run, deps.issue, analysis),
           )
         }
@@ -190,7 +167,7 @@ export const reviewer = fromPromise(
         // the pull request body or in an issue comment on a stopped run.
         const safe = redactDeep(review, deps.workspace.worktreePath)
         if (result.recorded.review === undefined) {
-          await recordArtifacts('review', () =>
+          await recordBestEffort('review', () =>
             recordReview(deps.run.subject, deps.run, deps.issue, safe),
           )
         }

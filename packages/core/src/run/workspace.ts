@@ -101,6 +101,48 @@ export async function prepareWorkspace(
   return { repo, issueNumber, clonePath, worktreePath, branch, base }
 }
 
+/**
+ * Picks up the worktree a previous process left behind, if it is still there.
+ *
+ * Resuming a run means resuming its work, and its work is commits in a
+ * worktree. `prepareWorkspace` deliberately destroys one to guarantee a clean
+ * start, which is right for a new run and exactly wrong for a resumed one: it
+ * would throw away the commits the run is being resumed to keep.
+ *
+ * Returns undefined when there is nothing to adopt, which is the signal to
+ * start the run over rather than resume it.
+ */
+export async function adoptWorkspace(
+  repo: string,
+  issueNumber: number,
+  issueTitle: string,
+): Promise<Workspace | undefined> {
+  const clonePath = await ensureClone(repo)
+  const worktreePath = worktreePathFor(repo, issueNumber)
+  if (!existsSync(join(worktreePath, '.git'))) {
+    return undefined
+  }
+
+  const branch = git.issueBranchName(issueNumber, issueTitle)
+  const base = await git.defaultBranch(clonePath)
+  const onBranch = await exec(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd: worktreePath,
+  })
+  if (onBranch.exitCode !== 0 || onBranch.stdout.trim() !== branch) {
+    // A worktree on some other branch is not this run's worktree. Adopting it
+    // would mean committing this run's work on top of somebody else's.
+    log.warn('worktree found but on another branch, not adopting', {
+      path: worktreePath,
+      found: onBranch.stdout.trim(),
+      expected: branch,
+    })
+    return undefined
+  }
+
+  log.info('worktree adopted', { path: worktreePath, branch, base })
+  return { repo, issueNumber, clonePath, worktreePath, branch, base }
+}
+
 export async function discardWorkspace(workspace: Workspace): Promise<void> {
   await git.removeWorktree(workspace.clonePath, workspace.worktreePath)
   log.debug('worktree removed', { path: workspace.worktreePath })

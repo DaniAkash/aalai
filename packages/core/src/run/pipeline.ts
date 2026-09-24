@@ -4,12 +4,13 @@ import type { GhIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
 import type { RunRef, Subject } from '@/modules/work/paths'
-import { recordRun, snapshotOf } from '@/run/artifacts'
+import { recordBestEffort, recordRun, snapshotOf } from '@/run/artifacts'
 import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
 import { driveIssueWork } from '@/run/machines/drive'
 import type { IssueWorkContext } from '@/run/machines/issueWork'
 import {
+  adoptWorkspace,
   discardPath,
   discardWorkspace,
   prepareWorkspace,
@@ -17,27 +18,6 @@ import {
 } from '@/run/workspace'
 
 const log = logger('pipeline')
-
-/**
- * Artifacts are written best effort.
- *
- * A run that produced a pull request has done its job, and a full disk or a
- * permission problem under the work directory is not a reason to throw that
- * away. The failure is logged loudly rather than swallowed quietly.
- */
-async function record(
-  what: string,
-  write: () => Promise<unknown>,
-): Promise<void> {
-  try {
-    await write()
-  } catch (error) {
-    log.error('could not write artifacts', {
-      what,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
 
 export interface PipelineResult {
   readonly status: 'delivered' | 'skipped' | 'failed'
@@ -58,12 +38,42 @@ export interface PipelineResult {
  * caller finalises the run's claim from that result: a rejection here would
  * leave the issue claimed and unretryable until its lease expires.
  */
+export interface ResumeFrom {
+  readonly runId: string
+  readonly snapshot: unknown
+}
+
+/**
+ * Picks a run back up where a previous process left it.
+ *
+ * The same path as a fresh run with two differences: the worktree is adopted
+ * rather than rebuilt, because rebuilding it would throw away the commits this
+ * run is being resumed to keep, and the machine starts from its snapshot.
+ */
+export async function resumeIssue(
+  repo: string,
+  issue: GhIssue,
+  config: Config,
+  from: ResumeFrom,
+): Promise<PipelineResult> {
+  return await work(repo, issue, config, from)
+}
+
 export async function runIssue(
   repo: string,
   issue: GhIssue,
   config: Config,
 ): Promise<PipelineResult> {
-  const runId = `${repo}#${issue.number}@${Date.now()}`
+  return await work(repo, issue, config, undefined)
+}
+
+async function work(
+  repo: string,
+  issue: GhIssue,
+  config: Config,
+  from: ResumeFrom | undefined,
+): Promise<PipelineResult> {
+  const runId = from?.runId ?? `${repo}#${issue.number}@${Date.now()}`
   const subject: Subject = { repo, kind: 'issue', number: issue.number }
   const run: RunRef = { subject, runId }
   log.info('run starting', { repo, issue: issue.number, title: issue.title })
@@ -79,31 +89,9 @@ export async function runIssue(
 
   let workspace: Workspace
   try {
-    workspace = await prepareWorkspace(repo, issue.number, issue.title)
+    workspace = await openWorkspace(repo, issue, from !== undefined)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    log.error('workspace setup failed', {
-      repo,
-      issue: issue.number,
-      error: message,
-    })
-    emit({
-      type: 'run.failed',
-      runId,
-      error: `workspace setup failed: ${message}`,
-      at: Date.now(),
-    })
-    // This return is before the try below, so it never reaches that finally.
-    // Recorded here instead: a run that failed before it had a workspace is
-    // still a run, and its outcome is the only thing left of it.
-    const failed: PipelineResult = {
-      status: 'failed',
-      error: `workspace setup failed: ${message}`,
-    }
-    await record('run', () =>
-      recordRun(run, snapshotOf(runId, repo, issue.number, failed)),
-    )
-    return failed
+    return await reportWorkspaceFailure(runId, repo, issue, run, error)
   }
 
   let reviewWorktree: string | null = null
@@ -132,6 +120,7 @@ export async function runIssue(
       repo,
       issueNumber: issue.number,
       run,
+      ...(from === undefined ? {} : { snapshot: from.snapshot }),
       deps: {
         db: getDb().sqlite,
         config,
@@ -165,30 +154,8 @@ export async function runIssue(
       config,
     })
     await reportOutcomeOnIssue(repo, issue, delivery)
-
-    if (!delivery.delivered) {
-      emit({
-        type: 'run.stopped',
-        runId,
-        reason: delivery.reason,
-        at: Date.now(),
-      })
-      result = { status: 'skipped', error: delivery.reason }
-      return result
-    }
-    emit({
-      type: 'run.delivered',
-      runId,
-      prUrl: delivery.prUrl,
-      branch: delivery.branch,
-      at: Date.now(),
-    })
-    delivered = true
-    result = {
-      status: 'delivered',
-      branch: delivery.branch,
-      prUrl: delivery.prUrl,
-    }
+    result = announceDelivery(runId, delivery)
+    delivered = result.status === 'delivered'
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -197,7 +164,7 @@ export async function runIssue(
     result = { status: 'failed', error: message }
     return result
   } finally {
-    await record('run', () =>
+    await recordBestEffort('run', () =>
       recordRun(run, snapshotOf(runId, repo, issue.number, result)),
     )
     if (reviewWorktree !== null) {
@@ -209,6 +176,82 @@ export async function runIssue(
       await discardWorkspace(workspace)
     }
   }
+}
+
+/** Turns what delivery did into the run's result, and says so on the bus. */
+function announceDelivery(runId: string, delivery: Delivery): PipelineResult {
+  if (!delivery.delivered) {
+    emit({
+      type: 'run.stopped',
+      runId,
+      reason: delivery.reason,
+      at: Date.now(),
+    })
+    return { status: 'skipped', error: delivery.reason }
+  }
+  emit({
+    type: 'run.delivered',
+    runId,
+    prUrl: delivery.prUrl,
+    branch: delivery.branch,
+    at: Date.now(),
+  })
+  return {
+    status: 'delivered',
+    branch: delivery.branch,
+    prUrl: delivery.prUrl,
+  }
+}
+
+/**
+ * A run that never got a worktree.
+ *
+ * This path returns before the try whose finally records the run, so the
+ * snapshot is written here instead: a run that failed this early is still a
+ * run, and its outcome is the only thing left of it.
+ */
+async function reportWorkspaceFailure(
+  runId: string,
+  repo: string,
+  issue: GhIssue,
+  run: RunRef,
+  error: unknown,
+): Promise<PipelineResult> {
+  const message = error instanceof Error ? error.message : String(error)
+  log.error('workspace setup failed', {
+    repo,
+    issue: issue.number,
+    error: message,
+  })
+  const failed: PipelineResult = {
+    status: 'failed',
+    error: `workspace setup failed: ${message}`,
+  }
+  emit({ type: 'run.failed', runId, error: failed.error ?? '', at: Date.now() })
+  await recordBestEffort('run', () =>
+    recordRun(run, snapshotOf(runId, repo, issue.number, failed)),
+  )
+  return failed
+}
+
+/**
+ * The worktree a run works in.
+ *
+ * Adopted when resuming and built fresh otherwise. A rebuilt worktree is a
+ * clean one, which is the whole point for a new run and the exact opposite of
+ * what a resumed one needs: it would throw away the commits the run is being
+ * resumed to keep. Adoption returning nothing means there is nothing to keep,
+ * so the run starts over rather than refusing to run.
+ */
+async function openWorkspace(
+  repo: string,
+  issue: GhIssue,
+  resuming: boolean,
+): Promise<Workspace> {
+  const adopted = resuming
+    ? await adoptWorkspace(repo, issue.number, issue.title)
+    : undefined
+  return adopted ?? (await prepareWorkspace(repo, issue.number, issue.title))
 }
 
 /**

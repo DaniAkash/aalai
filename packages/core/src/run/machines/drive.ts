@@ -1,4 +1,4 @@
-import { createActor, waitFor } from 'xstate'
+import { createActor, type Snapshot, waitFor } from 'xstate'
 import type { RunRef } from '@/modules/work/paths'
 import type { RunDeps } from './deps'
 import { provideRunDeps, releaseRunDeps } from './deps'
@@ -17,9 +17,19 @@ export async function driveIssueWork(input: {
   issueNumber: number
   run: RunRef
   deps: RunDeps
+  /**
+   * A snapshot to carry on from, when this run is being picked back up.
+   *
+   * Restoring restarts the invocations, which is what the attempt record is
+   * for: the station the process died in is entered again and answers from
+   * what it already produced rather than doing it twice.
+   */
+  snapshot?: unknown
 }): Promise<{ state: string; context: IssueWorkContext }> {
   provideRunDeps(input.runId, input.deps)
 
+  // Input is required either way. When a snapshot is given it wins, and the
+  // input is only what the machine would have used had there been none.
   const actor = createActor(issueWorkMachine, {
     input: {
       runId: input.runId,
@@ -27,6 +37,9 @@ export async function driveIssueWork(input: {
       issueNumber: input.issueNumber,
       maxRevisions: input.deps.config.maxRevisions,
     },
+    ...(input.snapshot === undefined
+      ? {}
+      : { snapshot: input.snapshot as Snapshot<unknown> }),
   })
 
   // Chained rather than collected. Each transition overwrites the same row and
