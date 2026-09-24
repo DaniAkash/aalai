@@ -21,6 +21,7 @@ const patchSchema = z.object({
   maxCiFixes: z.number().int().min(0).max(5).optional(),
   turnTimeoutMs: z.number().int().min(1000).optional(),
   trustedAuthorsOnly: z.boolean().optional(),
+  askOnPermission: z.boolean().optional(),
   requireLabel: z.string().nullable().optional(),
   notifications: z.boolean().optional(),
   theme: z.enum(['system', 'light', 'dark']).optional(),

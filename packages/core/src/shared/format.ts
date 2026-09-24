@@ -1,4 +1,5 @@
 export type { GateRow } from '@/modules/db/schema/schema'
+export type { RunPolicy } from '@/modules/settings/domains'
 
 /**
  * Formatting both the terminal and the interface need.
