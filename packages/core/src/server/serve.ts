@@ -1,4 +1,5 @@
 import { logger } from '@/lib/log'
+import { publishToolEndpoint } from '@/modules/tools/endpoint'
 import { app } from '@/server/app'
 
 const log = logger('server')
@@ -20,6 +21,8 @@ export interface ServerHandle {
  * can open pull requests and any local process can reach 127.0.0.1, so an
  * unauthenticated localhost port is a real hole rather than a theoretical one.
  */
+let running: ReturnType<typeof Bun.serve> | null = null
+
 export function startServer(port: number, token?: string): ServerHandle | null {
   try {
     const server = Bun.serve({
@@ -49,7 +52,12 @@ export function startServer(port: number, token?: string): ServerHandle | null {
     if (bound === undefined) throw new Error('server bound without a port')
 
     log.info('api ready', { url: `http://127.0.0.1:${bound}` })
-    return { port: bound, token: token ?? null }
+    const handle = { port: bound, token: token ?? null }
+    // Published rather than exported, so a station can find the tool surface
+    // without the run layer importing the server layer.
+    publishToolEndpoint(handle)
+    running = server
+    return handle
   } catch (error) {
     // The API is an observer. A port problem must not take the factory down
     // with it: the run is the product and the screen is a convenience.
@@ -76,4 +84,17 @@ export function announceReady(handle: ServerHandle): void {
   process.stdout.write(
     `${JSON.stringify({ ready: true, port: handle.port, pid: process.pid })}\n`,
   )
+}
+
+/**
+ * Stops the api, for the commands that run one pass and exit.
+ *
+ * A single pass still needs the tool surface, because a station that records
+ * through tools on one path and through parsed prose on another produces two
+ * different sets of artifacts for the same work.
+ */
+export function stopServer(): void {
+  running?.stop(true)
+  running = null
+  publishToolEndpoint(null)
 }

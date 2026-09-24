@@ -136,7 +136,7 @@ export async function runIssue(
     })
     emit({ type: 'stage.entered', runId, stage: 'analyst', at: Date.now() })
 
-    const { analysis } = await runAnalyst({
+    const { analysis, result: analystTurn } = await runAnalyst({
       runId,
       repo,
       issue,
@@ -155,9 +155,15 @@ export async function runIssue(
       criteria: analysis.acceptance_criteria,
       at: Date.now(),
     })
-    await record('analysis', () =>
-      recordAnalysis(subject, run, issue, analysis),
-    )
+    // Only when the station did not record it itself. A tool call already
+    // wrote the plan and the criteria, and writing them again here would
+    // produce a second version of each for one run, which is exactly what
+    // pinning an approval to a version is meant to make impossible.
+    if (analystTurn.recorded.analysis === undefined) {
+      await record('analysis', () =>
+        recordAnalysis(subject, run, issue, analysis),
+      )
+    }
 
     const outcome = await runReviewLoop(
       {
@@ -200,7 +206,7 @@ export async function runIssue(
           })
           const path = await prepareReviewWorkspace(workspace)
           reviewWorktree = path
-          const { review } = await runReviewer({
+          const { review, result: reviewerTurn } = await runReviewer({
             runId,
             repo,
             issue,
@@ -220,7 +226,11 @@ export async function runIssue(
             results: safe.criteria_results,
             at: Date.now(),
           })
-          await record('review', () => recordReview(subject, run, issue, safe))
+          if (reviewerTurn.recorded.review === undefined) {
+            await record('review', () =>
+              recordReview(subject, run, issue, safe),
+            )
+          }
           return safe
         },
       },

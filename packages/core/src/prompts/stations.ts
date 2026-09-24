@@ -35,10 +35,26 @@ export function buildStationRules(
 const JSON_CONTRACT =
   'End your reply with a single fenced JSON block, ```json, containing exactly the object described above and nothing else. Write your prose before it, never after.'
 
+/**
+ * How a station is told to record what it decided.
+ *
+ * A tool call is a shape aalai validated and versioned on disk. A fenced block
+ * is prose that has to be parsed back out, which is what the loose transforms
+ * in the schemas exist to survive. The fenced form stays for the headless path
+ * and for any run where the tool surface did not come up.
+ */
+function recordContract(tool: string, available: boolean): string {
+  return available
+    ? `Record this by calling the ${tool} tool, with each field above as an argument. The tool is the only thing that records your work: anything you write as prose is read by a person and then forgotten. Call it once you are confident, and do not also write the object as a fenced block.`
+    : JSON_CONTRACT
+}
+
 export interface AnalystPromptInput {
   readonly repo: string
   readonly issue: GhIssue
   readonly conventionFiles: readonly string[]
+  /** Whether this turn has the tool surface. */
+  readonly tools: boolean
 }
 
 export function buildAnalystPrompt(input: AnalystPromptInput): string {
@@ -68,7 +84,7 @@ Produce a plan with these fields:
 - acceptance_criteria: objective, testable statements a reviewer will check one by one against the diff. These are the contract. Write them so that passing them means the issue is genuinely resolved, and so that someone reading the diff can tell whether each one holds.
 - test_strategy: what should be tested and how, grounded in this repository's real test setup
 
-${JSON_CONTRACT}`
+${recordContract('write_plan', input.tools)}`
 }
 
 export interface ImplementerPromptInput {
@@ -132,6 +148,8 @@ export interface ReviewerPromptInput {
   readonly analysis: Analysis
   readonly base: string
   readonly branch: string
+  /** Whether this turn has the tool surface. */
+  readonly tools: boolean
 }
 
 export function buildReviewerPrompt(input: ReviewerPromptInput): string {
@@ -167,5 +185,5 @@ Produce:
 
 Do not approve out of politeness, and do not request changes over style preference. Every blocking finding must trace back to correctness, the acceptance criteria, safety, or scope.
 
-${JSON_CONTRACT}`
+${recordContract('write_review', input.tools)}`
 }

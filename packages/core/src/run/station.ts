@@ -6,6 +6,16 @@ import type { StationId } from '@/events/events.types'
 import { logger, raw } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
 import { rememberSession, sessionKeyFor } from '@/modules/sessions/sessions'
+import {
+  grantToolAccess,
+  revokeToolAccess,
+  type ToolGrant,
+} from '@/modules/tools/context'
+import { toolEndpoint } from '@/modules/tools/endpoint'
+import type { ArtifactRef } from '@/modules/work/artifacts'
+import type { Subject } from '@/modules/work/paths'
+import type { OutboundIntent } from '@/modules/work/store'
+import type { Analysis, Review } from '@/run/stations/schemas'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
 // documented compatibility path. Its warning fires on every turn with a full
@@ -34,6 +44,10 @@ export interface StationInput {
    */
   readonly permission: StationPermission
   readonly config: Config
+  /** The subject this turn records against, which the tools write to. */
+  readonly subject: Subject
+  /** The subject's title, for artifact headings. */
+  readonly title: string
 }
 
 export interface StationResult {
@@ -43,6 +57,12 @@ export interface StationResult {
   readonly totalTokens: number | undefined
   /** Tool names in call order. The eval suite asserts on this, not on prose. */
   readonly trace: readonly string[]
+  /** Artifacts this turn recorded through its tools, in call order. */
+  readonly artifacts: readonly ArtifactRef[]
+  /** Outbound intents this turn queued. Queued, never sent. */
+  readonly queued: readonly OutboundIntent[]
+  /** Structured values a tool validated, when the station had tools. */
+  readonly recorded: { analysis?: Analysis; review?: Review }
 }
 
 /**
@@ -132,10 +152,52 @@ async function consumeStream(
   return { text, trace }
 }
 
+/**
+ * The tool surface for one turn, when there is a server to serve it.
+ *
+ * Absent in the eval path and when the api could not bind. A station without
+ * tools still runs and still returns its prose, which is what keeps the
+ * headless path working while the prompts move over.
+ */
+function openToolSurface(input: StationInput): {
+  grant: ToolGrant
+  mcp: {
+    type: 'http'
+    name: string
+    url: string
+    headers: Record<string, string>
+  }
+} | null {
+  const endpoint = toolEndpoint()
+  if (endpoint === null) {
+    return null
+  }
+  const grant = grantToolAccess({
+    runId: input.runId,
+    title: input.title,
+    subject: input.subject,
+    run: { subject: input.subject, runId: input.runId },
+    station: input.station,
+  })
+  return {
+    grant,
+    mcp: {
+      type: 'http',
+      name: 'aalai',
+      url: `http://127.0.0.1:${endpoint.port}/api/mcp/${grant.token}`,
+      headers:
+        endpoint.token === null
+          ? {}
+          : { authorization: `Bearer ${endpoint.token}` },
+    },
+  }
+}
+
 export async function runStation(input: StationInput): Promise<StationResult> {
   const log = logger(input.label)
   const { sqlite } = getDb()
   const sessionKey = sessionKeyFor(input.runId, input.station)
+  const tools = openToolSurface(input)
 
   const provider = createAcpxProvider({
     agent: input.agent,
@@ -149,6 +211,7 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     // under ~/.acpx and owns what it keeps there.
     sessionMode: 'persistent',
     sessionKey,
+    ...(tools === null ? {} : { mcpServers: [tools.mcp] }),
     permissionMode: input.permission,
     // Headless: an unexpected permission request is refused so the turn
     // continues, rather than hanging on a prompt nobody is there to answer.
@@ -187,8 +250,15 @@ export async function runStation(input: StationInput): Promise<StationResult> {
       toolCalls: trace.length,
       totalTokens: usage.totalTokens,
       trace,
+      artifacts: tools?.grant.context.written ?? [],
+      queued: tools?.grant.context.queued ?? [],
+      recorded: tools?.grant.context.recorded ?? {},
     }
   } finally {
+    // The token must not outlive the turn it was minted for.
+    if (tools !== null) {
+      revokeToolAccess(tools.grant.token)
+    }
     await provider.close()
   }
 }

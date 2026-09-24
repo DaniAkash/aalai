@@ -6,7 +6,7 @@ import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exitWithParent } from '@/lib/parent'
 import { runIssue } from '@/run/pipeline'
-import { announceReady, startServer } from '@/server/serve'
+import { announceReady, startServer, stopServer } from '@/server/serve'
 import { screenIssue } from '@/watch/intake'
 import { pollOnce } from '@/watch/poll'
 import { claimRun, completeRun, forgetRun, openState } from '@/watch/state'
@@ -93,11 +93,28 @@ async function serve(config: Config): Promise<void> {
   log.info('stopped')
 }
 
+/**
+ * The api, for a command that runs once and exits.
+ *
+ * Not announced and not on a fixed port: nothing is waiting for a handshake
+ * here. It exists so a headless pass records through the same tools a served
+ * run does, rather than quietly falling back to parsed prose.
+ */
+function withToolSurface<T>(work: () => Promise<T>): Promise<T> {
+  if (serverDisabled()) {
+    return work()
+  }
+  startServer(0, crypto.randomUUID())
+  return work().finally(stopServer)
+}
+
 async function once(config: Config): Promise<void> {
-  const db = openState()
-  const handled = await pollOnce(db, config)
-  log.info('single pass complete', { handled })
-  db.close()
+  await withToolSurface(async () => {
+    const db = openState()
+    const handled = await pollOnce(db, config)
+    log.info('single pass complete', { handled })
+    db.close()
+  })
 }
 
 /** Manual trigger. Bypasses the cursor but still claims, so a demo cannot double-run. */

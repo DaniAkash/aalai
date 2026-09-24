@@ -44,14 +44,16 @@ function registerWritePlan(server: McpServer, ctx: ToolContext): void {
     },
     async (input) => {
       const analysis = analysisSchema.parse(input)
-      const written = await recordAnalysis(
+      const recorded = await recordAnalysis(
         ctx.subject,
         ctx.run,
         { number: ctx.subject.number, title: ctx.title },
         analysis,
       )
+      ctx.written.push(recorded.plan, recorded.criteria)
+      ctx.recorded.analysis = analysis
       return text(
-        `recorded ${written.plan.id} (version ${written.plan.version}) and ${written.criteria.id} with ${analysis.acceptance_criteria.length} criteria`,
+        `recorded ${recorded.plan.id} (version ${recorded.plan.version}) and ${recorded.criteria.id} with ${analysis.acceptance_criteria.length} criteria`,
       )
     },
   )
@@ -81,15 +83,17 @@ function registerWriteReview(server: McpServer, ctx: ToolContext): void {
     },
     async (input) => {
       const review = reviewSchema.parse(input)
-      const written = await recordReview(
+      const recorded = await recordReview(
         ctx.subject,
         ctx.run,
         { number: ctx.subject.number, title: ctx.title },
         review,
       )
+      ctx.written.push(recorded.review)
+      ctx.recorded.review = review
       const passed = review.criteria_results.filter((r) => r.pass).length
       return text(
-        `recorded ${written.review.id} (version ${written.review.version}): ${review.verdict}, ${passed}/${review.criteria_results.length} criteria met`,
+        `recorded ${recorded.review.id} (version ${recorded.review.version}): ${review.verdict}, ${passed}/${review.criteria_results.length} criteria met`,
       )
     },
   )
@@ -168,13 +172,15 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
   const queue =
     (kind: 'comment_on_issue' | 'reply_to_review') =>
     async (input: { body: string; threadId?: string }) => {
-      await queueOutbound(ctx.run, {
+      const intent = {
         kind,
         body: input.body,
         ...(input.threadId === undefined ? {} : { threadId: input.threadId }),
         station: ctx.station,
         queuedAt: new Date().toISOString(),
-      })
+      } as const
+      await queueOutbound(ctx.run, intent)
+      ctx.queued.push(intent)
       return text(
         'queued. aalai sends this once the run reaches a point where it may speak.',
       )

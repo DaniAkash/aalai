@@ -23,7 +23,9 @@ let base: string
 const SUBJECT: Subject = { repo: 'acme/widgets', kind: 'issue', number: 27 }
 const RUN_ID = 'acme/widgets#27@1790000000000'
 
-function contextFor(station: ToolContext['station']): ToolContext {
+function contextFor(
+  station: ToolContext['station'],
+): Omit<ToolContext, 'written' | 'queued' | 'recorded'> {
   return {
     runId: RUN_ID,
     title: 'pluralise always returns the plural form',
@@ -64,7 +66,7 @@ describe('the run token', () => {
   })
 
   test('a revoked token stops working, so it cannot outlive the turn', async () => {
-    const token = grantToolAccess(contextFor('analyst'))
+    const token = grantToolAccess(contextFor('analyst')).token
     revokeToolAccess(token)
     const response = await fetch(`${base}/api/mcp/${token}`, { method: 'POST' })
     expect(response.status).toBe(404)
@@ -74,9 +76,9 @@ describe('the run token', () => {
 
 describe('which tools a station is given', () => {
   test('the analyst can write a plan and the implementer cannot', async () => {
-    const analyst = await connect(grantToolAccess(contextFor('analyst')))
+    const analyst = await connect(grantToolAccess(contextFor('analyst')).token)
     const implementer = await connect(
-      grantToolAccess(contextFor('implementer')),
+      grantToolAccess(contextFor('implementer')).token,
     )
 
     const analystTools = (await analyst.listTools()).tools.map((t) => t.name)
@@ -91,7 +93,9 @@ describe('which tools a station is given', () => {
   })
 
   test('the reviewer cannot rewrite the criteria it grades against', async () => {
-    const reviewer = await connect(grantToolAccess(contextFor('reviewer')))
+    const reviewer = await connect(
+      grantToolAccess(contextFor('reviewer')).token,
+    )
     const tools = (await reviewer.listTools()).tools.map((t) => t.name)
     expect(tools).toContain('write_review')
     expect(tools).not.toContain('write_plan')
@@ -100,7 +104,7 @@ describe('which tools a station is given', () => {
 
   test('calling a tool it was not given is refused, not quietly ignored', async () => {
     const implementer = await connect(
-      grantToolAccess(contextFor('implementer')),
+      grantToolAccess(contextFor('implementer')).token,
     )
     const result = await implementer.callTool({
       name: 'write_plan',
@@ -120,7 +124,7 @@ describe('which tools a station is given', () => {
 
   test('the registry and what is served agree', async () => {
     for (const station of ['analyst', 'implementer', 'reviewer'] as const) {
-      const client = await connect(grantToolAccess(contextFor(station)))
+      const client = await connect(grantToolAccess(contextFor(station)).token)
       const served = (await client.listTools()).tools.map((t) => t.name).sort()
       const declared = [
         ...STATION_TOOLS[station],
@@ -135,7 +139,7 @@ describe('which tools a station is given', () => {
 
 describe('write_plan', () => {
   test('writes a versioned plan and criteria the store can read back', async () => {
-    const client = await connect(grantToolAccess(contextFor('analyst')))
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
     const result = await client.callTool({
       name: 'write_plan',
       arguments: {
@@ -166,7 +170,7 @@ describe('write_plan', () => {
   })
 
   test('a second call versions rather than overwrites', async () => {
-    const client = await connect(grantToolAccess(contextFor('analyst')))
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
     const args = {
       problem_statement: 'first',
       approach: 'a',
@@ -189,7 +193,7 @@ describe('write_plan', () => {
   })
 
   test('the agent cannot choose the version', async () => {
-    const client = await connect(grantToolAccess(contextFor('analyst')))
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
     const schema = (await client.listTools()).tools.find(
       (t) => t.name === 'write_plan',
     )?.inputSchema
@@ -200,7 +204,7 @@ describe('write_plan', () => {
 
 describe('write_review', () => {
   test('records the verdict and its evidence', async () => {
-    const client = await connect(grantToolAccess(contextFor('reviewer')))
+    const client = await connect(grantToolAccess(contextFor('reviewer')).token)
     await client.callTool({
       name: 'write_review',
       arguments: {
@@ -226,7 +230,7 @@ describe('write_review', () => {
 
 describe('outbound intents', () => {
   test('a comment is queued, not sent', async () => {
-    const client = await connect(grantToolAccess(contextFor('analyst')))
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
     const result = await client.callTool({
       name: 'comment_on_issue',
       arguments: { body: 'I need more detail about the expected output.' },
@@ -243,7 +247,7 @@ describe('outbound intents', () => {
 
 describe('recall', () => {
   test('find_artifacts returns ids, never bodies', async () => {
-    const analyst = await connect(grantToolAccess(contextFor('analyst')))
+    const analyst = await connect(grantToolAccess(contextFor('analyst')).token)
     await analyst.callTool({
       name: 'write_plan',
       arguments: {
