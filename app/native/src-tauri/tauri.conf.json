@@ -43,8 +43,6 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     },
-    "externalBin": [
-      "binaries/aalai-core"
-    ]
+    "externalBin": ["binaries/aalai-core"]
   }
 }

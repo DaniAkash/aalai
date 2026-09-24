@@ -1,6 +1,6 @@
+import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { Database } from 'bun:sqlite'
 import { stateDir } from '@/config'
 
 export type RunStatus = 'claimed' | 'delivered' | 'failed' | 'skipped'
@@ -51,9 +51,11 @@ export function openState(path?: string): Database {
 }
 
 export function readCursor(db: Database, repo: string): string | null {
-  const row = db.query<{ last_seen_at: string }, [string]>(
-    'SELECT last_seen_at FROM cursor WHERE repo = ?',
-  ).get(repo)
+  const row = db
+    .query<{ last_seen_at: string }, [string]>(
+      'SELECT last_seen_at FROM cursor WHERE repo = ?',
+    )
+    .get(repo)
   return row?.last_seen_at ?? null
 }
 
@@ -83,18 +85,20 @@ export function claimRun(
 ): string | null {
   const now = new Date()
   const lease = crypto.randomUUID()
-  const result = db.query(
-    `INSERT INTO runs (repo, issue, status, lease, started_at)
+  const result = db
+    .query(
+      `INSERT INTO runs (repo, issue, status, lease, started_at)
      VALUES ($repo, $issue, 'claimed', $lease, $now)
      ON CONFLICT(repo, issue) DO UPDATE SET started_at = $now, lease = $lease, error = NULL
      WHERE runs.status = 'claimed' AND runs.started_at < $staleBefore`,
-  ).run({
-    $repo: repo,
-    $issue: issue,
-    $lease: lease,
-    $now: now.toISOString(),
-    $staleBefore: new Date(now.getTime() - staleAfterMs).toISOString(),
-  })
+    )
+    .run({
+      $repo: repo,
+      $issue: issue,
+      $lease: lease,
+      $now: now.toISOString(),
+      $staleBefore: new Date(now.getTime() - staleAfterMs).toISOString(),
+    })
   return result.changes > 0 ? lease : null
 }
 
@@ -135,22 +139,25 @@ export function completeRun(
   const result =
     outcome.lease === undefined
       ? db.query(`${set} WHERE repo = ? AND issue = ?`).run(...values)
-      : db.query(`${set} WHERE repo = ? AND issue = ? AND lease = ?`).run(
-          ...values,
-          outcome.lease,
-        )
+      : db
+          .query(`${set} WHERE repo = ? AND issue = ? AND lease = ?`)
+          .run(...values, outcome.lease)
   return result.changes > 0
 }
 
 export function listRuns(db: Database, limit = 20): RunRecord[] {
-  return db.query<RunRecord, [number]>(
-    `SELECT repo, issue, status, branch, pr_url, error FROM runs
+  return db
+    .query<RunRecord, [number]>(
+      `SELECT repo, issue, status, branch, pr_url, error FROM runs
      ORDER BY started_at DESC LIMIT ?`,
-  ).all(limit)
+    )
+    .all(limit)
 }
 
 /** Removes a run record so the issue can be picked up again. The manual retry path. */
 export function forgetRun(db: Database, repo: string, issue: number): boolean {
-  const result = db.query('DELETE FROM runs WHERE repo = ? AND issue = ?').run(repo, issue)
+  const result = db
+    .query('DELETE FROM runs WHERE repo = ? AND issue = ?')
+    .run(repo, issue)
   return result.changes > 0
 }

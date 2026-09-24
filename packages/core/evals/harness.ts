@@ -30,7 +30,10 @@ export function assert(condition: boolean, message: string): asserts condition {
 }
 
 /** Asserts that `names` appear in `trace` in this order, ignoring anything else. */
-export function calledInOrder(trace: readonly string[], names: readonly string[]): boolean {
+export function calledInOrder(
+  trace: readonly string[],
+  names: readonly string[],
+): boolean {
   let cursor = 0
   for (const entry of trace) {
     if (entry === names[cursor]) {
@@ -44,7 +47,10 @@ export function calledInOrder(trace: readonly string[], names: readonly string[]
 }
 
 /** The gate decision for one issue, so a case can assert on it without a network call. */
-export function screen(issue: GhIssue, config: Pick<Config, 'trustedAuthorsOnly' | 'requireLabel'>) {
+export function screen(
+  issue: GhIssue,
+  config: Pick<Config, 'trustedAuthorsOnly' | 'requireLabel'>,
+) {
   return screenIssue(issue, {
     trustedAuthorsOnly: config.trustedAuthorsOnly,
     requireLabel: config.requireLabel,

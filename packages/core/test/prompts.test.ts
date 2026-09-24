@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { GhIssue } from '@/lib/gh'
-import { buildAgentRules, buildCommitMessage, buildTaskPrompt } from '@/prompts/implement-issue'
+import {
+  buildAgentRules,
+  buildCommitMessage,
+  buildTaskPrompt,
+} from '@/prompts/implement-issue'
 
 function issue(overrides: Partial<GhIssue> = {}): GhIssue {
   return {
@@ -84,11 +88,17 @@ describe('buildTaskPrompt', () => {
 
 describe('buildCommitMessage', () => {
   test('defaults to fix and closes the issue', () => {
-    expect(buildCommitMessage(issue())).toBe('fix: Something is broken\n\nCloses #7')
+    expect(buildCommitMessage(issue())).toBe(
+      'fix: Something is broken\n\nCloses #7',
+    )
   })
 
   test('reads the conventional type from labels', () => {
-    expect(buildCommitMessage(issue({ labels: [{ name: 'enhancement' }] }))).toStartWith('feat:')
-    expect(buildCommitMessage(issue({ labels: [{ name: 'documentation' }] }))).toStartWith('docs:')
+    expect(
+      buildCommitMessage(issue({ labels: [{ name: 'enhancement' }] })),
+    ).toStartWith('feat:')
+    expect(
+      buildCommitMessage(issue({ labels: [{ name: 'documentation' }] })),
+    ).toStartWith('docs:')
   })
 })

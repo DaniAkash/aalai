@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test'
 import type { Database } from 'bun:sqlite'
+import { describe, expect, test } from 'bun:test'
 import {
   claimRun,
   completeRun,
@@ -55,7 +55,12 @@ describe('cursor', () => {
 })
 
 /** Rewinds a run's start time, standing in for wall-clock time the test cannot wait out. */
-function backdateClaim(db: Database, repo: string, issue: number, minutesAgo: number): void {
+function backdateClaim(
+  db: Database,
+  repo: string,
+  issue: number,
+  minutesAgo: number,
+): void {
   db.query('UPDATE runs SET started_at = ? WHERE repo = ? AND issue = ?').run(
     new Date(Date.now() - minutesAgo * 60_000).toISOString(),
     repo,
@@ -91,7 +96,10 @@ describe('stale claims', () => {
   test('a finished run is never reclaimed, however old it is', () => {
     const db = openState(':memory:')
     claimRun(db, 'acme/widgets', 7)
-    completeRun(db, 'acme/widgets', 7, { status: 'delivered', prUrl: 'https://example/pull/9' })
+    completeRun(db, 'acme/widgets', 7, {
+      status: 'delivered',
+      prUrl: 'https://example/pull/9',
+    })
     backdateClaim(db, 'acme/widgets', 7, 24 * 60)
     expect(claimRun(db, 'acme/widgets', 7, 30 * 60 * 1000)).toBeNull()
     db.close()

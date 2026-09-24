@@ -31,7 +31,11 @@ export function startServer(port: number, token?: string): ServerHandle | null {
         if (!url.pathname.startsWith('/api')) {
           return new Response('aalai api\n', { status: 404 })
         }
-        if (token && url.pathname !== '/api/health' && !authorised(request, token)) {
+        if (
+          token &&
+          url.pathname !== '/api/health' &&
+          !authorised(request, token)
+        ) {
           return new Response('unauthorised\n', { status: 401 })
         }
         return app.fetch(request)

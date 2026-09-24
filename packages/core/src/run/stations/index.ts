@@ -9,13 +9,20 @@ import {
   buildStationRules,
 } from '@/prompts/stations'
 import { runStation, type StationResult } from '@/run/station'
-import { analysisSchema, reviewSchema, type Analysis, type Review } from '@/run/stations/schemas'
+import {
+  type Analysis,
+  analysisSchema,
+  type Review,
+  reviewSchema,
+} from '@/run/stations/schemas'
 
 const log = logger('stations')
 
-export class StationOutputError extends Error {
+class StationOutputError extends Error {
   constructor(station: string, detail: string) {
-    super(`the ${station} returned output that does not match its schema: ${detail}`)
+    super(
+      `the ${station} returned output that does not match its schema: ${detail}`,
+    )
     this.name = 'StationOutputError'
   }
 }
@@ -35,7 +42,9 @@ async function structuredStation<T>(
   let result = await runStation(input)
   let parsed = parseStationOutput(result.text, schema)
   if (!parsed.ok) {
-    log.warn(`${station} output did not validate, retrying once`, { error: parsed.error })
+    log.warn(`${station} output did not validate, retrying once`, {
+      error: parsed.error,
+    })
     result = await runStation({
       ...input,
       task: `${input.task}\n\nYour previous reply could not be used: ${parsed.error}. Reply again with the same content, ending in one valid fenced JSON block matching the fields exactly.`,
@@ -61,23 +70,27 @@ export interface AnalystInput {
 export async function runAnalyst(
   input: AnalystInput,
 ): Promise<{ analysis: Analysis; result: StationResult }> {
-  const { value, result } = await structuredStation('analyst', {
-    agent: input.config.agents.analyst,
-    runId: input.runId,
-    station: 'analyst',
-    label: 'analyst',
-    worktree: input.worktree,
-    systemRules: buildStationRules('analyst'),
-    task: buildAnalystPrompt({
-      repo: input.repo,
-      issue: input.issue,
-      conventionFiles: input.conventionFiles,
-    }),
-    // Reads only. The planning station cannot modify the repository it is
-    // planning against, which is a property of the run rather than a promise.
-    permission: 'approve-reads',
-    config: input.config,
-  }, analysisSchema)
+  const { value, result } = await structuredStation(
+    'analyst',
+    {
+      agent: input.config.agents.analyst,
+      runId: input.runId,
+      station: 'analyst',
+      label: 'analyst',
+      worktree: input.worktree,
+      systemRules: buildStationRules('analyst'),
+      task: buildAnalystPrompt({
+        repo: input.repo,
+        issue: input.issue,
+        conventionFiles: input.conventionFiles,
+      }),
+      // Reads only. The planning station cannot modify the repository it is
+      // planning against, which is a property of the run rather than a promise.
+      permission: 'approve-reads',
+      config: input.config,
+    },
+    analysisSchema,
+  )
   return { analysis: value, result }
 }
 
@@ -93,7 +106,9 @@ export interface ImplementerInput {
 }
 
 /** Writes the code against the plan. The only station that may modify files. */
-export async function runImplementer(input: ImplementerInput): Promise<StationResult> {
+export async function runImplementer(
+  input: ImplementerInput,
+): Promise<StationResult> {
   return runStation({
     agent: input.config.agents.implementer,
     runId: input.runId,
@@ -129,22 +144,26 @@ export interface ReviewerInput {
 export async function runReviewer(
   input: ReviewerInput,
 ): Promise<{ review: Review; result: StationResult }> {
-  const { value, result } = await structuredStation('reviewer', {
-    agent: input.config.agents.reviewer,
-    runId: input.runId,
-    station: 'reviewer',
-    label: 'reviewer',
-    worktree: input.worktree,
-    systemRules: buildStationRules('reviewer'),
-    task: buildReviewerPrompt({
-      repo: input.repo,
-      issue: input.issue,
-      analysis: input.analysis,
-      base: input.base,
-      branch: input.branch,
-    }),
-    permission: 'approve-reads',
-    config: input.config,
-  }, reviewSchema)
+  const { value, result } = await structuredStation(
+    'reviewer',
+    {
+      agent: input.config.agents.reviewer,
+      runId: input.runId,
+      station: 'reviewer',
+      label: 'reviewer',
+      worktree: input.worktree,
+      systemRules: buildStationRules('reviewer'),
+      task: buildReviewerPrompt({
+        repo: input.repo,
+        issue: input.issue,
+        analysis: input.analysis,
+        base: input.base,
+        branch: input.branch,
+      }),
+      permission: 'approve-reads',
+      config: input.config,
+    },
+    reviewSchema,
+  )
   return { review: value, result }
 }

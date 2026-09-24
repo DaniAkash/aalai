@@ -34,8 +34,12 @@ export function reviewGate(review: Review, analysis: Analysis): Gate {
     return { ok: true }
   }
 
-  const judged = new Set(review.criteria_results.map((result) => normalise(result.criterion)))
-  const missing = analysis.acceptance_criteria.filter((c) => !judged.has(normalise(c)))
+  const judged = new Set(
+    review.criteria_results.map((result) => normalise(result.criterion)),
+  )
+  const missing = analysis.acceptance_criteria.filter(
+    (c) => !judged.has(normalise(c)),
+  )
   if (missing.length > 0) {
     return {
       ok: false,

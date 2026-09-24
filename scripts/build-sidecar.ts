@@ -4,9 +4,11 @@
  * Tauri resolves an externalBin by appending the target triple to the name, so
  * the file on disk must carry it. Passing no argument builds for this machine.
  */
-import { $ } from 'bun'
+
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { $ } from 'bun'
+import { ok } from '../packages/core/src/lib/output'
 
 const TRIPLES: Record<string, string> = {
   'aarch64-apple-darwin': 'bun-darwin-arm64',
@@ -28,11 +30,14 @@ async function hostTriple(): Promise<string> {
 
 const triple = process.argv[2] ?? (await hostTriple())
 const target = TRIPLES[triple]
-if (!target) throw new Error(`no bun target for ${triple}. Known: ${Object.keys(TRIPLES).join(', ')}`)
+if (!target)
+  throw new Error(
+    `no bun target for ${triple}. Known: ${Object.keys(TRIPLES).join(', ')}`,
+  )
 
 await mkdir(outDir, { recursive: true })
 const suffix = triple.includes('windows') ? '.exe' : ''
 const out = join(outDir, `aalai-core-${triple}${suffix}`)
 
 await $`bun build --compile --target=${target} --outfile=${out} ${join(root, 'packages', 'core', 'src', 'index.ts')}`
-console.log(`sidecar: ${out}`)
+ok('sidecar built', out)

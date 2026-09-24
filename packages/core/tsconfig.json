@@ -2,22 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     },
-    "types": [
-      "bun"
-    ],
-    "lib": [
-      "ESNext",
-      "DOM"
-    ]
+    "types": ["bun"],
+    "lib": ["ESNext", "DOM"]
   },
-  "include": [
-    "src",
-    "scripts",
-    "test",
-    "evals"
-  ]
+  "include": ["src", "scripts", "test", "evals"]
 }

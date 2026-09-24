@@ -1,5 +1,5 @@
-import { streamText } from 'ai'
 import { createAcpxProvider } from 'acpx-ai-provider'
+import { streamText } from 'ai'
 import type { Config } from '@/config'
 import { emit } from '@/events/bus'
 import type { StationId } from '@/events/events.types'
@@ -66,7 +66,10 @@ export async function runStation(input: StationInput): Promise<StationResult> {
 
   try {
     try {
-      await provider.setConfigOption('reasoning_effort', input.config.reasoningEffort)
+      await provider.setConfigOption(
+        'reasoning_effort',
+        input.config.reasoningEffort,
+      )
     } catch (error) {
       log.debug('reasoning_effort not applied', { error })
     }
@@ -141,7 +144,10 @@ export async function runStation(input: StationInput): Promise<StationResult> {
       })
     }
 
-    const [finishReason, usage] = await Promise.all([result.finishReason, result.totalUsage])
+    const [finishReason, usage] = await Promise.all([
+      result.finishReason,
+      result.totalUsage,
+    ])
     return {
       text: text.trim(),
       finishReason,

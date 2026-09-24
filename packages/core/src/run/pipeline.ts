@@ -1,15 +1,14 @@
 import type { Config } from '@/config'
+import { emit, registerRunRoot } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
-import { buildCommitMessage } from '@/prompts/implement-issue'
-import { conventionsInstruction, detectConventions } from '@/run/conventions'
-import { deliver, reportOutcomeOnIssue, type Delivery } from '@/run/deliver'
-import { emit, registerRunRoot } from '@/events/bus'
 import { redactDeep } from '@/lib/redact'
-import { runReviewLoop, type CommitOutcome } from '@/run/loop'
+import { buildCommitMessage } from '@/prompts/implement-issue'
+import { detectConventions } from '@/run/conventions'
+import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
+import { type CommitOutcome, runReviewLoop } from '@/run/loop'
 import { runAnalyst, runImplementer, runReviewer } from '@/run/stations'
-import type { Analysis } from '@/run/stations/schemas'
 import {
   discardPath,
   discardWorkspace,
@@ -46,7 +45,14 @@ export async function runIssue(
 ): Promise<PipelineResult> {
   const runId = `${repo}#${issue.number}@${Date.now()}`
   log.info('run starting', { repo, issue: issue.number, title: issue.title })
-  emit({ type: 'run.started', runId, repo, issue: issue.number, title: issue.title, at: Date.now() })
+  emit({
+    type: 'run.started',
+    runId,
+    repo,
+    issue: issue.number,
+    title: issue.title,
+    at: Date.now(),
+  })
   emit({ type: 'stage.entered', runId, stage: 'workspace', at: Date.now() })
 
   let workspace: Workspace
@@ -54,8 +60,17 @@ export async function runIssue(
     workspace = await prepareWorkspace(repo, issue.number, issue.title)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    log.error('workspace setup failed', { repo, issue: issue.number, error: message })
-    emit({ type: 'run.failed', runId, error: `workspace setup failed: ${message}`, at: Date.now() })
+    log.error('workspace setup failed', {
+      repo,
+      issue: issue.number,
+      error: message,
+    })
+    emit({
+      type: 'run.failed',
+      runId,
+      error: `workspace setup failed: ${message}`,
+      at: Date.now(),
+    })
     return { status: 'failed', error: `workspace setup failed: ${message}` }
   }
 
@@ -104,7 +119,12 @@ export async function runIssue(
     const outcome = await runReviewLoop(
       {
         implement: async (revision) => {
-          emit({ type: 'stage.entered', runId, stage: 'implementer', at: Date.now() })
+          emit({
+            type: 'stage.entered',
+            runId,
+            stage: 'implementer',
+            at: Date.now(),
+          })
           if (revision !== undefined) {
             emit({
               type: 'revision.started',
@@ -126,9 +146,15 @@ export async function runIssue(
           })
           return turn.text
         },
-        commit: (attempt) => commitImplementerWork(runId, workspace, issue, attempt, config),
+        commit: (attempt) =>
+          commitImplementerWork(runId, workspace, issue, attempt, config),
         review: async () => {
-          emit({ type: 'stage.entered', runId, stage: 'reviewer', at: Date.now() })
+          emit({
+            type: 'stage.entered',
+            runId,
+            stage: 'reviewer',
+            at: Date.now(),
+          })
           const path = await prepareReviewWorkspace(workspace)
           reviewWorktree = path
           const { review } = await runReviewer({
@@ -159,8 +185,16 @@ export async function runIssue(
     )
 
     if (outcome.kind === 'stopped') {
-      emit({ type: 'run.stopped', runId, reason: outcome.reason, at: Date.now() })
-      await reportOutcomeOnIssue(repo, issue, { delivered: false, reason: outcome.reason })
+      emit({
+        type: 'run.stopped',
+        runId,
+        reason: outcome.reason,
+        at: Date.now(),
+      })
+      await reportOutcomeOnIssue(repo, issue, {
+        delivered: false,
+        reason: outcome.reason,
+      })
       return { status: 'skipped', error: outcome.reason }
     }
 
@@ -177,7 +211,12 @@ export async function runIssue(
     await reportOutcomeOnIssue(repo, issue, delivery)
 
     if (!delivery.delivered) {
-      emit({ type: 'run.stopped', runId, reason: delivery.reason, at: Date.now() })
+      emit({
+        type: 'run.stopped',
+        runId,
+        reason: delivery.reason,
+        at: Date.now(),
+      })
       return { status: 'skipped', error: delivery.reason }
     }
     emit({
@@ -188,7 +227,11 @@ export async function runIssue(
       at: Date.now(),
     })
     delivered = true
-    return { status: 'delivered', branch: delivery.branch, prUrl: delivery.prUrl }
+    return {
+      status: 'delivered',
+      branch: delivery.branch,
+      prUrl: delivery.prUrl,
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error('run failed', { repo, issue: issue.number, error: message })
@@ -217,7 +260,9 @@ async function commitImplementerWork(
   const changed = await git.changedFiles(workspace.worktreePath)
   const { deliverable, generated } = git.partitionStagePaths(changed)
   if (generated.length > 0) {
-    log.warn('ignoring generated output the agent produced', { count: generated.length })
+    log.warn('ignoring generated output the agent produced', {
+      count: generated.length,
+    })
   }
   if (deliverable.length === 0) {
     return 'no-changes'
@@ -231,7 +276,9 @@ async function commitImplementerWork(
   const subject = buildCommitMessage(issue).split('\n')[0] ?? issue.title
   const sha = await git.commit(
     workspace.worktreePath,
-    attempt === 0 ? buildCommitMessage(issue) : `${subject} (review pass ${attempt})`,
+    attempt === 0
+      ? buildCommitMessage(issue)
+      : `${subject} (review pass ${attempt})`,
     { name: config.commitName, email: config.commitEmail },
   )
   log.info('committed locally', { sha: sha.slice(0, 8), attempt })

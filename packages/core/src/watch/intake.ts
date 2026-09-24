@@ -1,3 +1,4 @@
+import type { Config, WatchedRepo } from '@/config'
 import type { GhIssue } from '@/lib/gh'
 
 /**
@@ -5,7 +6,7 @@ import type { GhIssue } from '@/lib/gh'
  * this set (CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, NONE, MANNEQUIN) is an account
  * the repo has not trusted, so its issue body must not become agent instructions.
  */
-export const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
+const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
   'OWNER',
   'MEMBER',
   'COLLABORATOR',
@@ -14,6 +15,22 @@ export const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
 export interface IntakePolicy {
   readonly trustedAuthorsOnly: boolean
   readonly requireLabel: string | null
+}
+
+/**
+ * The policy one watched repository is screened under.
+ *
+ * A repository's own label gate overrides the global default, so one
+ * repository can demand a label without imposing it on every other.
+ */
+export function intakePolicyFor(
+  config: Config,
+  watched: WatchedRepo,
+): IntakePolicy {
+  return {
+    trustedAuthorsOnly: config.trustedAuthorsOnly,
+    requireLabel: watched.requireLabel ?? config.requireLabel,
+  }
 }
 
 export type Screening =
@@ -36,12 +53,20 @@ export function screenIssue(issue: GhIssue, policy: IntakePolicy): Screening {
     return { accepted: false, reason: `state is ${issue.state}` }
   }
   if (policy.requireLabel !== null) {
-    const labelled = issue.labels.some((label) => label.name === policy.requireLabel)
+    const labelled = issue.labels.some(
+      (label) => label.name === policy.requireLabel,
+    )
     if (!labelled) {
-      return { accepted: false, reason: `missing label "${policy.requireLabel}"` }
+      return {
+        accepted: false,
+        reason: `missing label "${policy.requireLabel}"`,
+      }
     }
   }
-  if (policy.trustedAuthorsOnly && !TRUSTED_ASSOCIATIONS.has(issue.author_association)) {
+  if (
+    policy.trustedAuthorsOnly &&
+    !TRUSTED_ASSOCIATIONS.has(issue.author_association)
+  ) {
     return {
       accepted: false,
       reason: `author_association ${issue.author_association} is not trusted`,

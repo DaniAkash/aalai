@@ -1,32 +1,16 @@
-# React + TypeScript + Vite
+# aalai desktop app
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The Tauri shell and its interface. The factory itself lives in `packages/core`
+and runs without this.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sh
+bun run dev        # from the repository root: builds the sidecar, then starts
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- `src/` React, TanStack Router, shadcn on the base-mira preset, beUI motion
+  components. Icons are lucide, one family for the whole app.
+- `src-tauri/` the Rust shell: tray, window, and supervision of the compiled
+  factory as a sidecar.
+
+Routes are file based under `src/routes`; `routeTree.gen.ts` is generated and
+committed so a clean checkout typechecks without running the plugin first.

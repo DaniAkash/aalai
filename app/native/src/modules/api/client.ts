@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
-import { hc } from 'hono/client'
 import type { AppType } from 'aalai-core/app'
+import { hc } from 'hono/client'
 
 interface ApiInfo {
   port: number | null
@@ -36,10 +36,4 @@ export async function api() {
     fetch: tauriFetch as unknown as typeof fetch,
     headers: { authorization: `Bearer ${token}` },
   })
-}
-
-/** Where the event stream lives, for the pieces that subscribe rather than query. */
-export async function eventsUrl(): Promise<string> {
-  const { port } = await info()
-  return `http://127.0.0.1:${port}/api/events`
 }

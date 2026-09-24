@@ -41,51 +41,55 @@ export function AppShell({ pending }: { pending?: number }) {
   return (
     <AnimatedSidebarProvider
       defaultOpen
-      className="bg-background text-foreground flex h-dvh w-full overflow-hidden"
+      className="flex h-dvh w-full overflow-hidden bg-background text-foreground"
     >
-        <AnimatedSidebar collapsible="icon" ariaLabel="Sections">
-          <AnimatedSidebarHeader>
-            <span className="font-heading text-[15px] font-semibold tracking-tight">aalai</span>
-          </AnimatedSidebarHeader>
+      <AnimatedSidebar collapsible="icon" ariaLabel="Sections">
+        <AnimatedSidebarHeader>
+          <span className="font-heading font-semibold text-[15px] tracking-tight">
+            aalai
+          </span>
+        </AnimatedSidebarHeader>
 
-          <AnimatedSidebarContent>
-            <AnimatedSidebarGroup>
-              <AnimatedSidebarGroupContent>
-                <AnimatedSidebarMenu>
-                  {NAV.map((item) => {
-                    const Icon = item.icon
-                    const active = item.to === '/' ? path === '/' : path.startsWith(item.to)
-                    return (
-                      <AnimatedSidebarMenuItem key={item.to}>
-                        <AnimatedSidebarMenuButton
-                          icon={<Icon className="size-4" />}
-                          isActive={active}
-                          badge={item.to === '/' && pending ? pending : undefined}
-                          onSelect={() => void navigate({ to: item.to })}
-                        >
-                          {item.label}
-                        </AnimatedSidebarMenuButton>
-                      </AnimatedSidebarMenuItem>
-                    )
-                  })}
-                </AnimatedSidebarMenu>
-              </AnimatedSidebarGroupContent>
-            </AnimatedSidebarGroup>
-          </AnimatedSidebarContent>
+        <AnimatedSidebarContent>
+          <AnimatedSidebarGroup>
+            <AnimatedSidebarGroupContent>
+              <AnimatedSidebarMenu>
+                {NAV.map((item) => {
+                  const Icon = item.icon
+                  const active =
+                    item.to === '/' ? path === '/' : path.startsWith(item.to)
+                  return (
+                    <AnimatedSidebarMenuItem key={item.to}>
+                      <AnimatedSidebarMenuButton
+                        icon={<Icon className="size-4" />}
+                        isActive={active}
+                        badge={item.to === '/' && pending ? pending : undefined}
+                        onSelect={() => void navigate({ to: item.to })}
+                      >
+                        {item.label}
+                      </AnimatedSidebarMenuButton>
+                    </AnimatedSidebarMenuItem>
+                  )
+                })}
+              </AnimatedSidebarMenu>
+            </AnimatedSidebarGroupContent>
+          </AnimatedSidebarGroup>
+        </AnimatedSidebarContent>
+      </AnimatedSidebar>
 
-        </AnimatedSidebar>
-
-        <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-          <div
-            data-tauri-drag-region
-            className="border-border flex h-[38px] shrink-0 items-center border-b px-3"
-          >
-            <span className="text-muted-foreground font-mono text-[11px]">{crumb(path)}</span>
-          </div>
-          <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            <Outlet />
-          </main>
-        </AnimatedSidebarInset>
+      <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+        <div
+          data-tauri-drag-region
+          className="flex h-[38px] shrink-0 items-center border-border border-b px-3"
+        >
+          <span className="font-mono text-[11px] text-muted-foreground">
+            {crumb(path)}
+          </span>
+        </div>
+        <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <Outlet />
+        </main>
+      </AnimatedSidebarInset>
     </AnimatedSidebarProvider>
   )
 }

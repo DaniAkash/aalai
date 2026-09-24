@@ -16,13 +16,31 @@ const DOT: Record<string, string> = {
 function RunsRoute() {
   const runs = usePastRuns()
 
-  if (runs.isPending) return <><Head /><Loading rows={5} /></>
-  if (runs.isError) return <><Head /><ErrorNote message={runs.error.message} onRetry={() => runs.refetch()} /></>
+  if (runs.isPending)
+    return (
+      <>
+        <Head />
+        <Loading rows={5} />
+      </>
+    )
+  if (runs.isError)
+    return (
+      <>
+        <Head />
+        <ErrorNote
+          message={runs.error.message}
+          onRetry={() => runs.refetch()}
+        />
+      </>
+    )
   if (runs.data.runs.length === 0) {
     return (
       <>
         <Head />
-        <Empty title="No runs yet" detail="Once a watched repo gets an issue that passes the door, the run will appear here." />
+        <Empty
+          title="No runs yet"
+          detail="Once a watched repo gets an issue that passes the door, the run will appear here."
+        />
       </>
     )
   }
@@ -33,14 +51,16 @@ function RunsRoute() {
       {runs.data.runs.map((run) => (
         <div
           key={`${run.repo}#${run.issue}`}
-          className="border-border bg-card mb-1.5 flex items-center gap-3 rounded-xl border p-3"
+          className="mb-1.5 flex items-center gap-3 rounded-xl border border-border bg-card p-3"
         >
-          <span className={`size-[7px] shrink-0 rounded-full ${DOT[run.status] ?? 'bg-muted-foreground'}`} />
+          <span
+            className={`size-[7px] shrink-0 rounded-full ${DOT[run.status] ?? 'bg-muted-foreground'}`}
+          />
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[13px]">
               {run.repo}#{run.issue}
             </div>
-            <div className="text-muted-foreground font-mono text-[11.5px]">
+            <div className="font-mono text-[11.5px] text-muted-foreground">
               {run.status}
               {run.branch ? ` · ${run.branch}` : ''}
             </div>
@@ -49,7 +69,7 @@ function RunsRoute() {
             <button
               type="button"
               onClick={() => void openUrl(run.pr_url as string)}
-              className="text-primary text-[12px] hover:underline"
+              className="text-[12px] text-primary hover:underline"
             >
               pull request
             </button>
@@ -63,8 +83,12 @@ function RunsRoute() {
 function Head() {
   return (
     <>
-      <h1 className="font-heading text-[19px] font-semibold tracking-tight">Runs</h1>
-      <p className="text-muted-foreground mb-5 text-[13px]">Everything the factory has done.</p>
+      <h1 className="font-heading font-semibold text-[19px] tracking-tight">
+        Runs
+      </h1>
+      <p className="mb-5 text-[13px] text-muted-foreground">
+        Everything the factory has done.
+      </p>
     </>
   )
 }

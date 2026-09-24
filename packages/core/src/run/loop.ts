@@ -29,7 +29,11 @@ export interface Revision {
 }
 
 export type LoopOutcome =
-  | { readonly kind: 'approved'; readonly review: Review; readonly implementerReport: string }
+  | {
+      readonly kind: 'approved'
+      readonly review: Review
+      readonly implementerReport: string
+    }
   | { readonly kind: 'stopped'; readonly reason: string }
 
 /**
@@ -55,7 +59,10 @@ export async function runReviewLoop(
       return { kind: 'stopped', reason: 'the agent made no file changes' }
     }
     if (committed === 'generated-only') {
-      return { kind: 'stopped', reason: 'the agent changed only build or dependency output' }
+      return {
+        kind: 'stopped',
+        reason: 'the agent changed only build or dependency output',
+      }
     }
 
     const review = await deps.review()
@@ -71,7 +78,10 @@ export async function runReviewLoop(
       return { kind: 'approved', review, implementerReport }
     }
     if (review.verdict === 'reject') {
-      return { kind: 'stopped', reason: `the reviewer rejected the approach: ${review.summary}` }
+      return {
+        kind: 'stopped',
+        reason: `the reviewer rejected the approach: ${review.summary}`,
+      }
     }
     // An approve that fails the gate is not a revision request, it is a
     // malformed approval. Sending it back would ask the implementer to fix

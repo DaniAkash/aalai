@@ -1,7 +1,7 @@
+import { describe, expect, test } from 'bun:test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, test } from 'bun:test'
 import { conventionsInstruction, detectConventions } from '@/run/conventions'
 
 async function repoWith(files: Record<string, string>): Promise<string> {

@@ -2,8 +2,11 @@ import type { Config } from '@/config'
 import { commentOnIssue, createDraftPullRequest, type GhIssue } from '@/lib/gh'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
-import { buildCommitMessage, buildPullRequestBody } from '@/prompts/implement-issue'
 import { redactDeep, redactLocalPaths } from '@/lib/redact'
+import {
+  buildCommitMessage,
+  buildPullRequestBody,
+} from '@/prompts/implement-issue'
 import type { Analysis, Review } from '@/run/stations/schemas'
 import type { Workspace } from '@/run/workspace'
 
@@ -19,7 +22,11 @@ export interface DeliveryInput {
 }
 
 export type Delivery =
-  | { readonly delivered: true; readonly prUrl: string; readonly branch: string }
+  | {
+      readonly delivered: true
+      readonly prUrl: string
+      readonly branch: string
+    }
   | { readonly delivered: false; readonly reason: string }
 
 /**
@@ -30,7 +37,7 @@ export type Delivery =
  * the draft flag is not configurable because it is the human gate.
  */
 export async function deliver(input: DeliveryInput): Promise<Delivery> {
-  const { workspace, issue, analysis, review, report, config } = input
+  const { workspace, issue, analysis, review, report } = input
 
   // The implementer's work is already committed locally; the loop did that so
   // the reviewer could read it from its own checkout. Delivery is the first

@@ -3,7 +3,10 @@ import { z } from 'zod'
 import { loadConfig, saveConfig } from '@/config'
 import { ownedRepos } from '@/lib/gh'
 
-const addSchema = z.object({ repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/), requireLabel: z.string().optional() })
+const addSchema = z.object({
+  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  requireLabel: z.string().optional(),
+})
 
 /**
  * Watched repositories, owned by the app rather than by a text editor.
@@ -23,7 +26,8 @@ export const reposRoute = new Hono()
   })
   .post('/repos', async (c) => {
     const body = addSchema.safeParse(await c.req.json())
-    if (!body.success) return c.json({ error: z.prettifyError(body.error) }, 400)
+    if (!body.success)
+      return c.json({ error: z.prettifyError(body.error) }, 400)
 
     const config = await loadConfig()
     if (config.watch.some((w) => w.repo === body.data.repo)) {
@@ -36,7 +40,10 @@ export const reposRoute = new Hono()
   .delete('/repos/:owner/:name', async (c) => {
     const repo = `${c.req.param('owner')}/${c.req.param('name')}`
     const config = await loadConfig()
-    const next = { ...config, watch: config.watch.filter((w) => w.repo !== repo) }
+    const next = {
+      ...config,
+      watch: config.watch.filter((w) => w.repo !== repo),
+    }
     await saveConfig(next)
     return c.json({ repos: next.watch })
   })

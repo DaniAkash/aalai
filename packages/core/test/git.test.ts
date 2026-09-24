@@ -15,7 +15,7 @@ describe('issueBranchName', () => {
   })
 
   test('never leaves a trailing separator when the cap lands on one', () => {
-    const branch = issueBranchName(3, 'a'.repeat(38) + ' bbbb cccc')
+    const branch = issueBranchName(3, `${'a'.repeat(38)} bbbb cccc`)
     expect(branch.endsWith('-')).toBe(false)
   })
 
@@ -55,7 +55,10 @@ describe('assertSafeBranch', () => {
 
 describe('partitionStagePaths', () => {
   test('keeps ordinary source paths', () => {
-    const { deliverable, generated } = partitionStagePaths(['src/a.ts', 'test/b.test.ts'])
+    const { deliverable, generated } = partitionStagePaths([
+      'src/a.ts',
+      'test/b.test.ts',
+    ])
     expect(deliverable).toHaveLength(2)
     expect(generated).toHaveLength(0)
   })
@@ -71,7 +74,9 @@ describe('partitionStagePaths', () => {
   })
 
   test('matches a generated directory at any depth', () => {
-    const { generated } = partitionStagePaths(['packages/api/node_modules/x/y.js'])
+    const { generated } = partitionStagePaths([
+      'packages/api/node_modules/x/y.js',
+    ])
     expect(generated).toHaveLength(1)
   })
 

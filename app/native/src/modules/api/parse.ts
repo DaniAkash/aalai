@@ -1,5 +1,5 @@
 /** The part of a response we actually use, so Hono's client type fits too. */
-interface Readable {
+export interface Readable {
   readonly ok: boolean
   readonly status: number
   readonly statusText: string

@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
-import { streamSSE } from 'hono/streaming'
 import type { SSEStreamingApi } from 'hono/streaming'
+import { streamSSE } from 'hono/streaming'
 import { latestRunId, replay, subscribe } from '@/events/bus'
 import type { RunEvent } from '@/events/events.types'
 
@@ -46,22 +46,28 @@ export const eventsRoute = new Hono().get('/events', (c) =>
     // sleeping laptops from quietly dropping the connection mid-demo.
     while (!stream.aborted) {
       if (queue.length === 0) {
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            notify = resolve
-          }),
-          stream.sleep(15_000),
-        ])
+        await waitForEvent(stream, (resolve) => {
+          notify = resolve
+        })
         notify = null
       }
-      if (queue.length === 0) {
+      const event = queue.shift()
+      if (event === undefined) {
         await stream.writeSSE({ data: JSON.stringify({ type: 'heartbeat' }) })
         continue
       }
-      const event = queue.shift()
-      if (event !== undefined) {
-        await send(stream, event)
-      }
+      await send(stream, event)
     }
   }),
 )
+
+/**
+ * Waits for the next event, or for the heartbeat interval, whichever lands
+ * first. Split out so the stream loop above stays one readable shape.
+ */
+function waitForEvent(
+  stream: SSEStreamingApi,
+  arm: (resolve: () => void) => void,
+): Promise<unknown> {
+  return Promise.race([new Promise<void>(arm), stream.sleep(15_000)])
+}

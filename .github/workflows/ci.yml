@@ -1,0 +1,133 @@
+# PR CI, gated behind manual approval. Also runs on push to main so the
+# per-branch cargo cache gets populated under `refs/heads/main`. GitHub
+# Actions cache scope only lets a PR restore caches from its own ref or
+# its base branch, so without a main cache every new PR pays the full
+# cold-compile cost of the Tauri dependency graph on its first run.
+#
+# The whole check surface runs via one `bun run check` invocation, which
+# fans out via `concurrently --group` to every check in the monorepo
+# (biome, both typecheck projects, tests, evals, cargo clippy, and
+# fallow's dead code, duplication and health). Local and CI parity is the
+# design goal: whatever `bun run check` does on a laptop is exactly what
+# CI does. No CI-only steps, no laptop-only steps.
+#
+# One-time setup, otherwise the `approve` gate is a no-op:
+#   Repo Settings -> Environments -> New environment -> name `ci-approval`
+#   -> enable "Required reviewers" -> add yourself -> save.
+
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+  push:
+    # Cache-warming trigger only. Main pushes go through PR review
+    # already, so re-running the same checks is defensive, not a second
+    # gate.
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  approve:
+    # PR-only gate. On push to main the merge itself is the review, so
+    # this job is skipped and the check job runs via its `if:` guard.
+    if: github.event_name == 'pull_request'
+    name: Wait for manual approval
+    runs-on: ubuntu-latest
+    environment: ci-approval
+    timeout-minutes: 60
+    steps:
+      - name: Approved
+        run: echo "CI approved by ${{ github.actor }}"
+
+  check:
+    name: Check
+    needs: approve
+    if: always() && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUST_BACKTRACE: '1'
+      # .cargo/config.toml points build-dir at CARGO_HOME so local
+      # worktrees share one copy of the dependency graph instead of each
+      # carrying its own. A runner is a single ephemeral checkout, so it
+      # gains nothing from that and would instead split intermediates out
+      # of target/, which is the only thing rust-cache below caches and
+      # prunes. Overriding back to target/ keeps CI on the layout
+      # rust-cache expects.
+      CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/app/native/src-tauri/target
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # fallow's health hotspots rank files by git churn, which needs
+          # real history. The default shallow clone reports none.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Pinned rather than @stable: rust-cache hashes every toolchain the
+      # runner reports into its cache key, so a floating toolchain makes
+      # the key drift whenever the runner image or upstream stable moves,
+      # and every drift is a cold rebuild of the whole dependency graph.
+      # Bump deliberately, same as any other dependency.
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+
+      # tauri-runtime-wry's build script links against WebKitGTK during
+      # dependency compilation, required even for clippy, not just build.
+      # Apt list mirrors Tauri 2's prerequisites doc.
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/native/src-tauri -> target
+          # Cache third-party crate compiled outputs, not just their
+          # sources. Without this, Tauri and wry get recompiled from
+          # source every run, which dominates clippy wall time.
+          cache-all-crates: true
+          # The toolchain is pinned above for this cache's benefit:
+          # rust-cache derives part of its key from `rustup toolchain
+          # list`, which reports every toolchain on the runner rather than
+          # the one this job uses, so a floating toolchain turns a warm
+          # cache into a coin flip as GitHub rolls runner images.
+          #
+          # `add-rust-environment-hash-key: false` looks like the direct
+          # fix, but on rust-cache@v2 that flag gates the Cargo.lock hash
+          # as well as the environment hash, so disabling it yields a key
+          # with no lockfile component and a dependency bump would
+          # silently restore a stale cache.
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      # The single monorepo check. Fans out via concurrently --group to
+      # biome, tsc for core, tsc for native, tests, evals, clippy and
+      # fallow. Every sub-check runs to completion regardless of what the
+      # others do, so one CI run surfaces every failure at once.
+      - name: bun run check
+        run: bun run check

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { runReviewLoop, type CommitOutcome, type LoopDeps } from '@/run/loop'
+import { type CommitOutcome, type LoopDeps, runReviewLoop } from '@/run/loop'
 import type { Analysis, Review } from '@/run/stations/schemas'
 
 /**
@@ -16,7 +16,10 @@ const analysis: Analysis = {
   plan: ['s'],
   affected_surface: ['src/a.ts'],
   risks: [],
-  acceptance_criteria: ['the slug has no trailing hyphen', 'the signature is unchanged'],
+  acceptance_criteria: [
+    'the slug has no trailing hyphen',
+    'the signature is unchanged',
+  ],
   test_strategy: 'bun test',
 }
 
@@ -40,7 +43,11 @@ function recorder(reviews: Review[], commit: CommitOutcome = 'committed') {
   let reviewIndex = 0
   const deps: LoopDeps = {
     implement: async (revision) => {
-      trace.push(revision === undefined ? 'implement' : `implement:revision${revision.attempt}`)
+      trace.push(
+        revision === undefined
+          ? 'implement'
+          : `implement:revision${revision.attempt}`,
+      )
       return 'report'
     },
     commit: async (attempt) => {
@@ -76,20 +83,34 @@ describe('an approve that does not clear the gate never ships', () => {
   test('approve with a failed criterion is refused', async () => {
     const failed = review({
       criteria_results: [
-        { criterion: analysis.acceptance_criteria[0] ?? '', pass: true, evidence: 'ok' },
-        { criterion: analysis.acceptance_criteria[1] ?? '', pass: false, evidence: 'still broken' },
+        {
+          criterion: analysis.acceptance_criteria[0] ?? '',
+          pass: true,
+          evidence: 'ok',
+        },
+        {
+          criterion: analysis.acceptance_criteria[1] ?? '',
+          pass: false,
+          evidence: 'still broken',
+        },
       ],
     })
     const { deps } = recorder([failed])
     const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(outcome.kind === 'stopped' && outcome.reason).toContain('did not pass')
+    expect(outcome.kind === 'stopped' && outcome.reason).toContain(
+      'did not pass',
+    )
   })
 
   test('approve that judged only some of the criteria is refused', async () => {
     const partial = review({
       criteria_results: [
-        { criterion: analysis.acceptance_criteria[0] ?? '', pass: true, evidence: 'ok' },
+        {
+          criterion: analysis.acceptance_criteria[0] ?? '',
+          pass: true,
+          evidence: 'ok',
+        },
       ],
     })
     const { deps } = recorder([partial])
@@ -100,7 +121,9 @@ describe('an approve that does not clear the gate never ships', () => {
 
   test('approve that judged criteria nobody wrote is refused', async () => {
     const invented = review({
-      criteria_results: [{ criterion: 'it feels good', pass: true, evidence: 'vibes' }],
+      criteria_results: [
+        { criterion: 'it feels good', pass: true, evidence: 'vibes' },
+      ],
     })
     const { deps } = recorder([invented])
     const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
@@ -140,7 +163,9 @@ describe('the revision loop is bounded', () => {
   })
 
   test('a rejection stops immediately instead of using its revisions', async () => {
-    const { deps, trace } = recorder([review({ verdict: 'reject', summary: 'wrong approach' })])
+    const { deps, trace } = recorder([
+      review({ verdict: 'reject', summary: 'wrong approach' }),
+    ])
     const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
     expect(trace.filter((entry) => entry === 'review')).toHaveLength(1)
@@ -194,7 +219,9 @@ describe('the gate reconciles how a reviewer echoes a criterion', () => {
 
   test('fewer results than criteria is still refused', async () => {
     const short = review({
-      criteria_results: [{ criterion: 'something else entirely', pass: true, evidence: 'x' }],
+      criteria_results: [
+        { criterion: 'something else entirely', pass: true, evidence: 'x' },
+      ],
     })
     const { deps } = recorder([short])
     const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })

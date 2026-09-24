@@ -78,7 +78,7 @@ const TYPE_BY_LABEL: ReadonlyArray<readonly [RegExp, string]> = [
  * a judgment call. `fix` is the default because an unlabelled issue on a repo
  * that uses aalai is far more often a defect report than anything else.
  */
-export function commitTypeForIssue(issue: GhIssue): string {
+function commitTypeForIssue(issue: GhIssue): string {
   for (const label of issue.labels) {
     for (const [pattern, type] of TYPE_BY_LABEL) {
       if (pattern.test(label.name)) {
@@ -115,7 +115,10 @@ export function buildPullRequestBody(input: PullRequestBodyInput): string {
   const { issue, analysis, review, report, diffStat, changedFiles } = input
 
   const criteria = review.criteria_results
-    .map((r) => `| ${r.pass ? 'pass' : '**fail**'} | ${r.criterion} | ${r.evidence} |`)
+    .map(
+      (r) =>
+        `| ${r.pass ? 'pass' : '**fail**'} | ${r.criterion} | ${r.evidence} |`,
+    )
     .join('\n')
 
   const files =

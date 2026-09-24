@@ -1,5 +1,5 @@
-import { createMutation, createQuery } from 'react-query-kit'
 import type { InferResponseType } from 'hono/client'
+import { createMutation, createQuery } from 'react-query-kit'
 import { api } from '@/modules/api/client'
 import { parseResponse } from '@/modules/api/parse'
 
@@ -28,7 +28,9 @@ export const useOwnedRepos = createQuery<OwnedResponse>({
 export const useWatchRepo = createMutation<ReposResponse, { repo: string }>({
   mutationFn: async (vars) => {
     const client = await api()
-    return parseResponse<ReposResponse>(await client.api.repos.$post({ json: vars }))
+    return parseResponse<ReposResponse>(
+      await client.api.repos.$post({ json: vars }),
+    )
   },
 })
 
@@ -37,7 +39,9 @@ export const useUnwatchRepo = createMutation<ReposResponse, { repo: string }>({
     const [owner, name] = repo.split('/')
     const client = await api()
     return parseResponse<ReposResponse>(
-      await client.api.repos[':owner'][':name'].$delete({ param: { owner: owner as string, name: name as string } }),
+      await client.api.repos[':owner'][':name'].$delete({
+        param: { owner: owner as string, name: name as string },
+      }),
     )
   },
 })

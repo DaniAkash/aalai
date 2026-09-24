@@ -1,7 +1,11 @@
 import { githubEnv } from '@/lib/credentials'
 import { exec, execOrThrow } from '@/lib/proc'
 
-const PROTECTED_BRANCHES: ReadonlySet<string> = new Set(['main', 'master', 'HEAD'])
+const PROTECTED_BRANCHES: ReadonlySet<string> = new Set([
+  'main',
+  'master',
+  'HEAD',
+])
 
 /**
  * Conservative subset of valid git branch names. Everything interpolated into a
@@ -19,14 +23,24 @@ export class UnsafeBranchError extends Error {
 
 /** Throws unless `branch` is a plain, non-protected branch name safe to interpolate. */
 export function assertSafeBranch(branch: string): void {
-  if (!BRANCH_PATTERN.test(branch) || branch.includes('..') || branch.includes('//')) {
+  if (
+    !BRANCH_PATTERN.test(branch) ||
+    branch.includes('..') ||
+    branch.includes('//')
+  ) {
     throw new UnsafeBranchError(branch, 'not a valid branch name')
   }
   if (branch.startsWith('refs/')) {
-    throw new UnsafeBranchError(branch, 'pass a plain name without a refs/ prefix')
+    throw new UnsafeBranchError(
+      branch,
+      'pass a plain name without a refs/ prefix',
+    )
   }
   if (PROTECTED_BRANCHES.has(branch)) {
-    throw new UnsafeBranchError(branch, 'aalai delivers pull requests, never direct pushes')
+    throw new UnsafeBranchError(
+      branch,
+      'aalai delivers pull requests, never direct pushes',
+    )
   }
 }
 
@@ -41,15 +55,21 @@ export function issueBranchName(issueNumber: number, title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .slice(0, 40)
     .replace(/^-+|-+$/g, '')
-  const branch = slug === '' ? `aalai/issue-${issueNumber}` : `aalai/issue-${issueNumber}-${slug}`
+  const branch =
+    slug === ''
+      ? `aalai/issue-${issueNumber}`
+      : `aalai/issue-${issueNumber}-${slug}`
   assertSafeBranch(branch)
   return branch
 }
 
 export async function defaultBranch(repoDir: string): Promise<string> {
-  const ref = await execOrThrow(['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], {
-    cwd: repoDir,
-  })
+  const ref = await execOrThrow(
+    ['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+    {
+      cwd: repoDir,
+    },
+  )
   return ref.replace(/^origin\//, '')
 }
 
@@ -73,8 +93,13 @@ export async function addWorktree(
   )
 }
 
-export async function removeWorktree(repoDir: string, worktreePath: string): Promise<void> {
-  await exec(['git', 'worktree', 'remove', '--force', worktreePath], { cwd: repoDir })
+export async function removeWorktree(
+  repoDir: string,
+  worktreePath: string,
+): Promise<void> {
+  await exec(['git', 'worktree', 'remove', '--force', worktreePath], {
+    cwd: repoDir,
+  })
   await exec(['git', 'worktree', 'prune'], { cwd: repoDir })
 }
 
@@ -101,9 +126,12 @@ export function porcelainPath(line: string): string {
  * pull request's file list would be working from a folder name.
  */
 export async function changedFiles(worktree: string): Promise<string[]> {
-  const out = await execOrThrow(['git', 'status', '--porcelain', '--untracked-files=all'], {
-    cwd: worktree,
-  })
+  const out = await execOrThrow(
+    ['git', 'status', '--porcelain', '--untracked-files=all'],
+    {
+      cwd: worktree,
+    },
+  )
   return out === ''
     ? []
     : out
@@ -159,8 +187,12 @@ export function partitionStagePaths(paths: readonly string[]): {
  * generated is ever briefly in the index.
  */
 export async function stageAll(worktree: string): Promise<string[]> {
-  const excludes = [...GENERATED_DIRECTORIES].map((dir) => `:(exclude,glob)**/${dir}/**`)
-  await execOrThrow(['git', 'add', '-A', '--', '.', ...excludes], { cwd: worktree })
+  const excludes = [...GENERATED_DIRECTORIES].map(
+    (dir) => `:(exclude,glob)**/${dir}/**`,
+  )
+  await execOrThrow(['git', 'add', '-A', '--', '.', ...excludes], {
+    cwd: worktree,
+  })
 
   // An exclude pathspec only stops a matching file being added by this command.
   // It does not remove an entry already in the index, and the agent has shell
@@ -176,13 +208,19 @@ export async function stageAll(worktree: string): Promise<string[]> {
     // when the path is tracked. It needs a HEAD to resolve, so a repository with
     // no commits yet falls back to dropping the entry outright; with no HEAD
     // nothing is tracked, so that is the same outcome.
-    const restore = await exec(['git', 'restore', '--staged', '--', ...generated], {
-      cwd: worktree,
-    })
-    if (restore.exitCode !== 0) {
-      await execOrThrow(['git', 'rm', '--cached', '-q', '--ignore-unmatch', '--', ...generated], {
+    const restore = await exec(
+      ['git', 'restore', '--staged', '--', ...generated],
+      {
         cwd: worktree,
-      })
+      },
+    )
+    if (restore.exitCode !== 0) {
+      await execOrThrow(
+        ['git', 'rm', '--cached', '-q', '--ignore-unmatch', '--', ...generated],
+        {
+          cwd: worktree,
+        },
+      )
     }
   }
   return generated
@@ -217,18 +255,31 @@ export async function commit(
   return execOrThrow(['git', 'rev-parse', 'HEAD'], { cwd: worktree })
 }
 
-export async function pushBranch(worktree: string, branch: string): Promise<void> {
+export async function pushBranch(
+  worktree: string,
+  branch: string,
+): Promise<void> {
   assertSafeBranch(branch)
   await execOrThrow(
-    ['git', 'push', '--set-upstream', 'origin', `refs/heads/${branch}:refs/heads/${branch}`],
+    [
+      'git',
+      'push',
+      '--set-upstream',
+      'origin',
+      `refs/heads/${branch}:refs/heads/${branch}`,
+    ],
     { cwd: worktree, env: githubEnv() },
   )
 }
 
-export async function diffStat(worktree: string, base: string): Promise<string> {
-  return execOrThrow(['git', 'diff', '--stat', `origin/${base}...HEAD`], { cwd: worktree })
+export async function diffStat(
+  worktree: string,
+  base: string,
+): Promise<string> {
+  return execOrThrow(['git', 'diff', '--stat', `origin/${base}...HEAD`], {
+    cwd: worktree,
+  })
 }
-
 
 /** Adds a worktree for a branch that already exists, used for the review checkout. */
 export async function addExistingBranchWorktree(
@@ -237,19 +288,30 @@ export async function addExistingBranchWorktree(
   branch: string,
 ): Promise<void> {
   assertSafeBranch(branch)
-  await execOrThrow(['git', 'worktree', 'add', '--detach', worktreePath, branch], { cwd: repoDir })
+  await execOrThrow(
+    ['git', 'worktree', 'add', '--detach', worktreePath, branch],
+    { cwd: repoDir },
+  )
 }
 
 /** Commits whatever is staged without touching the working tree of other worktrees. */
 export async function hasStagedChanges(worktree: string): Promise<boolean> {
-  const out = await exec(['git', 'diff', '--cached', '--quiet'], { cwd: worktree })
+  const out = await exec(['git', 'diff', '--cached', '--quiet'], {
+    cwd: worktree,
+  })
   return out.exitCode !== 0
 }
 
 /** Files changed on the branch relative to its base, from the committed history. */
-export async function diffNames(worktree: string, base: string): Promise<string[]> {
-  const out = await execOrThrow(['git', 'diff', '--name-only', `origin/${base}...HEAD`], {
-    cwd: worktree,
-  })
+export async function diffNames(
+  worktree: string,
+  base: string,
+): Promise<string[]> {
+  const out = await execOrThrow(
+    ['git', 'diff', '--name-only', `origin/${base}...HEAD`],
+    {
+      cwd: worktree,
+    },
+  )
   return out === '' ? [] : out.split('\n').filter((line) => line !== '')
 }

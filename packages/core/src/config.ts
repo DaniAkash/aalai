@@ -5,17 +5,24 @@ import { z } from 'zod'
 
 const watchedRepoSchema = z.object({
   /** `owner/repo`, matching GitHub's canonical casing. */
-  repo: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
+  repo: z
+    .string()
+    .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
+  /** Per repo label gate. Absent from the schema, it was parsed away on write. */
+  requireLabel: z.string().optional(),
 })
 
-export const configSchema = z.object({
+const configSchema = z.object({
   /**
    * Refused rather than ignored. This was replaced by `agents`, and zod would
    * otherwise strip it, so a config asking for a non-codex agent would silently
    * run codex for every station.
    */
   agent: z
-    .never({ error: 'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }' })
+    .never({
+      error:
+        'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }',
+    })
     .optional(),
   pollSeconds: z.number().int().min(10).default(60),
   /**
@@ -42,7 +49,11 @@ export const configSchema = z.object({
       implementer: z.string().default('codex'),
       reviewer: z.string().default('codex'),
     })
-    .default(() => ({ analyst: 'codex', implementer: 'codex', reviewer: 'codex' })),
+    .default(() => ({
+      analyst: 'codex',
+      implementer: 'codex',
+      reviewer: 'codex',
+    })),
   /** Most times the reviewer may send work back before the run gives up. */
   maxRevisions: z.number().int().min(0).max(5).default(2),
   reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).default('high'),
@@ -73,10 +84,20 @@ export const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>
 export type WatchedRepo = z.infer<typeof watchedRepoSchema>
 
-export const DEFAULT_CONFIG_PATH = 'aalai.config.json'
+const DEFAULT_CONFIG_PATH = 'aalai.config.json'
 
 export function stateDir(): string {
   return process.env.AALAI_STATE_DIR ?? join(homedir(), '.aalai')
+}
+
+/** Log verbosity, from the environment rather than the config file. */
+export function logLevelName(): string {
+  return process.env.AALAI_LOG_LEVEL ?? 'info'
+}
+
+/** Set by the evals, which exercise the pipeline without an HTTP surface. */
+export function serverDisabled(): boolean {
+  return process.env.AALAI_NO_SERVER === '1'
 }
 
 export function workbenchDir(): string {
@@ -91,7 +112,7 @@ export function workbenchDir(): string {
  * spawns the factory with whatever working directory the app happened to have,
  * which is not somewhere a person would keep a config file.
  */
-export function configCandidates(path?: string): string[] {
+function configCandidates(path?: string): string[] {
   if (path) return [resolve(path)]
   const fromEnv = process.env.AALAI_CONFIG
   return [
@@ -117,18 +138,23 @@ export async function loadConfig(path?: string): Promise<Config> {
     // that configures aalai is aalai.
     const created = join(stateDir(), DEFAULT_CONFIG_PATH)
     mkdirSync(stateDir(), { recursive: true })
-    await Bun.write(created, `${JSON.stringify(configSchema.parse({}), null, 2)}\n`)
+    await Bun.write(
+      created,
+      `${JSON.stringify(configSchema.parse({}), null, 2)}\n`,
+    )
     file = Bun.file(created)
   }
   const parsed = configSchema.safeParse(await file.json())
   if (!parsed.success) {
-    throw new Error(`Invalid config at ${file.name}:\n${z.prettifyError(parsed.error)}`)
+    throw new Error(
+      `Invalid config at ${file.name}:\n${z.prettifyError(parsed.error)}`,
+    )
   }
   return parsed.data
 }
 
 /** Where the config we loaded, or created, actually lives. */
-export function configPath(): string {
+function configPath(): string {
   for (const candidate of configCandidates()) {
     if (existsSync(candidate)) return candidate
   }

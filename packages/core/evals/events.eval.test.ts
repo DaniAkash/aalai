@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
-import { activeRuns, emit, latestRunId, registerRunRoot, replay, resetBus, subscribe } from '@/events/bus'
+import {
+  activeRuns,
+  emit,
+  latestRunId,
+  registerRunRoot,
+  replay,
+  resetBus,
+  subscribe,
+} from '@/events/bus'
 import type { RunEvent } from '@/events/events.types'
 
 const RUN = 'acme/widgets#7@1'
@@ -12,7 +20,14 @@ beforeEach(() => resetBus())
 
 describe('a late subscriber still sees the whole run', () => {
   test('replay returns everything emitted before it arrived', () => {
-    emit(event({ type: 'run.started', repo: 'acme/widgets', issue: 7, title: 'x' } as never))
+    emit(
+      event({
+        type: 'run.started',
+        repo: 'acme/widgets',
+        issue: 7,
+        title: 'x',
+      } as never),
+    )
     emit(event({ type: 'stage.entered', stage: 'analyst' } as never))
     expect(replay(RUN)).toHaveLength(2)
   })
@@ -31,13 +46,16 @@ describe('a late subscriber still sees the whole run', () => {
       throw new Error('subscriber exploded')
     })
     subscribe((e) => seen.push(e.type))
-    expect(() => emit(event({ type: 'run.stopped', reason: 'x' } as never))).not.toThrow()
+    expect(() =>
+      emit(event({ type: 'run.stopped', reason: 'x' } as never)),
+    ).not.toThrow()
     expect(seen).toEqual(['run.stopped'])
   })
 })
 
 describe('events are redacted before anyone can see them', () => {
-  const WORKTREE = '/Users/someone/workbench/worktrees/Acme/widgets/aalai-issue-7'
+  const WORKTREE =
+    '/Users/someone/workbench/worktrees/Acme/widgets/aalai-issue-7'
 
   test('an agent citing an absolute path publishes a repository path', () => {
     registerRunRoot(RUN, WORKTREE)
@@ -59,7 +77,9 @@ describe('events are redacted before anyone can see them', () => {
       event({
         type: 'review.verdict',
         verdict: 'approve',
-        results: [{ criterion: 'c', pass: true, evidence: `see ${WORKTREE}/src/a.ts` }],
+        results: [
+          { criterion: 'c', pass: true, evidence: `see ${WORKTREE}/src/a.ts` },
+        ],
       } as never),
     )
     expect(JSON.stringify(replay(RUN))).not.toContain('/Users/')
@@ -69,7 +89,13 @@ describe('events are redacted before anyone can see them', () => {
 describe('the buffer is bounded', () => {
   test('a long run keeps its most recent events rather than growing forever', () => {
     for (let i = 0; i < 600; i += 1) {
-      emit(event({ type: 'agent.tool', station: 'implementer', tool: `tool-${i}` } as never))
+      emit(
+        event({
+          type: 'agent.tool',
+          station: 'implementer',
+          tool: `tool-${i}`,
+        } as never),
+      )
     }
     const events = replay(RUN)
     expect(events.length).toBeLessThanOrEqual(400)
@@ -78,7 +104,14 @@ describe('the buffer is bounded', () => {
 
   test('old runs are evicted so memory does not grow across a long session', () => {
     for (let i = 0; i < 25; i += 1) {
-      emit({ type: 'run.started', runId: `r${i}`, repo: 'a/b', issue: i, title: 't', at: 1 })
+      emit({
+        type: 'run.started',
+        runId: `r${i}`,
+        repo: 'a/b',
+        issue: i,
+        title: 't',
+        at: 1,
+      })
     }
     expect(activeRuns().length).toBeLessThanOrEqual(20)
     expect(latestRunId()).toBe('r24')
