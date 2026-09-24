@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
-import { stateDir } from '@/config'
+import { stateDir } from '@/lib/env'
 import { logger } from '@/lib/log'
 import {
   isPreMigrationSchema,
@@ -102,4 +102,22 @@ export function openDb(path?: string): DbHandle {
   sqlite.exec('PRAGMA foreign_keys = ON;')
   migrateWithBackup(sqlite, file)
   return { sqlite, db: drizzle(sqlite, { schema }) }
+}
+
+let handle: DbHandle | undefined
+
+/** The process-wide database, opened on first use. */
+export function getDb(): DbHandle {
+  handle ??= openDb()
+  return handle
+}
+
+/**
+ * Points the process at a different database, or clears it.
+ *
+ * The tests use this to isolate: the singleton would otherwise outlive the
+ * temporary state directory each of them creates.
+ */
+export function setDb(next: DbHandle | undefined): void {
+  handle = next
 }

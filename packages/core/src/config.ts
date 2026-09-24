@@ -1,17 +1,37 @@
-import { existsSync, mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { renameSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { z } from 'zod'
+import { configOverride, stateDir } from '@/lib/env'
+import { logger } from '@/lib/log'
+import { getDb } from '@/modules/db/db'
+import { DOMAINS, type Domains } from '@/modules/settings/domains'
+import {
+  readAllDomains,
+  readWatchedRepos,
+  settingsAreEmpty,
+  writeAllDomains,
+  writeWatchedRepos,
+} from '@/modules/settings/settings'
+
+const log = logger('config')
 
 const watchedRepoSchema = z.object({
   /** `owner/repo`, matching GitHub's canonical casing. */
   repo: z
     .string()
     .regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/),
-  /** Per repo label gate. Absent from the schema, it was parsed away on write. */
+  /** Per repo label gate, overriding the global default when set. */
   requireLabel: z.string().optional(),
 })
 
+/**
+ * The flat shape every caller already reads.
+ *
+ * Built from the domain shapes rather than restating them, so a default lives
+ * in exactly one place and the stored form cannot drift from the loaded one.
+ * Only `agents` differs: it nests the three agent names, while the domain keeps
+ * them alongside the reasoning effort they share a row with.
+ */
 const configSchema = z.object({
   /**
    * Refused rather than ignored. This was replaced by `agents`, and zod would
@@ -24,61 +44,29 @@ const configSchema = z.object({
         'the `agent` key was replaced by `agents`: { analyst, implementer, reviewer }',
     })
     .optional(),
-  pollSeconds: z.number().int().min(10).default(60),
   /**
    * Repos to watch. Empty is valid and is what a fresh install looks like:
    * the app adds repos through its own interface rather than asking a person
    * to write JSON before anything will start.
    */
   watch: z.array(watchedRepoSchema).default([]),
-  /**
-   * Which ACP agent drives each station.
-   *
-   * All three default to codex so a demo machine needs one agent installed and
-   * authenticated, and the pipeline threads them through per station.
-   *
-   * TODO: point `reviewer` at a different agent (`claude`, `gemini`, whatever
-   * acpx can reach) to get genuine cross-vendor review. That buys a different
-   * harness, different tools, and a different system prompt written by a
-   * different company, rather than the same model grading its own idiom. It is
-   * a config change and nothing else: no code here assumes one agent.
-   */
+  ...DOMAINS.factory.shape,
+  ...DOMAINS.limits.shape,
+  ...DOMAINS.trust.shape,
+  ...DOMAINS.commit.shape,
+  ...DOMAINS.ui.shape,
   agents: z
     .object({
-      analyst: z.string().default('codex'),
-      implementer: z.string().default('codex'),
-      reviewer: z.string().default('codex'),
+      analyst: DOMAINS.agents.shape.analyst,
+      implementer: DOMAINS.agents.shape.implementer,
+      reviewer: DOMAINS.agents.shape.reviewer,
     })
     .default(() => ({
       analyst: 'codex',
       implementer: 'codex',
       reviewer: 'codex',
     })),
-  /** Most times the reviewer may send work back before the run gives up. */
-  maxRevisions: z.number().int().min(0).max(5).default(2),
-  reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).default('high'),
-  /**
-   * When true, only issues opened by an OWNER, MEMBER, or COLLABORATOR start a run.
-   * An issue body is instructions to an agent with file and shell access, and on a
-   * public repo anyone can write one. Turning this off is a deliberate choice.
-   */
-  trustedAuthorsOnly: z.boolean().default(true),
-  /** Optional second gate: only act on issues carrying this label. */
-  requireLabel: z.string().nullable().default(null),
-  turnTimeoutMs: z.number().int().min(60_000).default(900_000),
-  keepWorktreeOnFailure: z.boolean().default(true),
-  /** Commit author name and email. Passed per-commit, never read from global git config. */
-  commitName: z.string().default('aalai'),
-  commitEmail: z.string().default('DaniAkash@users.noreply.github.com'),
-  /**
-   * How long a run may hold its claim before another poll may take it over.
-   * A process killed mid-run would otherwise leave the issue claimed forever.
-   */
-  staleClaimMinutes: z.number().int().min(1).default(30),
-  /** Most issues one polling pass will process. The rest wait for the next pass. */
-  maxIssuesPerPoll: z.number().int().min(1).default(25),
-  /** Port for the dashboard and its API. */
-  uiPort: z.number().int().min(1024).max(65535).default(4173),
+  reasoningEffort: DOMAINS.agents.shape.reasoningEffort,
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -86,89 +74,149 @@ export type WatchedRepo = z.infer<typeof watchedRepoSchema>
 
 const DEFAULT_CONFIG_PATH = 'aalai.config.json'
 
-export function stateDir(): string {
-  return process.env.AALAI_STATE_DIR ?? join(homedir(), '.aalai')
-}
-
-/** Log verbosity, from the environment rather than the config file. */
-export function logLevelName(): string {
-  return process.env.AALAI_LOG_LEVEL ?? 'info'
-}
-
-/** Set by the evals, which exercise the pipeline without an HTTP surface. */
-export function serverDisabled(): boolean {
-  return process.env.AALAI_NO_SERVER === '1'
-}
-
-export function workbenchDir(): string {
-  return process.env.AALAI_WORKBENCH_DIR ?? join(homedir(), 'workbench')
-}
-
 /**
- * Where a config may live, in the order we look.
+ * A config file is now an explicit override, not the store.
  *
- * The working directory comes first so running this in a terminal behaves as
- * it always has. The state directory is the fallback because the desktop shell
- * spawns the factory with whatever working directory the app happened to have,
- * which is not somewhere a person would keep a config file.
+ * Settings live in the database so the app can own them, but pointing
+ * AALAI_CONFIG at a checked in file stays a legitimate way to run this
+ * headless on a server, where the settings are part of the deployment.
  */
-function configCandidates(path?: string): string[] {
-  if (path) return [resolve(path)]
-  const fromEnv = process.env.AALAI_CONFIG
-  return [
-    ...(fromEnv ? [resolve(fromEnv)] : []),
-    resolve(DEFAULT_CONFIG_PATH),
-    join(stateDir(), DEFAULT_CONFIG_PATH),
-  ]
+function overridePath(path?: string): string | undefined {
+  if (path !== undefined) {
+    return resolve(path)
+  }
+  const fromEnv = configOverride()
+  return fromEnv === undefined ? undefined : resolve(fromEnv)
 }
 
-export async function loadConfig(path?: string): Promise<Config> {
-  const candidates = configCandidates(path)
-  let file: ReturnType<typeof Bun.file> | undefined
-  for (const candidate of candidates) {
-    const at = Bun.file(candidate)
-    if (await at.exists()) {
-      file = at
-      break
-    }
+function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
+  return configSchema.parse({
+    watch,
+    pollSeconds: domains.factory.pollSeconds,
+    maxIssuesPerPoll: domains.factory.maxIssuesPerPoll,
+    staleClaimMinutes: domains.factory.staleClaimMinutes,
+    keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
+    agents: {
+      analyst: domains.agents.analyst,
+      implementer: domains.agents.implementer,
+      reviewer: domains.agents.reviewer,
+    },
+    reasoningEffort: domains.agents.reasoningEffort,
+    maxRevisions: domains.limits.maxRevisions,
+    maxCiFixes: domains.limits.maxCiFixes,
+    turnTimeoutMs: domains.limits.turnTimeoutMs,
+    trustedAuthorsOnly: domains.trust.trustedAuthorsOnly,
+    requireLabel: domains.trust.requireLabel,
+    commitName: domains.commit.commitName,
+    commitEmail: domains.commit.commitEmail,
+    uiPort: domains.ui.uiPort,
+    notifications: domains.ui.notifications,
+    theme: domains.ui.theme,
+  })
+}
+
+function toDomains(config: Config): Domains {
+  return {
+    factory: {
+      pollSeconds: config.pollSeconds,
+      maxIssuesPerPoll: config.maxIssuesPerPoll,
+      staleClaimMinutes: config.staleClaimMinutes,
+      keepWorktreeOnFailure: config.keepWorktreeOnFailure,
+    },
+    agents: {
+      analyst: config.agents.analyst,
+      implementer: config.agents.implementer,
+      reviewer: config.agents.reviewer,
+      reasoningEffort: config.reasoningEffort,
+    },
+    limits: {
+      maxRevisions: config.maxRevisions,
+      maxCiFixes: config.maxCiFixes,
+      turnTimeoutMs: config.turnTimeoutMs,
+    },
+    trust: {
+      trustedAuthorsOnly: config.trustedAuthorsOnly,
+      requireLabel: config.requireLabel,
+    },
+    commit: {
+      commitName: config.commitName,
+      commitEmail: config.commitEmail,
+    },
+    ui: {
+      uiPort: config.uiPort,
+      notifications: config.notifications,
+      theme: config.theme,
+    },
   }
-  if (!file) {
-    // A missing config is a first run, not an error. Write the defaults where
-    // the app expects them and carry on with nothing watched, so the thing
-    // that configures aalai is aalai.
-    const created = join(stateDir(), DEFAULT_CONFIG_PATH)
-    mkdirSync(stateDir(), { recursive: true })
-    await Bun.write(
-      created,
-      `${JSON.stringify(configSchema.parse({}), null, 2)}\n`,
-    )
-    file = Bun.file(created)
-  }
-  const parsed = configSchema.safeParse(await file.json())
+}
+
+async function readConfigFile(path: string): Promise<Config> {
+  const parsed = configSchema.safeParse(await Bun.file(path).json())
   if (!parsed.success) {
     throw new Error(
-      `Invalid config at ${file.name}:\n${z.prettifyError(parsed.error)}`,
+      `Invalid config at ${path}:\n${z.prettifyError(parsed.error)}`,
     )
   }
   return parsed.data
 }
 
-/** Where the config we loaded, or created, actually lives. */
-function configPath(): string {
-  for (const candidate of configCandidates()) {
-    if (existsSync(candidate)) return candidate
+/**
+ * Brings a pre-database config file in, once.
+ *
+ * The file is renamed rather than deleted: a rename is reversible and a delete
+ * is a support ticket. Import only happens into empty settings, so editing the
+ * renamed file has no effect and cannot silently undo a change made in the app.
+ */
+async function importConfigFileOnce(
+  db: ReturnType<typeof getDb>,
+): Promise<void> {
+  if (!settingsAreEmpty(db.sqlite)) {
+    return
   }
-  return join(stateDir(), DEFAULT_CONFIG_PATH)
+  const candidates = [
+    resolve(DEFAULT_CONFIG_PATH),
+    join(stateDir(), DEFAULT_CONFIG_PATH),
+  ]
+  for (const candidate of candidates) {
+    if (!(await Bun.file(candidate).exists())) {
+      continue
+    }
+    const config = await readConfigFile(candidate)
+    writeAllDomains(db.sqlite, toDomains(config))
+    writeWatchedRepos(db.sqlite, config.watch)
+    renameSync(candidate, `${candidate}.imported`)
+    log.info('config file imported into settings', {
+      from: candidate,
+      repos: config.watch.length,
+    })
+    return
+  }
+}
+
+export async function loadConfig(path?: string): Promise<Config> {
+  const override = overridePath(path)
+  if (override !== undefined) {
+    return await readConfigFile(override)
+  }
+  const db = getDb()
+  await importConfigFileOnce(db)
+  return toConfig(readAllDomains(db.sqlite), readWatchedRepos(db.sqlite))
 }
 
 /**
  * Persists a config.
  *
- * Validated before it is written, so a bad request cannot leave a file on disk
- * that the next start refuses to read.
+ * Validated before it is written, so a bad request cannot leave settings that
+ * the next start refuses to read.
  */
 export async function saveConfig(config: Config): Promise<void> {
   const parsed = configSchema.parse(config)
-  mkdirSync(stateDir(), { recursive: true })
-  await Bun.write(configPath(), `${JSON.stringify(parsed, null, 2)}\n`)
+  const override = overridePath()
+  if (override !== undefined) {
+    await Bun.write(override, `${JSON.stringify(parsed, null, 2)}\n`)
+    return
+  }
+  const db = getDb()
+  writeAllDomains(db.sqlite, toDomains(parsed))
+  writeWatchedRepos(db.sqlite, parsed.watch)
 }

@@ -80,7 +80,7 @@
   "overrides": [
     {
       "includes": [
-        "packages/core/src/config.ts",
+        "packages/core/src/lib/env.ts",
         "packages/core/src/lib/proc.ts",
         "packages/core/src/lib/credentials.ts"
       ],

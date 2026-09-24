@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import { workbenchDir } from '@/config'
+import { workbenchDir } from '@/lib/env'
 
 /**
  * Absolute-path prefixes that identify a machine rather than a repository.

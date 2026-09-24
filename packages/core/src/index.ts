@@ -1,6 +1,7 @@
 import { doctor, showStatus } from '@/commands'
-import { type Config, loadConfig, serverDisabled } from '@/config'
+import { type Config, loadConfig } from '@/config'
 import { captureInheritedTokens } from '@/lib/credentials'
+import { serverDisabled } from '@/lib/env'
 import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exitWithParent } from '@/lib/parent'

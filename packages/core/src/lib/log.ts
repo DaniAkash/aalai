@@ -1,4 +1,4 @@
-import { logLevelName } from '@/config'
+import { logLevelName } from '@/lib/env'
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const
 
