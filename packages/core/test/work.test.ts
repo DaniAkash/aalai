@@ -17,6 +17,7 @@ import {
   writeArtifact,
 } from '@/modules/work/artifacts'
 import {
+  artifactPath,
   artifactsDir,
   runDir,
   type Subject,
@@ -122,6 +123,28 @@ describe('versioned artifacts', () => {
     expect(
       await readArtifact('acme__widgets/issue-1/artifacts/plan.v9.md'),
     ).toBeUndefined()
+  })
+})
+
+describe('an id that tries to leave the work directory', () => {
+  test('is refused rather than resolved', async () => {
+    // An id reaches here from a tool call, which means it reaches here from an
+    // issue body by way of an agent. join() resolves `..`, so without a guard
+    // this is a readable file rather than a rejected id.
+    for (const id of [
+      '../../../../etc/passwd',
+      'acme__widgets/../../../../etc/hosts',
+      '..',
+    ]) {
+      expect(() => artifactPath(id)).toThrow('leaves the work directory')
+      expect(await readArtifact(id).catch(() => 'refused')).toBe('refused')
+    }
+  })
+
+  test('an ordinary id still resolves', () => {
+    expect(artifactPath('acme__widgets/issue-27/artifacts/plan.v1.md')).toBe(
+      join(dir, 'work', 'acme__widgets', 'issue-27', 'artifacts', 'plan.v1.md'),
+    )
   })
 })
 

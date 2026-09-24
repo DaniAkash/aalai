@@ -32,6 +32,7 @@ function contextFor(
     subject: SUBJECT,
     run: { subject: SUBJECT, runId: RUN_ID },
     station,
+    worktreePath: '/tmp/worktree',
   }
 }
 
@@ -236,11 +237,39 @@ describe('outbound intents', () => {
       arguments: { body: 'I need more detail about the expected output.' },
     })
 
-    expect(JSON.stringify(result.content)).toContain('queued')
+    // The tool says what actually happens: written down, not sent. Delivery
+    // is not wired up, and telling the agent otherwise would be a lie it acts on.
+    expect(JSON.stringify(result.content)).toContain('Nothing is posted')
     const queued = await readOutbound({ subject: SUBJECT, runId: RUN_ID })
     expect(queued).toHaveLength(1)
     expect(queued[0]?.kind).toBe('comment_on_issue')
     expect(queued[0]?.body).toContain('more detail')
+    await client.close()
+  })
+})
+
+describe('what read_artifact will reach', () => {
+  test('an id outside the work directory is refused', async () => {
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
+    const result = await client.callTool({
+      name: 'read_artifact',
+      arguments: { id: '../../../../etc/passwd' },
+    })
+    const rendered = JSON.stringify(result.content)
+    expect(rendered).toContain('no artifact at')
+    expect(rendered).not.toContain('root:')
+    await client.close()
+  })
+
+  test('an id in another repository is refused', async () => {
+    const client = await connect(grantToolAccess(contextFor('analyst')).token)
+    const result = await client.callTool({
+      name: 'read_artifact',
+      arguments: { id: 'other__repo/issue-1/artifacts/plan.v1.md' },
+    })
+    // The run token scopes what a station may write. It scopes what it may
+    // read too, or a station can be talked into reading somebody else's work.
+    expect(JSON.stringify(result.content)).toContain('no artifact at')
     await client.close()
   })
 })

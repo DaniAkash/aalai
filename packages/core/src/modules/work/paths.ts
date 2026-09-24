@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { stateDir } from '@/lib/env'
 import type { SubjectKind } from '@/modules/db/schema/schema'
 
@@ -98,6 +98,18 @@ export function artifactId(subject: Subject, filename: string): string {
   ].join('/')
 }
 
+/**
+ * Resolves an artifact id, refusing any that leaves the work directory.
+ *
+ * An id can reach here from a tool call, which means it can reach here from
+ * an issue body by way of an agent. `join` resolves `..`, so without this
+ * `../../../../etc/passwd` is a readable file rather than a rejected id.
+ */
 export function artifactPath(id: string): string {
-  return join(workRoot(), ...id.split('/'))
+  const root = resolve(workRoot())
+  const target = resolve(root, ...id.split('/'))
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new Error(`artifact id leaves the work directory: ${id}`)
+  }
+  return target
 }

@@ -1,11 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { StationId } from '@/events/events.types'
+import { redactDeep } from '@/lib/redact'
 import {
   appendConversation,
   findArtifacts,
   readArtifact,
 } from '@/modules/work/artifacts'
+import { repoSegment } from '@/modules/work/paths'
 import { queueOutbound } from '@/modules/work/store'
 import { recordAnalysis, recordReview } from '@/run/artifacts'
 import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
@@ -82,7 +84,11 @@ function registerWriteReview(server: McpServer, ctx: ToolContext): void {
       },
     },
     async (input) => {
-      const review = reviewSchema.parse(input)
+      // Redacted here rather than after, because this is what gets written.
+      // The station path redacts what it returns, but a tool recorded review
+      // skips that write, so without this the artifact on disk keeps local
+      // worktree paths that a person and later the brain will read.
+      const review = redactDeep(reviewSchema.parse(input), ctx.worktreePath)
       const recorded = await recordReview(
         ctx.subject,
         ctx.run,
@@ -146,6 +152,12 @@ function registerRecall(server: McpServer, ctx: ToolContext): void {
       annotations: { readOnlyHint: true },
     },
     async ({ id }) => {
+      // Scoped to the repository this run is about. The work directory guard
+      // in artifactPath stops an id leaving the tree at all; this stops one
+      // reaching a repository the station was never given.
+      if (!id.startsWith(`${repoSegment(ctx.subject.repo)}/`)) {
+        return text(`no artifact at ${id}`)
+      }
       const body = await readArtifact(id)
       return body === undefined ? text(`no artifact at ${id}`) : text(body)
     },
@@ -182,7 +194,7 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
       await queueOutbound(ctx.run, intent)
       ctx.queued.push(intent)
       return text(
-        'queued. aalai sends this once the run reaches a point where it may speak.',
+        'recorded for a person to review. Nothing is posted to GitHub by this tool, and delivery is not wired up yet, so do not rely on this being seen by the reporter during this run.',
       )
     }
 
@@ -191,7 +203,7 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Queue a comment on the issue',
       description:
-        'Queue something to say on the issue. It is not sent now: aalai delivers it when the run is allowed to speak.',
+        'Record something you would say on the issue. It is written down for a person to read and is never posted by you. Delivery is not implemented yet, so do not expect a reply.',
       inputSchema: { body: z.string().min(1) },
     },
     queue('comment_on_issue'),
@@ -202,7 +214,7 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Queue a reply to a review thread',
       description:
-        'Queue a reply to a review comment. It is not sent now: aalai delivers it when the run is allowed to speak.',
+        'Record a reply to a review comment. It is written down for a person to read and is never posted by you. Delivery is not implemented yet, so do not expect a reply.',
       inputSchema: { threadId: z.string().min(1), body: z.string().min(1) },
     },
     queue('reply_to_review'),
