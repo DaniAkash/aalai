@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { usePastRuns } from '@/modules/api/runs.hooks'
+import { openExternal } from '@/modules/host/open-external'
 
 export const Route = createFileRoute('/runs')({ component: RunsRoute })
 
@@ -68,7 +68,7 @@ function RunsRoute() {
           {run.pr_url ? (
             <button
               type="button"
-              onClick={() => void openUrl(run.pr_url as string)}
+              onClick={() => void openExternal(run.pr_url as string)}
               className="text-[12px] text-primary hover:underline"
             >
               pull request

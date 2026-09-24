@@ -9,9 +9,10 @@ import type { app } from '@/server/app'
  * worse with each route added. Doing it once lets tsc pay that cost at compile
  * time and hands the consumer a plain type.
  *
- * This module imports the runtime app, so it must never be reached from a
- * browser bundle's component tree: one importer, the client module, and no
- * other.
+ * The app is imported as a type only, so none of the server reaches a browser
+ * bundle: `AppType` is erased at compile time and what ships is `hc` plus a
+ * base URL. That is what lets the web build use the same client as the desktop
+ * one.
  */
 const client = hc<typeof app>('')
 

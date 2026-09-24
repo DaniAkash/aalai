@@ -1,6 +1,7 @@
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { GitBranch, Inbox, Workflow } from 'lucide-react'
 import type { ComponentType } from 'react'
+import { TitleBar } from '@/components/layout/TitleBar'
 import {
   AnimatedSidebar,
   AnimatedSidebarContent,
@@ -78,14 +79,7 @@ export function AppShell({ pending }: { pending?: number }) {
       </AnimatedSidebar>
 
       <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-        <div
-          data-tauri-drag-region
-          className="flex h-[38px] shrink-0 items-center border-border border-b px-3"
-        >
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {crumb(path)}
-          </span>
-        </div>
+        <TitleBar crumb={crumb(path)} />
         <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           <Outlet />
         </main>
