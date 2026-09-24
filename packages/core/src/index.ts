@@ -1,4 +1,4 @@
-import { loadConfig, stateDir, type Config } from '@/config'
+import { type Config, loadConfig, serverDisabled, stateDir } from '@/config'
 import { captureInheritedTokens, githubEnv } from '@/lib/credentials'
 import { authenticatedLogin, getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
@@ -6,9 +6,15 @@ import { exitWithParent } from '@/lib/parent'
 import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
 import { announceReady, startServer } from '@/server/serve'
-import { pollOnce } from '@/watch/poll'
 import { screenIssue } from '@/watch/intake'
-import { claimRun, completeRun, forgetRun, listRuns, openState } from '@/watch/state'
+import { pollOnce } from '@/watch/poll'
+import {
+  claimRun,
+  completeRun,
+  forgetRun,
+  listRuns,
+  openState,
+} from '@/watch/state'
 
 const log = logger('aalai')
 
@@ -78,7 +84,9 @@ async function serve(config: Config): Promise<void> {
         log.info('tick complete', { handled })
       }
     } catch (error) {
-      log.error('tick failed', { error: error instanceof Error ? error.message : error })
+      log.error('tick failed', {
+        error: error instanceof Error ? error.message : error,
+      })
     }
     if (controller.signal.aborted) {
       break
@@ -98,9 +106,13 @@ async function once(config: Config): Promise<void> {
 }
 
 /** Manual trigger. Bypasses the cursor but still claims, so a demo cannot double-run. */
-async function runOne(config: Config, repo: string, issueNumber: number): Promise<void> {
+async function runOne(
+  config: Config,
+  repo: string,
+  issueNumber: number,
+): Promise<void> {
   const db = openState()
-  if (process.env.AALAI_NO_SERVER !== '1') {
+  if (!serverDisabled()) {
     startApi(config)
   }
   const issue = await getIssue(repo, issueNumber)
@@ -114,7 +126,12 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     db.close()
     return
   }
-  const lease = claimRun(db, repo, issueNumber, config.staleClaimMinutes * 60_000)
+  const lease = claimRun(
+    db,
+    repo,
+    issueNumber,
+    config.staleClaimMinutes * 60_000,
+  )
   if (lease === null) {
     log.error('already run; use `aalai forget <repo> <issue>` to retry', {
       repo,
@@ -132,7 +149,11 @@ async function runOne(config: Config, repo: string, issueNumber: number): Promis
     error: result.error,
     lease,
   })
-  log.info('done', { status: result.status, pr: result.prUrl, error: result.error })
+  log.info('done', {
+    status: result.status,
+    pr: result.prUrl,
+    error: result.error,
+  })
   if (result.status === 'failed') {
     process.exitCode = 1
   }
@@ -172,10 +193,15 @@ async function doctor(): Promise<void> {
 
   try {
     const config = await loadConfig()
-    log.info('config valid', { repos: config.watch.length, agents: Object.values(config.agents).join(',') })
+    log.info('config valid', {
+      repos: config.watch.length,
+      agents: Object.values(config.agents).join(','),
+    })
   } catch (error) {
     ok = false
-    log.error('config problem', { error: error instanceof Error ? error.message : error })
+    log.error('config problem', {
+      error: error instanceof Error ? error.message : error,
+    })
   }
 
   log.info('state directory', { path: stateDir() })
@@ -199,16 +225,23 @@ async function main(): Promise<void> {
   if (command === 'forget') {
     const [repo, issueArg] = process.argv.slice(3)
     const issueNumber = Number(issueArg)
-    if (repo === undefined || !Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+    if (
+      repo === undefined ||
+      !Number.isSafeInteger(issueNumber) ||
+      issueNumber <= 0
+    ) {
       log.error('usage: aalai forget <owner/repo> <issue-number>')
       process.exitCode = 1
       return
     }
     const db = openState()
-    log.info(forgetRun(db, repo, issueNumber) ? 'forgotten' : 'no record found', {
-      repo,
-      issue: issueNumber,
-    })
+    log.info(
+      forgetRun(db, repo, issueNumber) ? 'forgotten' : 'no record found',
+      {
+        repo,
+        issue: issueNumber,
+      },
+    )
     db.close()
     return
   }
@@ -226,7 +259,11 @@ async function main(): Promise<void> {
   if (command === 'run') {
     const [repo, issueArg] = rest
     const issueNumber = Number(issueArg)
-    if (repo === undefined || !Number.isSafeInteger(issueNumber) || issueNumber <= 0) {
+    if (
+      repo === undefined ||
+      !Number.isSafeInteger(issueNumber) ||
+      issueNumber <= 0
+    ) {
       log.error('usage: aalai run <owner/repo> <issue-number>')
       process.exitCode = 1
       return

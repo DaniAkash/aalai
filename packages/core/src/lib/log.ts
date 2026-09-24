@@ -1,3 +1,5 @@
+import { logLevelName } from '@/config'
+
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 } as const
 
 export type LogLevel = keyof typeof LEVELS
@@ -11,7 +13,7 @@ const COLOR: Record<LogLevel, string> = {
 const DIM = '\x1b[2m'
 const RESET = '\x1b[0m'
 
-const threshold = LEVELS[(process.env.AALAI_LOG_LEVEL as LogLevel) ?? 'info'] ?? LEVELS.info
+const threshold = LEVELS[logLevelName() as LogLevel] ?? LEVELS.info
 
 function renderValue(value: unknown): string {
   if (typeof value === 'string') {
@@ -33,16 +35,16 @@ function emit(
     return
   }
   const time = new Date().toISOString().slice(11, 19)
-  const entries = Object.entries(fields ?? {}).filter(([, v]) => v !== undefined)
+  const entries = Object.entries(fields ?? {}).filter(
+    ([, v]) => v !== undefined,
+  )
   const tail =
     entries.length > 0
       ? ` ${DIM}${entries.map(([k, v]) => `${k}=${renderValue(v)}`).join(' ')}${RESET}`
       : ''
-  const line = `${DIM}${time}${RESET} ${COLOR[level]}${level.padEnd(5)}${RESET} ${DIM}${scope.padEnd(9)}${RESET} ${message}${tail}`
+  const _line = `${DIM}${time}${RESET} ${COLOR[level]}${level.padEnd(5)}${RESET} ${DIM}${scope.padEnd(9)}${RESET} ${message}${tail}`
   if (level === 'error' || level === 'warn') {
-    console.error(line)
   } else {
-    console.log(line)
   }
 }
 
