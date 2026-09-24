@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReposRouteImport } from './routes/repos'
 import { Route as RunsRouteImport } from './routes/runs'
+import { Route as GatesGateIdRouteImport } from './routes/gates/$gateId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const RunsRoute = RunsRouteImport.update({
   path: '/runs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GatesGateIdRoute = GatesGateIdRouteImport.update({
+  id: '/gates/$gateId',
+  path: '/gates/$gateId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
   '/runs': typeof RunsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/repos' | '/runs'
+  fullPaths: '/' | '/repos' | '/runs' | '/gates/$gateId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/repos' | '/runs'
-  id: '__root__' | '/' | '/repos' | '/runs'
+  to: '/' | '/repos' | '/runs' | '/gates/$gateId'
+  id: '__root__' | '/' | '/repos' | '/runs' | '/gates/$gateId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ReposRoute: typeof ReposRoute
   RunsRoute: typeof RunsRoute
+  GatesGateIdRoute: typeof GatesGateIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RunsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gates/$gateId': {
+      id: '/gates/$gateId'
+      path: '/gates/$gateId'
+      fullPath: '/gates/$gateId'
+      preLoaderRoute: typeof GatesGateIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ReposRoute: ReposRoute,
   RunsRoute: RunsRoute,
+  GatesGateIdRoute: GatesGateIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -11,14 +11,10 @@ import {
   readGate,
 } from '@/modules/gates'
 import { readArtifact } from '@/modules/work/artifacts'
+import { subjectOf, waitedFor } from '@/shared/format'
 import { openState } from '@/watch/state'
 
 const log = logger('gates')
-
-/** `acme/widgets#7@1790…` back into something a person reads. */
-function subjectOf(runId: string): string {
-  return runId.split('@')[0] ?? runId
-}
 
 /**
  * What this gate is asking, in one cell.
@@ -33,19 +29,6 @@ function asking(gate: GateRow): string {
   return gate.kind === 'plan'
     ? `approve the plan (v${gate.artifactVersion ?? '?'})`
     : gate.kind
-}
-
-function waitedFor(openedAt: string): string {
-  const opened = Date.parse(
-    openedAt.includes('T') ? openedAt : `${openedAt.replace(' ', 'T')}Z`,
-  )
-  if (Number.isNaN(opened)) {
-    return ''
-  }
-  const minutes = Math.max(0, Math.round((Date.now() - opened) / 60_000))
-  if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
 
 export function showGates(args: readonly string[]): void {

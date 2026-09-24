@@ -14,6 +14,8 @@ import {
   AnimatedSidebarMenuItem,
   AnimatedSidebarProvider,
 } from '@/components/motion/animated-sidebar'
+import { useOpenGates } from '@/modules/api/gates.hooks'
+import { useLiveEvents } from '@/modules/api/live.hooks'
 
 interface NavItem {
   to: string
@@ -35,7 +37,12 @@ const NAV: NavItem[] = [
  * The title bar is left empty because the window is dragged by it and the
  * traffic lights sit there, so anything placed in it collides with the OS.
  */
-export function AppShell({ pending }: { pending?: number }) {
+export function AppShell() {
+  // Mounted once, here, so one connection serves every screen and the cache
+  // stays current no matter which one is open.
+  const stream = useLiveEvents()
+  const gates = useOpenGates()
+  const pending = gates.data?.gates.length ?? 0
   const path = useRouterState({ select: (s) => s.location.pathname })
   const navigate = useNavigate()
 
@@ -64,7 +71,9 @@ export function AppShell({ pending }: { pending?: number }) {
                       <AnimatedSidebarMenuButton
                         icon={<Icon className="size-4" />}
                         isActive={active}
-                        badge={item.to === '/' && pending ? pending : undefined}
+                        badge={
+                          item.to === '/' && pending > 0 ? pending : undefined
+                        }
                         onSelect={() => void navigate({ to: item.to })}
                       >
                         {item.label}
@@ -79,7 +88,7 @@ export function AppShell({ pending }: { pending?: number }) {
       </AnimatedSidebar>
 
       <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
-        <TitleBar crumb={crumb(path)} />
+        <TitleBar crumb={crumb(path)} stream={stream} />
         <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           <Outlet />
         </main>

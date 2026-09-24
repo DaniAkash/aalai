@@ -7,7 +7,8 @@
   "exports": {
     "./app": "./src/server/app.ts",
     "./events": "./src/events/events.types.ts",
-    "./client": "./src/server/client.ts"
+    "./client": "./src/server/client.ts",
+    "./shared": "./src/shared/format.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",

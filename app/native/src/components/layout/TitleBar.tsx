@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils'
+import type { StreamState } from '@/modules/api/events'
 import { TauriOnly } from '@/modules/host/TauriOnly'
 
 /**
@@ -8,7 +10,13 @@ import { TauriOnly } from '@/modules/host/TauriOnly'
  * the chrome is the browser's own, so the drag surface would be a lie and the
  * inset would be dead space.
  */
-export function TitleBar({ crumb }: { crumb: string }) {
+export function TitleBar({
+  crumb,
+  stream,
+}: {
+  crumb: string
+  stream: StreamState
+}) {
   return (
     <div className="relative flex h-[38px] shrink-0 items-center border-border border-b px-3">
       <TauriOnly feature="window dragging">
@@ -17,6 +25,7 @@ export function TitleBar({ crumb }: { crumb: string }) {
       <span className="relative font-mono text-[11px] text-muted-foreground">
         {crumb}
       </span>
+      <StreamDot state={stream} />
     </div>
   )
 }
@@ -32,4 +41,28 @@ export function TitleBar({ crumb }: { crumb: string }) {
  */
 function DragSurface() {
   return <div data-tauri-drag-region className="absolute inset-0" />
+}
+
+/**
+ * Whether the factory is still talking to us.
+ *
+ * Silent when live, because a connection that works is not news. A factory
+ * that looks idle when it is actually unreachable is the worst failure this
+ * interface can have, so the other two states say so.
+ */
+function StreamDot({ state }: { state: StreamState }) {
+  if (state === 'live') {
+    return null
+  }
+  return (
+    <span className="relative ml-auto flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+      <span
+        className={cn(
+          'size-[6px] rounded-full',
+          state === 'lost' ? 'bg-destructive' : 'bg-muted-foreground',
+        )}
+      />
+      {state === 'lost' ? 'factory unreachable' : 'connecting'}
+    </span>
+  )
 }

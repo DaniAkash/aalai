@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { isDesktop } from './host'
 
-interface Props {
+export interface TauriOnlyProps {
   readonly children: ReactNode
   /** Named in the console when something inside genuinely fails. */
   readonly feature?: string
@@ -26,7 +26,10 @@ interface Props {
  * handler or a promise. A capability invoked from a click needs a function
  * that works in both hosts, as `openExternal` does, rather than this.
  */
-export function TauriOnly({ children, feature = 'a desktop feature' }: Props) {
+export function TauriOnly({
+  children,
+  feature = 'a desktop feature',
+}: TauriOnlyProps) {
   if (!isDesktop()) {
     return null
   }

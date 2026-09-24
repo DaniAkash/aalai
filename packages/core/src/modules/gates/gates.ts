@@ -1,5 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { and, asc, eq } from 'drizzle-orm'
+import { emit } from '@/events/bus'
 import { query } from '@/modules/db/query'
 import {
   type GateRow,
@@ -91,8 +92,34 @@ export function answerGate(db: Database, input: AnswerGateInput): AnswerResult {
   // nobody made.
   if (result.ok) {
     publishGateAnswered(result.gate)
+    announce(result.gate)
   }
   return result
+}
+
+/**
+ * Tells anything watching this process that the gate moved.
+ *
+ * Here rather than only in the machine that was waiting, because a gate can be
+ * answered with no run parked on it: a second window, or a terminal, then has
+ * no way to learn it happened until it next polls.
+ *
+ * A run parked in this process announces it again when its own watcher
+ * notices. The duplicate is harmless: subscribers invalidate a cache, and
+ * invalidating twice costs one extra read.
+ */
+function announce(gate: GateRow): void {
+  if (gate.decision === null) {
+    return
+  }
+  emit({
+    type: 'gate.answered',
+    runId: gate.runId,
+    gateId: gate.id,
+    decision: gate.decision,
+    answeredOn: gate.answeredOn ?? 'unknown',
+    at: Date.now(),
+  })
 }
 
 function record(db: Database, input: AnswerGateInput): AnswerResult {
