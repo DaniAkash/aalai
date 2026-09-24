@@ -8,20 +8,30 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter 'aalai-core' test",
-    "eval": "bun run --filter 'aalai-core' eval",
     "start": "bun run --filter 'aalai-core' start",
     "once": "bun run --filter 'aalai-core' once",
     "service": "bun run --filter 'aalai-core' service",
     "build:sidecar": "bun scripts/build-sidecar.ts",
     "dev:native": "bun run --filter aalai-native dev",
-    "dev": "bun run build:sidecar && bun run --filter aalai-native dev:app"
+    "dev": "bun run build:sidecar && bun run --filter aalai-native dev:app",
+    "check": "concurrently --group --names biome,tsc:core,tsc:native,test,eval,rust,fallow --prefix-colors auto \"bun run check:biome\" \"bun run check:tsc:core\" \"bun run check:tsc:native\" \"bun run check:test\" \"bun run check:eval\" \"bun run check:rust\" \"bun run check:fallow\"",
+    "check:biome": "biome check",
+    "check:tsc:core": "bun run --filter aalai-core typecheck",
+    "check:tsc:native": "bun run --filter aalai-native typecheck",
+    "check:test": "bun run --filter aalai-core test",
+    "check:eval": "bun run --filter aalai-core eval",
+    "check:rust": "bun run build:sidecar && cd app/native/src-tauri && cargo clippy --all-targets",
+    "check:fallow": "fallow",
+    "check:fix": "biome check --write --unsafe && cd app/native/src-tauri && cargo clippy --all-targets --fix --allow-dirty --allow-staged",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter aalai-core test",
+    "eval": "bun run --filter aalai-core eval"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@types/bun": "^1.4.2",
     "concurrently": "^10",
+    "fallow": "^3.27.0",
     "typescript": "^7.0.2"
   }
 }
