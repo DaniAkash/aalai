@@ -42,9 +42,13 @@ function emit(
     entries.length > 0
       ? ` ${DIM}${entries.map(([k, v]) => `${k}=${renderValue(v)}`).join(' ')}${RESET}`
       : ''
-  const _line = `${DIM}${time}${RESET} ${COLOR[level]}${level.padEnd(5)}${RESET} ${DIM}${scope.padEnd(9)}${RESET} ${message}${tail}`
+  const line = `${DIM}${time}${RESET} ${COLOR[level]}${level.padEnd(5)}${RESET} ${DIM}${scope.padEnd(9)}${RESET} ${message}${tail}`
+  // Written through the streams directly rather than console, which the linter
+  // bans here. Severity routing is the point: a supervisor reads stderr.
   if (level === 'error' || level === 'warn') {
+    process.stderr.write(`${line}\n`)
   } else {
+    process.stdout.write(`${line}\n`)
   }
 }
 
