@@ -1,13 +1,19 @@
 import type { Config } from '@/config'
 import { emit, registerRunRoot } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
-import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
 import { redactDeep } from '@/lib/redact'
-import { buildCommitMessage } from '@/prompts/implement-issue'
+import type { RunRef, Subject } from '@/modules/work/paths'
+import {
+  recordAnalysis,
+  recordReview,
+  recordRun,
+  snapshotOf,
+} from '@/run/artifacts'
+import { commitImplementerWork } from '@/run/commit'
 import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
-import { type CommitOutcome, runReviewLoop } from '@/run/loop'
+import { runReviewLoop } from '@/run/loop'
 import { runAnalyst, runImplementer, runReviewer } from '@/run/stations'
 import {
   discardPath,
@@ -18,6 +24,24 @@ import {
 } from '@/run/workspace'
 
 const log = logger('pipeline')
+
+/**
+ * Artifacts are written best effort.
+ *
+ * A run that produced a pull request has done its job, and a full disk or a
+ * permission problem under the work directory is not a reason to throw that
+ * away. The failure is logged loudly rather than swallowed quietly.
+ */
+async function record(what: string, write: () => Promise<void>): Promise<void> {
+  try {
+    await write()
+  } catch (error) {
+    log.error('could not write artifacts', {
+      what,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 export interface PipelineResult {
   readonly status: 'delivered' | 'skipped' | 'failed'
@@ -44,6 +68,8 @@ export async function runIssue(
   config: Config,
 ): Promise<PipelineResult> {
   const runId = `${repo}#${issue.number}@${Date.now()}`
+  const subject: Subject = { repo, kind: 'issue', number: issue.number }
+  const run: RunRef = { subject, runId }
   log.info('run starting', { repo, issue: issue.number, title: issue.title })
   emit({
     type: 'run.started',
@@ -76,6 +102,7 @@ export async function runIssue(
 
   let reviewWorktree: string | null = null
   let delivered = false
+  let result: PipelineResult = { status: 'failed', error: 'run did not finish' }
 
   try {
     // From here on every event is redacted against this worktree before it
@@ -115,6 +142,9 @@ export async function runIssue(
       criteria: analysis.acceptance_criteria,
       at: Date.now(),
     })
+    await record('analysis', () =>
+      recordAnalysis(subject, run, issue, analysis),
+    )
 
     const outcome = await runReviewLoop(
       {
@@ -177,6 +207,7 @@ export async function runIssue(
             results: safe.criteria_results,
             at: Date.now(),
           })
+          await record('review', () => recordReview(subject, run, issue, safe))
           return safe
         },
       },
@@ -195,7 +226,8 @@ export async function runIssue(
         delivered: false,
         reason: outcome.reason,
       })
-      return { status: 'skipped', error: outcome.reason }
+      result = { status: 'skipped', error: outcome.reason }
+      return result
     }
 
     emit({ type: 'stage.entered', runId, stage: 'deliver', at: Date.now() })
@@ -217,7 +249,8 @@ export async function runIssue(
         reason: delivery.reason,
         at: Date.now(),
       })
-      return { status: 'skipped', error: delivery.reason }
+      result = { status: 'skipped', error: delivery.reason }
+      return result
     }
     emit({
       type: 'run.delivered',
@@ -227,17 +260,22 @@ export async function runIssue(
       at: Date.now(),
     })
     delivered = true
-    return {
+    result = {
       status: 'delivered',
       branch: delivery.branch,
       prUrl: delivery.prUrl,
     }
+    return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log.error('run failed', { repo, issue: issue.number, error: message })
     emit({ type: 'run.failed', runId, error: message, at: Date.now() })
-    return { status: 'failed', error: message }
+    result = { status: 'failed', error: message }
+    return result
   } finally {
+    await record('run', () =>
+      recordRun(run, snapshotOf(runId, repo, issue.number, result)),
+    )
     if (reviewWorktree !== null) {
       await discardPath(workspace, reviewWorktree)
     }
@@ -247,41 +285,4 @@ export async function runIssue(
       await discardWorkspace(workspace)
     }
   }
-}
-
-/** Stages the implementer's work and commits it locally, unpushed. */
-async function commitImplementerWork(
-  runId: string,
-  workspace: Workspace,
-  issue: GhIssue,
-  attempt: number,
-  config: Config,
-): Promise<CommitOutcome> {
-  const changed = await git.changedFiles(workspace.worktreePath)
-  const { deliverable, generated } = git.partitionStagePaths(changed)
-  if (generated.length > 0) {
-    log.warn('ignoring generated output the agent produced', {
-      count: generated.length,
-    })
-  }
-  if (deliverable.length === 0) {
-    return 'no-changes'
-  }
-
-  await git.stageAll(workspace.worktreePath)
-  if (!(await git.hasStagedChanges(workspace.worktreePath))) {
-    return 'generated-only'
-  }
-
-  const subject = buildCommitMessage(issue).split('\n')[0] ?? issue.title
-  const sha = await git.commit(
-    workspace.worktreePath,
-    attempt === 0
-      ? buildCommitMessage(issue)
-      : `${subject} (review pass ${attempt})`,
-    { name: config.commitName, email: config.commitEmail },
-  )
-  log.info('committed locally', { sha: sha.slice(0, 8), attempt })
-  emit({ type: 'commit.made', runId, sha, attempt, at: Date.now() })
-  return 'committed'
 }
