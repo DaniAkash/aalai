@@ -38,6 +38,11 @@ A first run creates `~/.aalai`, migrates the database, and watches nothing. Add 
 | *(no command)* | The same, on a timer, until interrupted |
 | `run <owner/repo> <issue>` | Runs one issue now, bypassing the poll cursor. Still claims, so a demo cannot double-run |
 | `forget <owner/repo> <issue>` | Drops a run record so the issue can be picked up again |
+| `gates` | What is waiting on a person, oldest first. `--repo owner/name` narrows it |
+| `show <gate>` | The artifact a gate is asking you to approve, rendered, with its version |
+| `approve <gate>` | Let the run carry on |
+| `reject <gate> --reason "..."` | Stop the run, with a reason that travels with it |
+| `changes <gate> --reason "..."` | Send it back to the analyst for a new plan |
 
 Package scripts wrap the common ones:
 
@@ -88,6 +93,51 @@ deliver      pushes and opens a draft, only on an approved verdict
 ```
 
 The analyst and the reviewer run in an approve-reads permission mode and the implementer is the only one that can write, so "the analyst plans, it does not implement" is a property of the run rather than a line in a prompt. Nothing merges: a draft pull request is the ceiling, and merge is not in the tool surface at all.
+
+### Stopping for a person
+
+A repository's policy decides how much happens unattended:
+
+| Policy | What it does |
+| --- | --- |
+| `automatic` | Straight through to a draft pull request. The default |
+| `plan_gate` | The plan and the criteria need approval before any code is written |
+| `triage` | Reserved for classify and report, not yet wired to the pipeline |
+
+Under `plan_gate` the run parks after the analyst and waits. It is waiting in
+the database rather than in a process, so quitting costs nothing and the answer
+can come from anywhere:
+
+```sh
+aalai gates                  # acme/widgets#7  plan  v1  2h
+aalai show acme/widgets#7@1790000000000:plan:1
+aalai approve acme/widgets#7@1790000000000:plan:1
+```
+
+That works with the desktop app closed and with no factory running. Answering
+prefers the API when one is listening, because that wakes a parked run at once;
+otherwise it writes the row and the run notices within a couple of seconds. The
+two are the same decision, and a factory that is not running is not an error.
+
+**Approval pins to a version.** A gate names the artifact and the version it is
+asking about. If the analyst writes `plan.v2.md` afterwards, the old gate is
+superseded and answering it is refused, so approval given to one plan cannot
+transfer to its replacement.
+
+**A second answer is refused and the first stands.** Three surfaces can answer
+the same gate and two of them racing is expected rather than exceptional.
+
+### Asking before the agent acts
+
+`askOnPermission` turns on a second, different kind of question. When the agent
+requests a permission its station's mode does not cover, the turn pauses and the
+request surfaces as a gate.
+
+This one is **not durable**. It holds the agent's turn open, so it dies with the
+process and is bounded by the turn timeout. A question nobody answers in time
+expires and the request falls through to the station's permission mode, which is
+exactly the behaviour with the setting off. It is a question with a deadline, not
+a gate you can come back to tomorrow.
 
 Stations record what they decide by **calling tools**, not by writing prose that something has to parse. Each station is served only its own:
 
@@ -151,10 +201,10 @@ Settings live in the database, one row per domain, and the desktop app writes th
 
 | Domain | Keys and defaults |
 | --- | --- |
-| `factory` | `pollSeconds` 60 · `maxIssuesPerPoll` 25 · `staleClaimMinutes` 30 · `keepWorktreeOnFailure` true |
+| `factory` | `pollSeconds` 60 · `maxIssuesPerPoll` 25 · `staleClaimMinutes` 30 · `keepWorktreeOnFailure` true · `defaultPolicy` automatic |
 | `agents` | `analyst` `implementer` `reviewer` all `codex` · `reasoningEffort` high |
 | `limits` | `maxRevisions` 2 · `maxCiFixes` 2 · `turnTimeoutMs` 900000 |
-| `trust` | `trustedAuthorsOnly` true · `requireLabel` null |
+| `trust` | `trustedAuthorsOnly` true · `requireLabel` null · `askOnPermission` false |
 | `commit` | `commitName` aalai · `commitEmail` the repository owner's GitHub noreply address |
 | `ui` | `uiPort` 4173 · `notifications` true · `theme` system |
 
@@ -206,13 +256,21 @@ Always bound to `127.0.0.1`, and which port depends on the command:
 The app owns the pair it passes, so every launch of it gets a new one. The one-shot path announces nothing because nothing is waiting for a handshake there; it exists so a headless pass records through the same tools a watched one does. Every route but `/api/health` requires the token when one is set. `AALAI_NO_SERVER=1` skips the server for `run` and the one-shot pass, which is how the evals run; watching always serves, because serving the app is what watching is for.
 
 ```text
-GET  /api/health
-GET  /api/runs
-GET  /api/repos            POST /api/repos      DELETE /api/repos/:owner/:name
-GET  /api/github/repos
-GET  /api/events           GET  /api/live       GET /api/live/:runId
-ALL  /api/mcp/:runToken    the tool surface agents call
+GET   /api/health
+GET   /api/runs
+GET   /api/repos          POST /api/repos      DELETE /api/repos/:owner/:name
+PATCH /api/repos/:owner/:name                  the per repository policy
+GET   /api/github/repos
+GET   /api/events         GET  /api/live       GET /api/live/:runId
+GET   /api/gates          GET  /api/gates/:id  POST /api/gates/:id/answer
+GET   /api/settings       PATCH /api/settings
+ALL   /api/mcp/:runToken  the tool surface agents call
 ```
+
+Bodies go through `zValidator`, so a client derives its payload types from the
+route rather than restating them. The typed client is exported precompiled from
+`aalai-core/client` as `hcWithType`, which is Hono's own remedy for the type
+instantiation cost that otherwise grows with every route added.
 
 ---
 
