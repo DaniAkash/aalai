@@ -52,11 +52,20 @@ ok('sidecar built', out)
 // Only for the host's own triple: a cross compiled binary cannot run here, so
 // copying it next to a dev build would be worse than not having one.
 if (triple === (await hostTriple())) {
-  for (const profile of ['debug', 'release']) {
-    const dir = join(root, 'app', 'native', 'src-tauri', 'target', profile)
-    if (!(await exists(dir))) {
+  const target = join(root, 'app', 'native', 'src-tauri', 'target')
+  // debug is created rather than skipped when absent: on a fresh clone this
+  // script runs before cargo has ever built, so waiting for the directory to
+  // exist means the first `tauri dev` is the one that panics. release is only
+  // topped up when a build has already made it.
+  const profiles = [
+    { dir: join(target, 'debug'), create: true },
+    { dir: join(target, 'release'), create: false },
+  ]
+  for (const { dir, create } of profiles) {
+    if (!create && !(await exists(dir))) {
       continue
     }
+    await mkdir(dir, { recursive: true })
     const devCopy = join(dir, `aalai-core${suffix}`)
     await copyFile(out, devCopy)
     ok('sidecar placed for tauri dev', devCopy)
