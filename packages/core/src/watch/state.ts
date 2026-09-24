@@ -154,6 +154,39 @@ export function listRuns(db: Database, limit = 20): RunRecord[] {
     .all()
 }
 
+/**
+ * Takes over a claim whose process is gone, for resuming.
+ *
+ * claimRun waits for the lease to go stale, which is right when the question
+ * is "did somebody abandon this". Here the question is different: a snapshot
+ * on disk says the work exists and this process intends to finish it. The
+ * update is still conditional, so two pollers racing to resume the same run
+ * produce one winner and one null rather than two live machines.
+ *
+ * @returns The new lease when this caller now owns the run.
+ */
+export function takeOverRun(
+  db: Database,
+  repo: string,
+  issue: number,
+): string | null {
+  const lease = crypto.randomUUID()
+  const result = query(db)
+    .update(runs)
+    .set({ lease, startedAt: new Date().toISOString() })
+    .where(
+      and(
+        eq(runs.repo, repo),
+        eq(runs.subjectKind, ISSUE),
+        eq(runs.subjectNumber, issue),
+        eq(runs.status, 'claimed'),
+      ),
+    )
+    .returning({ repo: runs.repo })
+    .all()
+  return result.length > 0 ? lease : null
+}
+
 /** Removes a run record so the issue can be picked up again. The manual retry path. */
 export function forgetRun(db: Database, repo: string, issue: number): boolean {
   const result = query(db)

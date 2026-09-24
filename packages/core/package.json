@@ -17,6 +17,7 @@
     "service": "bun run scripts/service.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "acpx": "^0.17.0",
     "acpx-ai-provider": "^1.0.0",
     "ai": "^7.0.105",
@@ -26,6 +27,7 @@
     "hono": "^4.13.8",
     "log-symbols": "^7.0.1",
     "terminal-link": "^5.0.0",
+    "xstate": "^5.33.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {

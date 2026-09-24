@@ -6,15 +6,37 @@ import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
+import { resumeUnfinished } from '@/watch/resume'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
 const log = logger('poll')
+
+/**
+ * What the batch cap should be counting.
+ *
+ * The REST issues endpoint returns pull requests as issues, and the cap exists
+ * to limit how much work one pass takes on. Counting pull requests against it
+ * lets a busy pull request queue starve the issues: at a cap of one, a single
+ * updated pull request means no issue is ever picked up.
+ *
+ * Only this structural mismatch is filtered. Trust and label screening stays
+ * in handleIssue, where a refusal is surfaced rather than silently dropped.
+ */
+export function workableIssues(issues: readonly GhIssue[]): GhIssue[] {
+  return issues.filter(
+    (issue) => issue.pull_request === undefined || issue.pull_request === null,
+  )
+}
 
 /** How far back a first-ever poll looks, so a fresh install does not replay the archive. */
 const COLD_START_LOOKBACK_MS = 10 * 60 * 1000
 
 export async function pollOnce(db: Database, config: Config): Promise<number> {
-  let handled = 0
+  // Before anything new is claimed. A run whose process went away is still
+  // claimed and still has a branch, so picking it up first is what stops a
+  // restart looking like an abandoned issue.
+  const resumed = await resumeUnfinished(db, config)
+  let handled = resumed
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
   }
@@ -46,11 +68,12 @@ async function pollRepo(
     return 0
   }
 
-  const batch = issues.slice(0, config.maxIssuesPerPoll)
-  if (issues.length > batch.length) {
+  const candidates = workableIssues(issues)
+  const batch = candidates.slice(0, config.maxIssuesPerPoll)
+  if (candidates.length > batch.length) {
     log.warn('batch capped, the remainder waits for the next pass', {
       repo,
-      matched: issues.length,
+      matched: candidates.length,
       processing: batch.length,
     })
   }
@@ -66,7 +89,7 @@ async function pollRepo(
     db,
     repo,
     nextCursor({
-      reachedEnd: batch.length === issues.length,
+      reachedEnd: batch.length === candidates.length,
       cutoff,
       since,
       lastProcessed: worked.lastProcessed,

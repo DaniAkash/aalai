@@ -1,5 +1,17 @@
-import type { GhIssue } from '@/lib/gh'
-import { writeArtifact } from '@/modules/work/artifacts'
+import { logger } from '@/lib/log'
+/**
+ * The little of an issue an artifact's heading needs.
+ *
+ * Narrower than GhIssue on purpose: a tool call knows the subject it is
+ * writing for without having fetched the issue again, and GhIssue satisfies
+ * this structurally so every existing caller is unchanged.
+ */
+export interface SubjectHeading {
+  readonly number: number
+  readonly title: string
+}
+
+import { type ArtifactRef, writeArtifact } from '@/modules/work/artifacts'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { writeJson } from '@/modules/work/store'
 import type { PipelineResult } from '@/run/pipeline'
@@ -13,6 +25,27 @@ import type { Analysis, Review } from '@/run/stations/schemas'
  * one fact not derivable from its path, so it travels in the frontmatter with
  * the content rather than in a row that could drift from it.
  */
+
+/**
+ * Writes an artifact, and carries on if it cannot.
+ *
+ * A run that produced a pull request has done its job, and a full disk under
+ * the work directory is not a reason to throw that away. The failure is logged
+ * loudly rather than swallowed quietly.
+ */
+export async function recordBestEffort(
+  what: string,
+  write: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await write()
+  } catch (error) {
+    logger('pipeline').error('could not write artifacts', {
+      what,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
 
 function frontmatter(fields: Record<string, string>): string {
   const lines = Object.entries(fields).map(([key, value]) => `${key}: ${value}`)
@@ -28,7 +61,7 @@ function numbered(items: readonly string[]): string {
 }
 
 function planMarkdown(
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
   runId: string,
 ): string {
@@ -67,7 +100,7 @@ ${analysis.test_strategy}
 }
 
 function criteriaMarkdown(
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
   runId: string,
 ): string {
@@ -85,7 +118,11 @@ ${analysis.acceptance_criteria.map((c) => `- [ ] ${c}`).join('\n')}
 `
 }
 
-function reviewMarkdown(issue: GhIssue, review: Review, runId: string): string {
+function reviewMarkdown(
+  issue: SubjectHeading,
+  review: Review,
+  runId: string,
+): string {
   const results = review.criteria_results
     .map(
       (result) =>
@@ -124,30 +161,36 @@ ${findings}
 export async function recordAnalysis(
   subject: Subject,
   run: RunRef,
-  issue: GhIssue,
+  issue: SubjectHeading,
   analysis: Analysis,
-): Promise<void> {
-  await writeArtifact(subject, 'plan', planMarkdown(issue, analysis, run.runId))
-  await writeArtifact(
+): Promise<{ plan: ArtifactRef; criteria: ArtifactRef }> {
+  const plan = await writeArtifact(
+    subject,
+    'plan',
+    planMarkdown(issue, analysis, run.runId),
+  )
+  const criteria = await writeArtifact(
     subject,
     'criteria',
     criteriaMarkdown(issue, analysis, run.runId),
   )
   await writeJson(run, 'analysis', analysis)
+  return { plan, criteria }
 }
 
 export async function recordReview(
   subject: Subject,
   run: RunRef,
-  issue: GhIssue,
+  issue: SubjectHeading,
   review: Review,
-): Promise<void> {
-  await writeArtifact(
+): Promise<{ review: ArtifactRef }> {
+  const written = await writeArtifact(
     subject,
     'review',
     reviewMarkdown(issue, review, run.runId),
   )
   await writeJson(run, 'review', review)
+  return { review: written }
 }
 
 export interface RunSnapshot {

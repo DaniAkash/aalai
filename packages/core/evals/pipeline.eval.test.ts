@@ -42,6 +42,7 @@ describe('the acceptance criteria reach the stations that need them', () => {
       analysis,
       base: 'main',
       branch: 'aalai/issue-1',
+      tools: false,
     })
     for (const criterion of analysis.acceptance_criteria) {
       expect(prompt).toContain(criterion)
@@ -55,6 +56,7 @@ describe('the acceptance criteria reach the stations that need them', () => {
       analysis,
       base: 'main',
       branch: 'aalai/issue-1',
+      tools: false,
     })
     expect(prompt).toContain('git diff main...aalai/issue-1')
     expect(prompt).toContain(
@@ -67,6 +69,7 @@ describe('the acceptance criteria reach the stations that need them', () => {
       repo: 'acme/widgets',
       issue: issueFixture(),
       conventionFiles: [],
+      tools: false,
     })
     expect(prompt).toContain('Do not modify anything')
   })
@@ -230,5 +233,42 @@ describe('a station that grouped its answer is still accepted', () => {
         analysisSchema,
       ).ok,
     ).toBe(false)
+  })
+})
+
+describe('how a station is told to record what it decided', () => {
+  test('with tools, it is told to call one and not to write a block', () => {
+    const prompt = buildAnalystPrompt({
+      repo: 'acme/widgets',
+      issue: issueFixture(),
+      conventionFiles: [],
+      tools: true,
+    })
+    expect(prompt).toContain('write_plan')
+    expect(prompt).not.toContain('```json')
+  })
+
+  test('without tools, the fenced block is still the contract', () => {
+    const prompt = buildAnalystPrompt({
+      repo: 'acme/widgets',
+      issue: issueFixture(),
+      conventionFiles: [],
+      tools: false,
+    })
+    expect(prompt).toContain('```json')
+    expect(prompt).not.toContain('write_plan')
+  })
+
+  test('the reviewer gets its own tool, never the analyst\u2019s', () => {
+    const prompt = buildReviewerPrompt({
+      repo: 'acme/widgets',
+      issue: issueFixture(),
+      analysis,
+      base: 'main',
+      branch: 'aalai/issue-1',
+      tools: true,
+    })
+    expect(prompt).toContain('write_review')
+    expect(prompt).not.toContain('write_plan')
   })
 })

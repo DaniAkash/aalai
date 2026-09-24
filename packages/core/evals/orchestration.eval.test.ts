@@ -1,14 +1,19 @@
 import { describe, expect, test } from 'bun:test'
-import { type CommitOutcome, type LoopDeps, runReviewLoop } from '@/run/loop'
+import { createActor, fromPromise, waitFor } from 'xstate'
+import type { GhIssue } from '@/lib/gh'
+import type { CommitOutcome } from '@/run/commit'
+import { issueWorkMachine } from '@/run/machines/issueWork'
+import { workState } from '@/run/machines/types'
 import type { Analysis, Review } from '@/run/stations/schemas'
+import { workableIssues } from '@/watch/poll'
 
 /**
- * These drive the real loop with recording fakes.
+ * These drive the real machine with recording fakes.
  *
  * The point is that the assertions are about code that ships. A test that
  * hand-writes the expected call order and checks a helper against it asserts
- * nothing about the orchestration; this runs `runReviewLoop` itself and reads
- * back what it actually did.
+ * nothing about the orchestration; this starts `issueWorkMachine` itself and
+ * reads back what it actually did.
  */
 const analysis: Analysis = {
   problem_statement: 'p',
@@ -37,45 +42,92 @@ function review(overrides: Partial<Review> = {}): Review {
   }
 }
 
-/** Records the order the loop calls its dependencies in. */
+/** Records the order the machine drives its stations in. */
 function recorder(reviews: Review[], commit: CommitOutcome = 'committed') {
   const trace: string[] = []
   let reviewIndex = 0
-  const deps: LoopDeps = {
-    implement: async (revision) => {
-      trace.push(
-        revision === undefined
-          ? 'implement'
-          : `implement:revision${revision.attempt}`,
-      )
-      return 'report'
+  const machine = issueWorkMachine.provide({
+    actors: {
+      analyst: fromPromise(async () => {
+        trace.push('analyst')
+        return analysis
+      }),
+      implementer: fromPromise(
+        async ({
+          input,
+        }: {
+          input: {
+            runId: string
+            revision: number
+            planGeneration: number
+            review?: Review
+          }
+        }) => {
+          trace.push(
+            input.revision === 0
+              ? 'implement'
+              : `implement:revision${input.revision}`,
+          )
+          // The machine commits inside the same attempt as the turn, so that
+          // a restart cannot separate the two.
+          trace.push(`commit:${input.revision}`)
+          return { report: 'report', commit }
+        },
+      ),
+      reviewer: fromPromise(async () => {
+        trace.push('review')
+        const next = reviews[Math.min(reviewIndex, reviews.length - 1)]
+        reviewIndex += 1
+        return { review: next ?? review() }
+      }),
     },
-    commit: async (attempt) => {
-      trace.push(`commit:${attempt}`)
-      return commit
+  })
+  return { machine, trace }
+}
+
+/** Runs one issue to a final state and reports what the machine decided. */
+async function runReviewLoop(
+  built: ReturnType<typeof recorder>,
+  _analysis: Analysis,
+  config: { maxRevisions: number },
+): Promise<{ kind: 'approved' | 'stopped' | 'failed'; reason?: string }> {
+  const actor = createActor(built.machine, {
+    input: {
+      runId: 'acme/widgets#1@1',
+      repo: 'acme/widgets',
+      issueNumber: 1,
+      maxRevisions: config.maxRevisions,
+      premiseBody: 'the issue text',
     },
-    review: async () => {
-      trace.push('review')
-      const next = reviews[Math.min(reviewIndex, reviews.length - 1)]
-      reviewIndex += 1
-      return next ?? review()
-    },
+  })
+  actor.start()
+  const settled = await waitFor(actor, (s) => s.status === 'done')
+  if (workState(settled.value) === 'approved') {
+    return { kind: 'approved' }
   }
-  return { deps, trace }
+  const outcome = settled.context.outcome
+  return outcome === undefined
+    ? { kind: 'stopped', reason: 'no outcome' }
+    : outcome.kind === 'failed'
+      ? { kind: 'failed', reason: outcome.error }
+      : { kind: 'stopped', reason: outcome.reason }
 }
 
 describe('the stations run in order, on the real loop', () => {
   test('implement, then commit, then review', async () => {
-    const { deps, trace } = recorder([review()])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([review()])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('approved')
-    expect(trace).toEqual(['implement', 'commit:0', 'review'])
+    // The machine plans as part of the same unit, so the analyst leads.
+    expect(built.trace).toEqual(['analyst', 'implement', 'commit:0', 'review'])
   })
 
   test('review never runs before the work is committed', async () => {
-    const { deps, trace } = recorder([review()])
-    await runReviewLoop(deps, analysis, { maxRevisions: 2 })
-    expect(trace.indexOf('commit:0')).toBeLessThan(trace.indexOf('review'))
+    const built = recorder([review()])
+    await runReviewLoop(built, analysis, { maxRevisions: 2 })
+    expect(built.trace.indexOf('commit:0')).toBeLessThan(
+      built.trace.indexOf('review'),
+    )
   })
 })
 
@@ -95,12 +147,10 @@ describe('an approve that does not clear the gate never ships', () => {
         },
       ],
     })
-    const { deps } = recorder([failed])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([failed])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(outcome.kind === 'stopped' && outcome.reason).toContain(
-      'did not pass',
-    )
+    expect(outcome.reason).toContain('did not pass')
   })
 
   test('approve that judged only some of the criteria is refused', async () => {
@@ -113,10 +163,10 @@ describe('an approve that does not clear the gate never ships', () => {
         },
       ],
     })
-    const { deps } = recorder([partial])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([partial])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(outcome.kind === 'stopped' && outcome.reason).toContain('unjudged')
+    expect(outcome.reason).toContain('unjudged')
   })
 
   test('approve that judged criteria nobody wrote is refused', async () => {
@@ -125,21 +175,22 @@ describe('an approve that does not clear the gate never ships', () => {
         { criterion: 'it feels good', pass: true, evidence: 'vibes' },
       ],
     })
-    const { deps } = recorder([invented])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([invented])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
   })
 })
 
 describe('the revision loop is bounded', () => {
   test('changes requested then approved ships, carrying the revision through', async () => {
-    const { deps, trace } = recorder([
+    const built = recorder([
       review({ verdict: 'request_changes', blocking_findings: ['fix it'] }),
       review(),
     ])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('approved')
-    expect(trace).toEqual([
+    expect(built.trace).toEqual([
+      'analyst',
       'implement',
       'commit:0',
       'review',
@@ -147,44 +198,47 @@ describe('the revision loop is bounded', () => {
       'commit:1',
       'review',
     ])
+    // A revision re-enters the implementer. It is not a replan.
+    expect(built.trace.filter((e) => e === 'analyst')).toHaveLength(1)
   })
 
   test('it gives up after maxRevisions rather than looping', async () => {
-    const { deps, trace } = recorder([review({ verdict: 'request_changes' })])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([review({ verdict: 'request_changes' })])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(trace.filter((entry) => entry === 'review')).toHaveLength(3)
+    expect(built.trace.filter((entry) => entry === 'review')).toHaveLength(3)
   })
 
   test('maxRevisions of zero means one attempt and no more', async () => {
-    const { deps, trace } = recorder([review({ verdict: 'request_changes' })])
-    await runReviewLoop(deps, analysis, { maxRevisions: 0 })
-    expect(trace).toEqual(['implement', 'commit:0', 'review'])
+    const built = recorder([review({ verdict: 'request_changes' })])
+    await runReviewLoop(built, analysis, { maxRevisions: 0 })
+    // The machine plans as part of the same unit, so the analyst leads.
+    expect(built.trace).toEqual(['analyst', 'implement', 'commit:0', 'review'])
   })
 
   test('a rejection stops immediately instead of using its revisions', async () => {
-    const { deps, trace } = recorder([
+    const built = recorder([
       review({ verdict: 'reject', summary: 'wrong approach' }),
     ])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(trace.filter((entry) => entry === 'review')).toHaveLength(1)
+    expect(built.trace.filter((entry) => entry === 'review')).toHaveLength(1)
   })
 })
 
 describe('an empty run never reaches the reviewer', () => {
   test('no file changes stops before review', async () => {
-    const { deps, trace } = recorder([review()], 'no-changes')
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([review()], 'no-changes')
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(trace).not.toContain('review')
+    expect(built.trace).not.toContain('review')
   })
 
   test('generated output only stops before review', async () => {
-    const { deps, trace } = recorder([review()], 'generated-only')
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([review()], 'generated-only')
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
-    expect(trace).not.toContain('review')
+    expect(built.trace).not.toContain('review')
   })
 })
 
@@ -199,8 +253,8 @@ describe('the gate reconciles how a reviewer echoes a criterion', () => {
         evidence: 'checked',
       })),
     })
-    const { deps } = recorder([numbered])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([numbered])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('approved')
   })
 
@@ -212,8 +266,8 @@ describe('the gate reconciles how a reviewer echoes a criterion', () => {
         evidence: 'checked',
       })),
     })
-    const { deps } = recorder([failed])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([failed])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
   })
 
@@ -223,8 +277,29 @@ describe('the gate reconciles how a reviewer echoes a criterion', () => {
         { criterion: 'something else entirely', pass: true, evidence: 'x' },
       ],
     })
-    const { deps } = recorder([short])
-    const outcome = await runReviewLoop(deps, analysis, { maxRevisions: 2 })
+    const built = recorder([short])
+    const outcome = await runReviewLoop(built, analysis, { maxRevisions: 2 })
     expect(outcome.kind).toBe('stopped')
+  })
+})
+
+describe('what the batch cap counts', () => {
+  const issue = (number: number, isPull = false) =>
+    ({
+      number,
+      ...(isPull ? { pull_request: { url: 'https://example.test/pull' } } : {}),
+    }) as GhIssue
+
+  test('pull requests are not counted against the cap meant for issues', () => {
+    // The endpoint returns both. At a cap of one, counting pull requests means
+    // a busy queue starves the issues, which is what happened on the
+    // throwaway repo and cost two end to end runs.
+    const workable = workableIssues([issue(48, true), issue(49)])
+    expect(workable.map((i) => i.number)).toEqual([49])
+  })
+
+  test('issues are left in the order they arrived', () => {
+    const workable = workableIssues([issue(1), issue(2, true), issue(3)])
+    expect(workable.map((i) => i.number)).toEqual([1, 3])
   })
 })

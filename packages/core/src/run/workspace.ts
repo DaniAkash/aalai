@@ -101,6 +101,58 @@ export async function prepareWorkspace(
   return { repo, issueNumber, clonePath, worktreePath, branch, base }
 }
 
+/**
+ * Picks up the worktree a previous process left behind, if it is still there.
+ *
+ * Resuming a run means resuming its work, and its work is commits in a
+ * worktree. `prepareWorkspace` deliberately destroys one to guarantee a clean
+ * start, which is right for a new run and exactly wrong for a resumed one: it
+ * would throw away the commits the run is being resumed to keep.
+ *
+ * Returns undefined when there is nothing to adopt, which is the signal to
+ * start the run over rather than resume it.
+ */
+export async function adoptWorkspace(
+  repo: string,
+  issueNumber: number,
+  issueTitle: string,
+): Promise<Workspace | undefined> {
+  const clonePath = await ensureClone(repo)
+  const worktreePath = worktreePathFor(repo, issueNumber)
+  if (!existsSync(join(worktreePath, '.git'))) {
+    return undefined
+  }
+
+  const base = await git.defaultBranch(clonePath)
+  const onBranch = await exec(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], {
+    cwd: worktreePath,
+  })
+  const branch = onBranch.stdout.trim()
+
+  // Matched on the issue the branch is for, not on the whole name. The name
+  // carries a slug of the title, and a title can be edited while the process
+  // is down; insisting on the recomputed name would fail adoption and send
+  // this to prepareWorkspace, which rebuilds the checkout and destroys the
+  // commits resuming exists to keep.
+  const expected = `aalai/issue-${issueNumber}-`
+  if (onBranch.exitCode !== 0 || !branch.startsWith(expected)) {
+    // A worktree on some other branch is not this run's worktree. Adopting it
+    // would mean committing this run's work on top of somebody else's.
+    log.warn('worktree found but on another branch, not adopting', {
+      path: worktreePath,
+      found: branch,
+      expected: `${expected}…`,
+    })
+    return undefined
+  }
+  if (branch !== git.issueBranchName(issueNumber, issueTitle)) {
+    log.info('adopting a branch whose title has since changed', { branch })
+  }
+
+  log.info('worktree adopted', { path: worktreePath, branch, base })
+  return { repo, issueNumber, clonePath, worktreePath, branch, base }
+}
+
 export async function discardWorkspace(workspace: Workspace): Promise<void> {
   await git.removeWorktree(workspace.clonePath, workspace.worktreePath)
   log.debug('worktree removed', { path: workspace.worktreePath })

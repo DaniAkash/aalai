@@ -54,6 +54,28 @@ function parseFilename(
   }
 }
 
+/**
+ * Scanning a directory that does not exist yet.
+ *
+ * A subject nothing has been written for has no artifacts directory, and
+ * asking about one is an ordinary question with the answer "none" rather than
+ * an error. Glob throws ENOENT on a missing cwd, so that becomes the empty
+ * answer here instead of at every call site.
+ */
+async function* scanOrEmpty(
+  glob: Bun.Glob,
+  cwd: string,
+  onlyFiles: boolean,
+): AsyncGenerator<string> {
+  try {
+    yield* glob.scan({ cwd, onlyFiles })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+  }
+}
+
 async function listVersions(
   subject: Subject,
   kind: string,
@@ -61,7 +83,7 @@ async function listVersions(
   const dir = artifactsDir(subject)
   const glob = new Bun.Glob(`${kind}.v*.md`)
   const refs: ArtifactRef[] = []
-  for await (const filename of glob.scan({ cwd: dir, onlyFiles: true })) {
+  for await (const filename of scanOrEmpty(glob, dir, true)) {
     const ref = parseFilename(subject, filename)
     if (ref !== undefined) {
       refs.push(ref)
@@ -176,10 +198,7 @@ async function scanRepos(
   const repoPart = repo === undefined ? '*' : repoSegment(repo)
   const glob = new Bun.Glob(`${repoPart}/*/artifacts/${kind}.v*.md`)
   const refs: ArtifactRef[] = []
-  for await (const relative of glob.scan({
-    cwd: workRoot(),
-    onlyFiles: true,
-  })) {
+  for await (const relative of scanOrEmpty(glob, workRoot(), true)) {
     const ref = refFromRelativePath(relative)
     if (ref !== undefined) {
       refs.push(ref)
@@ -224,10 +243,7 @@ export async function appendConversation(
 export async function findSubjects(repo: string): Promise<Subject[]> {
   const glob = new Bun.Glob(`${repoSegment(repo)}/*/artifacts`)
   const subjects: Subject[] = []
-  for await (const relative of glob.scan({
-    cwd: workRoot(),
-    onlyFiles: false,
-  })) {
+  for await (const relative of scanOrEmpty(glob, workRoot(), false)) {
     const segment = relative.split('/')[1]
     const subject =
       segment === undefined ? undefined : subjectFromPath(repo, segment)

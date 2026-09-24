@@ -315,3 +315,9 @@ export async function diffNames(
   )
   return out === '' ? [] : out.split('\n').filter((line) => line !== '')
 }
+
+/** The current commit, or undefined in a checkout that has none yet. */
+export async function headSha(worktree: string): Promise<string | undefined> {
+  const result = await exec(['git', 'rev-parse', 'HEAD'], { cwd: worktree })
+  return result.exitCode === 0 ? result.stdout.trim() : undefined
+}

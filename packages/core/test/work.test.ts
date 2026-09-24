@@ -17,6 +17,7 @@ import {
   writeArtifact,
 } from '@/modules/work/artifacts'
 import {
+  artifactPath,
   artifactsDir,
   runDir,
   type Subject,
@@ -125,6 +126,28 @@ describe('versioned artifacts', () => {
   })
 })
 
+describe('an id that tries to leave the work directory', () => {
+  test('is refused rather than resolved', async () => {
+    // An id reaches here from a tool call, which means it reaches here from an
+    // issue body by way of an agent. join() resolves `..`, so without a guard
+    // this is a readable file rather than a rejected id.
+    for (const id of [
+      '../../../../etc/passwd',
+      'acme__widgets/../../../../etc/hosts',
+      '..',
+    ]) {
+      expect(() => artifactPath(id)).toThrow('leaves the work directory')
+      expect(await readArtifact(id).catch(() => 'refused')).toBe('refused')
+    }
+  })
+
+  test('an ordinary id still resolves', () => {
+    expect(artifactPath('acme__widgets/issue-27/artifacts/plan.v1.md')).toBe(
+      join(dir, 'work', 'acme__widgets', 'issue-27', 'artifacts', 'plan.v1.md'),
+    )
+  })
+})
+
 describe('finding artifacts without an index', () => {
   test('by subject, by kind, and across a repository', async () => {
     await writeArtifact(ISSUE, 'plan', 'issue plan')
@@ -152,6 +175,14 @@ describe('finding artifacts without an index', () => {
     // No row pointed into it, so the only effect is that it stops being found.
     const found = await findArtifacts({ repo: 'acme/widgets' })
     expect(found.map((f) => f.subject.kind)).toEqual(['pr'])
+  })
+
+  test('asking about a subject nothing was written for answers none', async () => {
+    // The directory does not exist at all, which is an ordinary question with
+    // the answer "none" rather than an error.
+    expect(await findArtifacts({ subject: ISSUE })).toEqual([])
+    expect(await findArtifacts({ repo: 'acme/widgets' })).toEqual([])
+    expect(await findSubjects('acme/widgets')).toEqual([])
   })
 
   test('subjects are discovered from the tree', async () => {
