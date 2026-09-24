@@ -115,14 +115,36 @@ A sleeping Mac does not poll: launchd restarts the process but will not wake the
 
 → **[packages/core/README.md](./packages/core/README.md)** for the full CLI guide: every command, every setting, the storage layout and the tool surface.
 
-## The desktop app
+## The interface, two ways
+
+The app is a Tauri window and a plain web page, and neither is a degraded copy
+of the other. The factory speaks HTTP, so a browser is a first class client.
 
 ```sh
-bun install
-bun run dev
+bun run dev        # the desktop window, with its own sidecar
+bun run dev:web    # the factory plus the page at localhost:5173
 ```
 
-That is the whole setup. There is no config file to copy: settings live in the database, and repositories are added by picking from what your `gh` account already owns.
+That is the whole setup. There is no config file to copy: settings live in the
+database, and repositories are added by picking from what your `gh` account
+already owns.
+
+What differs between them is the transport, and only the transport:
+
+| | desktop | web |
+| --- | --- | --- |
+| reaches the factory by | Tauri's HTTP plugin | the browser's `fetch` |
+| address | an ephemeral port the shell reports | `/api`, proxied by Vite |
+| authentication | a token per launch | held by the proxy, never in the page |
+| needs CORS | no, requests go through Rust | no, requests are same origin |
+
+Point the web build at a factory elsewhere, or at one you started with a token,
+with `AALAI_API_URL` and `AALAI_API_TOKEN`. Both are read by the Vite proxy,
+which runs in node, so a secret stays out of the browser exactly as it stays
+out of the webview.
+
+Features that only the desktop window can offer are wrapped so they simply are
+not there on the web, rather than breaking the page around them.
 
 The shell spawns the factory, which binds a port and reports it on stdout. Every launch also gets a fresh bearer token, required by every route except health. A localhost port that can open pull requests is reachable by any process on the machine, so it is not left open.
 
