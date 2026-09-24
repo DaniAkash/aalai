@@ -210,7 +210,54 @@ async function doctor(): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+function parseRepoIssue(
+  args: readonly string[],
+  usage: string,
+): { repo: string; issueNumber: number } | null {
+  const [repo, issueArg] = args
+  const issueNumber = Number(issueArg)
+  if (
+    repo === undefined ||
+    !Number.isSafeInteger(issueNumber) ||
+    issueNumber <= 0
+  ) {
+    log.error(usage)
+    process.exitCode = 1
+    return null
+  }
+  return { repo, issueNumber }
+}
+
+function forget(args: readonly string[]): void {
+  const parsed = parseRepoIssue(
+    args,
+    'usage: aalai forget <owner/repo> <issue-number>',
+  )
+  if (parsed === null) {
+    return
+  }
+  const db = openState()
+  log.info(
+    forgetRun(db, parsed.repo, parsed.issueNumber)
+      ? 'forgotten'
+      : 'no record found',
+    { repo: parsed.repo, issue: parsed.issueNumber },
+  )
+  db.close()
+}
+
+async function run(config: Config, args: readonly string[]): Promise<void> {
+  const parsed = parseRepoIssue(
+    args,
+    'usage: aalai run <owner/repo> <issue-number>',
+  )
+  if (parsed === null) {
+    return
+  }
+  await runOne(config, parsed.repo, parsed.issueNumber)
+}
+
+function holdInheritedTokens(): void {
   // Tokens move out of the ambient environment so the agent cannot inherit
   // them, and are handed back explicitly to aalai's own gh and git commands.
   const captured = captureInheritedTokens()
@@ -219,30 +266,15 @@ async function main(): Promise<void> {
       vars: captured.join(','),
     })
   }
+}
+
+async function main(): Promise<void> {
+  holdInheritedTokens()
 
   const [command, ...rest] = process.argv.slice(2)
 
   if (command === 'forget') {
-    const [repo, issueArg] = process.argv.slice(3)
-    const issueNumber = Number(issueArg)
-    if (
-      repo === undefined ||
-      !Number.isSafeInteger(issueNumber) ||
-      issueNumber <= 0
-    ) {
-      log.error('usage: aalai forget <owner/repo> <issue-number>')
-      process.exitCode = 1
-      return
-    }
-    const db = openState()
-    log.info(
-      forgetRun(db, repo, issueNumber) ? 'forgotten' : 'no record found',
-      {
-        repo,
-        issue: issueNumber,
-      },
-    )
-    db.close()
+    forget(rest)
     return
   }
   if (command === 'status') {
@@ -257,18 +289,7 @@ async function main(): Promise<void> {
   const config = await loadConfig()
 
   if (command === 'run') {
-    const [repo, issueArg] = rest
-    const issueNumber = Number(issueArg)
-    if (
-      repo === undefined ||
-      !Number.isSafeInteger(issueNumber) ||
-      issueNumber <= 0
-    ) {
-      log.error('usage: aalai run <owner/repo> <issue-number>')
-      process.exitCode = 1
-      return
-    }
-    await runOne(config, repo, issueNumber)
+    await run(config, rest)
     return
   }
   if (command === '--once' || command === 'once') {
