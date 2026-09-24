@@ -22,12 +22,7 @@
   },
   "overrides": [
     {
-      "files": [
-        "**/*.test.ts",
-        "**/test/**",
-        "**/evals/**",
-        "**/*.config.ts"
-      ],
+      "files": ["**/*.test.ts", "**/test/**", "**/evals/**", "**/*.config.ts"],
       "rules": {
         "unused-exports": "off",
         "unused-files": "off"
@@ -53,114 +48,69 @@
     "zones": [
       {
         "name": "core-lib",
-        "patterns": [
-          "packages/core/src/lib/**"
-        ]
+        "patterns": ["packages/core/src/lib/**"]
       },
       {
         "name": "core-run",
-        "patterns": [
-          "packages/core/src/run/**"
-        ]
+        "patterns": ["packages/core/src/run/**"]
       },
       {
         "name": "core-watch",
-        "patterns": [
-          "packages/core/src/watch/**"
-        ]
+        "patterns": ["packages/core/src/watch/**"]
       },
       {
         "name": "core-server",
-        "patterns": [
-          "packages/core/src/server/**"
-        ]
+        "patterns": ["packages/core/src/server/**"]
       },
       {
         "name": "ui-lib",
-        "patterns": [
-          "app/native/src/lib/**"
-        ]
+        "patterns": ["app/native/src/lib/**"]
       },
       {
         "name": "ui-modules",
-        "patterns": [
-          "app/native/src/modules/**"
-        ]
+        "patterns": ["app/native/src/modules/**"]
       },
       {
         "name": "ui-components",
-        "patterns": [
-          "app/native/src/components/**"
-        ]
+        "patterns": ["app/native/src/components/**"]
       },
       {
         "name": "ui-routes",
-        "patterns": [
-          "app/native/src/routes/**"
-        ]
+        "patterns": ["app/native/src/routes/**"]
       }
     ],
     "rules": [
       {
         "from": "core-lib",
-        "allow": [
-          "core-lib"
-        ]
+        "allow": ["core-lib"]
       },
       {
         "from": "core-run",
-        "allow": [
-          "core-run",
-          "core-lib"
-        ]
+        "allow": ["core-run", "core-lib"]
       },
       {
         "from": "core-watch",
-        "allow": [
-          "core-watch",
-          "core-run",
-          "core-lib"
-        ]
+        "allow": ["core-watch", "core-run", "core-lib"]
       },
       {
         "from": "core-server",
-        "allow": [
-          "core-server",
-          "core-run",
-          "core-watch",
-          "core-lib"
-        ]
+        "allow": ["core-server", "core-run", "core-watch", "core-lib"]
       },
       {
         "from": "ui-lib",
-        "allow": [
-          "ui-lib"
-        ]
+        "allow": ["ui-lib"]
       },
       {
         "from": "ui-modules",
-        "allow": [
-          "ui-modules",
-          "ui-lib",
-          "core-server"
-        ]
+        "allow": ["ui-modules", "ui-lib", "core-server"]
       },
       {
         "from": "ui-components",
-        "allow": [
-          "ui-components",
-          "ui-modules",
-          "ui-lib"
-        ]
+        "allow": ["ui-components", "ui-modules", "ui-lib"]
       },
       {
         "from": "ui-routes",
-        "allow": [
-          "ui-routes",
-          "ui-components",
-          "ui-modules",
-          "ui-lib"
-        ]
+        "allow": ["ui-routes", "ui-components", "ui-modules", "ui-lib"]
       }
     ]
   },
