@@ -1,7 +1,9 @@
 import { Hono } from 'hono'
 import { eventsRoute } from '@/server/routes/eventsRoute'
+import { gatesRoute } from '@/server/routes/gatesRoute'
 import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
+import { settingsRoute } from '@/server/routes/settingsRoute'
 import { toolsRoute } from '@/server/routes/toolsRoute'
 
 /**
@@ -16,6 +18,8 @@ export const app = new Hono()
   .route('/api', runsRoute)
   .route('/api', reposRoute)
   .route('/api', eventsRoute)
+  .route('/api', gatesRoute)
+  .route('/api', settingsRoute)
   .route('/api', toolsRoute)
 
 /** The contract the UI's typed client is generated from. */

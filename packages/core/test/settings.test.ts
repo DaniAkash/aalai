@@ -122,6 +122,32 @@ describe('replacing the watched set', () => {
     ])
   })
 
+  test('a per repository policy survives the round trip', () => {
+    const { sqlite } = openDb(join(dir, 'aalai.sqlite'))
+
+    writeWatchedRepos(sqlite, [
+      { repo: 'acme/widgets', policy: 'plan_gate', requireLabel: 'aalai' },
+    ])
+
+    // Read back rather than trusting the value that was written: a column the
+    // mapper does not select is dropped silently, and the only place that
+    // shows is the next read.
+    expect(readWatchedRepos(sqlite)).toEqual([
+      { repo: 'acme/widgets', requireLabel: 'aalai', policy: 'plan_gate' },
+    ])
+  })
+
+  test('a policy this build does not know falls back rather than leaking out', () => {
+    const { sqlite } = openDb(join(dir, 'aalai.sqlite'))
+    writeWatchedRepos(sqlite, [{ repo: 'acme/widgets' }])
+    // What a newer build writing an unknown policy would leave behind.
+    sqlite
+      .query('UPDATE watched_repos SET policy = ? WHERE repo = ?')
+      .run('from_the_future', 'acme/widgets')
+
+    expect(readWatchedRepos(sqlite)).toEqual([{ repo: 'acme/widgets' }])
+  })
+
   test('a failing write leaves the previous set intact', () => {
     const { sqlite } = openDb(join(dir, 'aalai.sqlite'))
     writeWatchedRepos(sqlite, [{ repo: 'acme/widgets' }])

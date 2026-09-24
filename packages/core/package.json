@@ -6,7 +6,8 @@
   "type": "module",
   "exports": {
     "./app": "./src/server/app.ts",
-    "./events": "./src/events/events.types.ts"
+    "./events": "./src/events/events.types.ts",
+    "./client": "./src/server/client.ts"
   },
   "scripts": {
     "start": "bun run src/index.ts",
@@ -18,6 +19,7 @@
     "service": "bun run scripts/service.ts"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.9.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "acpx": "^0.17.0",
     "acpx-ai-provider": "^1.0.0",

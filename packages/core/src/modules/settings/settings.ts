@@ -3,7 +3,14 @@ import { eq } from 'drizzle-orm'
 import { logger } from '@/lib/log'
 import { query } from '@/modules/db/query'
 import { settings, watchedRepos } from '@/modules/db/schema/schema'
-import { DOMAIN_NAMES, DOMAINS, type DomainName, type Domains } from './domains'
+import {
+  DOMAIN_NAMES,
+  DOMAINS,
+  type DomainName,
+  type Domains,
+  RUN_POLICIES,
+  type RunPolicy,
+} from './domains'
 
 const log = logger('settings')
 
@@ -87,6 +94,7 @@ export function settingsAreEmpty(db: Database): boolean {
 export interface WatchedRepoSetting {
   readonly repo: string
   readonly requireLabel?: string
+  readonly policy?: RunPolicy
 }
 
 export function readWatchedRepos(db: Database): WatchedRepoSetting[] {
@@ -94,6 +102,7 @@ export function readWatchedRepos(db: Database): WatchedRepoSetting[] {
     .select({
       repo: watchedRepos.repo,
       requireLabel: watchedRepos.requireLabel,
+      policy: watchedRepos.policy,
     })
     .from(watchedRepos)
     .orderBy(watchedRepos.repo)
@@ -101,6 +110,7 @@ export function readWatchedRepos(db: Database): WatchedRepoSetting[] {
     .map((row) => ({
       repo: row.repo,
       ...(row.requireLabel === null ? {} : { requireLabel: row.requireLabel }),
+      ...(isPolicy(row.policy) ? { policy: row.policy } : {}),
     }))
 }
 
@@ -128,8 +138,20 @@ export function writeWatchedRepos(
         unique.map((repo) => ({
           repo: repo.repo,
           requireLabel: repo.requireLabel ?? null,
+          policy: repo.policy ?? null,
         })),
       )
       .run()
   })()
+}
+
+/**
+ * Whether a stored policy is one this build understands.
+ *
+ * The column is free text, so a value written by a newer build is possible.
+ * An unrecognised one falls back to the global default rather than reaching
+ * the machine as a policy nothing handles.
+ */
+function isPolicy(value: string | null): value is RunPolicy {
+  return value !== null && (RUN_POLICIES as readonly string[]).includes(value)
 }
