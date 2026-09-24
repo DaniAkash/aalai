@@ -12,6 +12,17 @@ import { z } from 'zod'
  * once and the stored form and the loaded form cannot disagree.
  */
 
+/**
+ * How much of a run happens without a person.
+ *
+ * Per repository rather than global, because a toy repository and the day job
+ * should never share this setting. `automatic` is the default so an existing
+ * installation behaves exactly as it did until somebody opts in.
+ */
+export const RUN_POLICIES = ['automatic', 'plan_gate', 'triage'] as const
+export type RunPolicy = (typeof RUN_POLICIES)[number]
+export const runPolicySchema = z.enum(RUN_POLICIES)
+
 const factoryDomain = z.object({
   pollSeconds: z.number().int().min(10).default(60),
   /** Most issues one polling pass will process. The rest wait for the next pass. */
@@ -22,6 +33,8 @@ const factoryDomain = z.object({
    */
   staleClaimMinutes: z.number().int().min(1).default(30),
   keepWorktreeOnFailure: z.boolean().default(true),
+  /** The default a watched repository inherits when it sets no policy. */
+  defaultPolicy: runPolicySchema.default('automatic'),
 })
 
 const agentsDomain = z.object({

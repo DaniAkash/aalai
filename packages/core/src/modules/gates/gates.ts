@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite'
 import { and, desc, eq } from 'drizzle-orm'
 import { query } from '@/modules/db/query'
 import { type GateRow, gates } from '@/modules/db/schema/schema'
+import { publishGateAnswered } from './bus'
 import type {
   AnswerGateInput,
   AnswerResult,
@@ -71,6 +72,17 @@ export function listGates(db: Database, filter: GateQuery = {}): GateRow[] {
  * rather than the rare one, and a check outside the write is a race.
  */
 export function answerGate(db: Database, input: AnswerGateInput): AnswerResult {
+  const result = record(db, input)
+  // Published after the commit, never inside it. A listener told about an
+  // answer that a rolled back transaction never wrote would act on a decision
+  // nobody made.
+  if (result.ok) {
+    publishGateAnswered(result.gate)
+  }
+  return result
+}
+
+function record(db: Database, input: AnswerGateInput): AnswerResult {
   return db.transaction(() => {
     const gate = readGate(db, input.gateId)
     if (gate === undefined) {

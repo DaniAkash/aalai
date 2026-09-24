@@ -4,6 +4,7 @@ import { logger } from '@/lib/log'
 import type { CommitOutcome } from '@/run/commit'
 import { reviewGate } from '@/run/gate'
 import { analyst, implementer, premise, reviewer } from './actors'
+import { gateKeeper } from './gateActor'
 import { messageOf, stopReason } from './outcome'
 import type { IssueWorkContext, IssueWorkInput } from './types'
 
@@ -14,7 +15,7 @@ export const issueWorkMachine = setup({
     context: {} as IssueWorkContext,
     input: {} as IssueWorkInput,
   },
-  actors: { analyst, implementer, reviewer, premise },
+  actors: { analyst, implementer, reviewer, premise, gateKeeper },
   guards: {
     committed: (_, params: { commit: CommitOutcome }) =>
       params.commit === 'committed',
@@ -26,6 +27,11 @@ export const issueWorkMachine = setup({
     revisable: ({ context }) =>
       context.review?.verdict === 'request_changes' &&
       context.revision < context.maxRevisions,
+    planNeedsApproval: ({ context }) => context.planGated === true,
+    answeredApproved: (_, params: { decision: string }) =>
+      params.decision === 'approved',
+    answeredChanges: (_, params: { decision: string }) =>
+      params.decision === 'changes',
   },
 }).createMachine({
   id: 'issueWork',
@@ -38,6 +44,8 @@ export const issueWorkMachine = setup({
     revision: 0,
     planGeneration: 0,
     implementerReport: '',
+    ...(input.planGated === undefined ? {} : { planGated: input.planGated }),
+    ...(input.gatePollMs === undefined ? {} : { gatePollMs: input.gatePollMs }),
     premiseBody: input.premiseBody,
     ...(input.premiseIntervalMs === undefined
       ? {}
@@ -126,10 +134,17 @@ export const issueWorkMachine = setup({
               runId: context.runId,
               planGeneration: context.planGeneration,
             }),
-            onDone: {
-              target: 'implementing',
-              actions: assign({ analysis: ({ event }) => event.output }),
-            },
+            onDone: [
+              {
+                target: 'gatingPlan',
+                guard: 'planNeedsApproval',
+                actions: assign({ analysis: ({ event }) => event.output }),
+              },
+              {
+                target: 'implementing',
+                actions: assign({ analysis: ({ event }) => event.output }),
+              },
+            ],
             onError: {
               target: 'finished',
               actions: assign({
@@ -138,6 +153,83 @@ export const issueWorkMachine = setup({
                   error: messageOf(event.error),
                 }),
               }),
+            },
+          },
+        },
+
+        /**
+         * Parked, waiting for a person, with nothing in flight.
+         *
+         * The one state a restart costs nothing: restoring re-runs invocations,
+         * and this invocation only listens. Re-entering it re-reads the row,
+         * which is the source of truth anyway.
+         */
+        gatingPlan: {
+          invoke: {
+            src: 'gateKeeper',
+            input: ({ context }) => ({
+              runId: context.runId,
+              repo: context.repo,
+              issue: context.issueNumber,
+              kind: 'plan',
+              ...(context.gatePollMs === undefined
+                ? {}
+                : { pollMs: context.gatePollMs }),
+            }),
+          },
+          on: {
+            GATE_OPENED: {
+              actions: assign({
+                gateId: ({ event }) =>
+                  String((event as { gateId?: string }).gateId ?? ''),
+              }),
+            },
+            GATE_ANSWERED: [
+              {
+                target: 'implementing',
+                guard: {
+                  type: 'answeredApproved',
+                  params: ({ event }) => ({
+                    decision: String((event as { decision?: string }).decision),
+                  }),
+                },
+              },
+              {
+                // A new plan rather than another revision of the old one, the
+                // same shape a rewritten issue takes.
+                target: 'planning',
+                guard: {
+                  type: 'answeredChanges',
+                  params: ({ event }) => ({
+                    decision: String((event as { decision?: string }).decision),
+                  }),
+                },
+                actions: assign({
+                  planGeneration: ({ context }) => context.planGeneration + 1,
+                  revision: () => 0,
+                  review: () => undefined,
+                  implementerReport: () => '',
+                  gateId: () => undefined,
+                }),
+              },
+              {
+                target: 'finished',
+                actions: assign({
+                  outcome: ({ event }) => ({
+                    kind: 'stopped' as const,
+                    reason:
+                      String((event as { reason?: string }).reason ?? '') ||
+                      'the plan was rejected',
+                  }),
+                }),
+              },
+            ],
+            // The artifact moved under the question. Ask again at the version
+            // that now stands rather than stalling on one nobody can answer.
+            GATE_SUPERSEDED: {
+              target: 'gatingPlan',
+              actions: assign({ gateId: () => undefined }),
+              reenter: true,
             },
           },
         },
