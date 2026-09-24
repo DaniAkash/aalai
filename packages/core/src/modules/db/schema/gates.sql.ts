@@ -4,7 +4,7 @@ import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 export const GATE_DECISIONS = ['approved', 'rejected', 'changes'] as const
 export type GateDecision = (typeof GATE_DECISIONS)[number]
 
-export const GATE_KINDS = ['plan'] as const
+export const GATE_KINDS = ['plan', 'permission'] as const
 export type GateKind = (typeof GATE_KINDS)[number]
 
 /**
@@ -13,8 +13,16 @@ export type GateKind = (typeof GATE_KINDS)[number]
  * Without `superseded` the state has to be inferred from `answered_at` being
  * null, which cannot say "this stopped mattering because the plan was
  * rewritten" and so leaves a stale gate looking answerable forever.
+ *
+ * `expired` is the same problem for a permission ask: it holds a turn open and
+ * dies with the process, so one nobody answered in time is not still waiting.
  */
-export const GATE_STATUSES = ['open', 'answered', 'superseded'] as const
+export const GATE_STATUSES = [
+  'open',
+  'answered',
+  'superseded',
+  'expired',
+] as const
 export type GateStatus = (typeof GATE_STATUSES)[number]
 
 /**

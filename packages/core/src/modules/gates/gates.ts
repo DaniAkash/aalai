@@ -137,3 +137,23 @@ export function supersedeOpenGates(
   }
   return open.length
 }
+
+/**
+ * Retires a question nobody answered in time.
+ *
+ * Distinct from answering it. A permission ask holds a turn open and cannot
+ * outlive it, so one that ran out was not decided by anybody, and recording it
+ * as a rejection would put a decision in the history that no person made.
+ */
+export function expireGate(db: Database, id: string): boolean {
+  const gate = readGate(db, id)
+  if (gate === undefined || gate.status !== 'open') {
+    return false
+  }
+  query(db)
+    .update(gates)
+    .set({ status: 'expired', answeredAt: new Date().toISOString() })
+    .where(eq(gates.id, id))
+    .run()
+  return true
+}

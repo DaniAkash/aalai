@@ -74,6 +74,15 @@ const trustDomain = z.object({
   trustedAuthorsOnly: z.boolean().default(true),
   /** The default label gate. A watched repository may override it. */
   requireLabel: z.string().nullable().default(null),
+  /**
+   * Whether a mid turn permission request waits for a person.
+   *
+   * Off by default, and off means exactly today's behaviour: the request falls
+   * through to the station's permission mode. On is genuinely different from a
+   * plan gate, because this one holds an agent turn open and cannot survive the
+   * process, so it is a question with a deadline rather than a durable gate.
+   */
+  askOnPermission: z.boolean().default(false),
 })
 
 const commitDomain = z.object({

@@ -114,6 +114,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     maxCiFixes: domains.limits.maxCiFixes,
     turnTimeoutMs: domains.limits.turnTimeoutMs,
     trustedAuthorsOnly: domains.trust.trustedAuthorsOnly,
+    askOnPermission: domains.trust.askOnPermission,
     requireLabel: domains.trust.requireLabel,
     commitName: domains.commit.commitName,
     commitEmail: domains.commit.commitEmail,
@@ -146,6 +147,7 @@ function toDomains(config: Config): Domains {
     trust: {
       trustedAuthorsOnly: config.trustedAuthorsOnly,
       requireLabel: config.requireLabel,
+      askOnPermission: config.askOnPermission,
     },
     commit: {
       commitName: config.commitName,

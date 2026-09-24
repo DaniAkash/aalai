@@ -15,6 +15,7 @@ import { toolEndpoint } from '@/modules/tools/endpoint'
 import type { ArtifactRef } from '@/modules/work/artifacts'
 import type { Subject } from '@/modules/work/paths'
 import type { OutboundIntent } from '@/modules/work/store'
+import { permissionGate } from '@/run/permissionGate'
 import type { Analysis, Review } from '@/run/stations/schemas'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
@@ -216,6 +217,26 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     sessionKey,
     ...(tools === null ? {} : { mcpServers: [tools.mcp] }),
     permissionMode: input.permission,
+    // Only honoured because no `runtime` is passed here. Handing the provider
+    // a prebuilt runtime silently disables this and the callback has to move
+    // onto that runtime instead.
+    ...(input.config.askOnPermission
+      ? {
+          onPermissionRequest: permissionGate({
+            db: sqlite,
+            runId: input.runId,
+            repo: input.subject.repo,
+            issue: input.subject.number,
+            station: input.station,
+            // Comfortably inside the turn timeout, so an unanswered question
+            // falls through on its own terms rather than by the turn dying.
+            waitMs: Math.max(
+              30_000,
+              Math.floor(input.config.turnTimeoutMs / 3),
+            ),
+          }),
+        }
+      : {}),
     // Headless: an unexpected permission request is refused so the turn
     // continues, rather than hanging on a prompt nobody is there to answer.
     nonInteractivePermissions: 'deny',
