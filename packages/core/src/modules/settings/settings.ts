@@ -104,22 +104,32 @@ export function readWatchedRepos(db: Database): WatchedRepoSetting[] {
     }))
 }
 
-/** Replaces the watched set, which is how the picker's add and remove land. */
+/**
+ * Replaces the watched set, which is how the picker's add and remove land.
+ *
+ * In one transaction, because a delete that commits before a failing insert
+ * leaves the set erased. Duplicates are collapsed rather than allowed to be
+ * that failing insert: the repository is the primary key, and a config file
+ * written by hand can name one twice.
+ */
 export function writeWatchedRepos(
   db: Database,
   repos: readonly WatchedRepoSetting[],
 ): void {
-  query(db).delete(watchedRepos).run()
-  if (repos.length === 0) {
-    return
-  }
-  query(db)
-    .insert(watchedRepos)
-    .values(
-      repos.map((repo) => ({
-        repo: repo.repo,
-        requireLabel: repo.requireLabel ?? null,
-      })),
-    )
-    .run()
+  const unique = [...new Map(repos.map((repo) => [repo.repo, repo])).values()]
+  db.transaction(() => {
+    query(db).delete(watchedRepos).run()
+    if (unique.length === 0) {
+      return
+    }
+    query(db)
+      .insert(watchedRepos)
+      .values(
+        unique.map((repo) => ({
+          repo: repo.repo,
+          requireLabel: repo.requireLabel ?? null,
+        })),
+      )
+      .run()
+  })()
 }

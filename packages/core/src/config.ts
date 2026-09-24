@@ -182,8 +182,17 @@ async function importConfigFileOnce(
       continue
     }
     const config = await readConfigFile(candidate)
-    writeAllDomains(db.sqlite, toDomains(config))
-    writeWatchedRepos(db.sqlite, config.watch)
+    // One transaction, so the settings that decide whether an import already
+    // happened cannot be left half written. Stopping partway would otherwise
+    // make the next start see non-empty settings, skip the import, and strand
+    // the rest of the file forever.
+    db.sqlite.transaction(() => {
+      writeAllDomains(db.sqlite, toDomains(config))
+      writeWatchedRepos(db.sqlite, config.watch)
+    })()
+    // After the commit. Stopping between the two leaves the file in place with
+    // the import already complete, which is untidy and harmless: the next start
+    // finds settings and leaves the file alone.
     renameSync(candidate, `${candidate}.imported`)
     log.info('config file imported into settings', {
       from: candidate,

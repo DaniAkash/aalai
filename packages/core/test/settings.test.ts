@@ -6,8 +6,10 @@ import { loadConfig, saveConfig } from '@/config'
 import { openDb, setDb } from '@/modules/db/db'
 import {
   readDomain,
+  readWatchedRepos,
   settingsAreEmpty,
   writeDomain,
+  writeWatchedRepos,
 } from '@/modules/settings/settings'
 
 let dir: string
@@ -99,6 +101,36 @@ describe('config over settings', () => {
     const config = await loadConfig()
     expect(config.watch).toEqual([])
     expect(config.agents.analyst).toBe('codex')
+  })
+})
+
+describe('replacing the watched set', () => {
+  test('a duplicate repository collapses instead of erasing the set', () => {
+    const { sqlite } = openDb(join(dir, 'aalai.sqlite'))
+    writeWatchedRepos(sqlite, [{ repo: 'acme/widgets' }])
+
+    writeWatchedRepos(sqlite, [
+      { repo: 'acme/other' },
+      { repo: 'acme/other', requireLabel: 'ready' },
+    ])
+
+    expect(readWatchedRepos(sqlite)).toEqual([
+      { repo: 'acme/other', requireLabel: 'ready' },
+    ])
+  })
+
+  test('a failing write leaves the previous set intact', () => {
+    const { sqlite } = openDb(join(dir, 'aalai.sqlite'))
+    writeWatchedRepos(sqlite, [{ repo: 'acme/widgets' }])
+
+    // A value the column rejects, so the insert fails after the delete has run.
+    expect(() =>
+      writeWatchedRepos(sqlite, [
+        { repo: 'acme/other', requireLabel: {} as unknown as string },
+      ]),
+    ).toThrow()
+
+    expect(readWatchedRepos(sqlite)).toEqual([{ repo: 'acme/widgets' }])
   })
 })
 
