@@ -35,6 +35,12 @@ export const eventsRoute = new Hono().get('/events', (c) =>
     })
     stream.onAbort(unsubscribe)
 
+    // Written before anything else, because a streamed response sends no
+    // headers until its first write. An idle factory would otherwise leave a
+    // client with an unresolved request for a full heartbeat interval, unable
+    // to tell a quiet connection from an unreachable one.
+    await stream.writeSSE({ data: JSON.stringify({ type: 'stream.open' }) })
+
     const runId = latestRunId()
     if (runId !== null) {
       for (const event of replay(runId)) {

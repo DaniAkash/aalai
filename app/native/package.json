@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "tauri": "tauri",
-    "dev:app": "tauri dev"
+    "dev:app": "tauri dev",
+    "dev:web": "vite"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

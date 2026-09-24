@@ -82,7 +82,8 @@
       "includes": [
         "packages/core/src/lib/env.ts",
         "packages/core/src/lib/proc.ts",
-        "packages/core/src/lib/credentials.ts"
+        "packages/core/src/lib/credentials.ts",
+        "app/native/vite.config.ts"
       ],
       "linter": {
         "rules": {
