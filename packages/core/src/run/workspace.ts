@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { workbenchDir } from '@/config'
+import { githubEnv } from '@/lib/credentials'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
-import { githubEnv } from '@/lib/credentials'
 import { exec, execOrThrow } from '@/lib/proc'
 
 const log = logger('workspace')
@@ -19,7 +19,12 @@ export interface Workspace {
 
 function splitRepo(repo: string): { owner: string; name: string } {
   const [owner, name] = repo.split('/')
-  if (owner === undefined || name === undefined || owner === '' || name === '') {
+  if (
+    owner === undefined ||
+    name === undefined ||
+    owner === '' ||
+    name === ''
+  ) {
     throw new Error(`Expected owner/repo, got "${repo}"`)
   }
   return { owner, name }
@@ -30,9 +35,19 @@ export function clonePathFor(repo: string): string {
   return join(workbenchDir(), owner, name)
 }
 
-export function worktreePathFor(repo: string, issueNumber: number, suffix = ''): string {
+export function worktreePathFor(
+  repo: string,
+  issueNumber: number,
+  suffix = '',
+): string {
   const { owner, name } = splitRepo(repo)
-  return join(workbenchDir(), 'worktrees', owner, name, `aalai-issue-${issueNumber}${suffix}`)
+  return join(
+    workbenchDir(),
+    'worktrees',
+    owner,
+    name,
+    `aalai-issue-${issueNumber}${suffix}`,
+  )
 }
 
 /**
@@ -50,7 +65,9 @@ export async function ensureClone(repo: string): Promise<string> {
 
   if (!existsSync(join(clonePath, '.git'))) {
     log.info('cloning', { repo, into: clonePath })
-    await execOrThrow(['gh', 'repo', 'clone', repo, clonePath], { env: githubEnv() })
+    await execOrThrow(['gh', 'repo', 'clone', repo, clonePath], {
+      env: githubEnv(),
+    })
   }
   await git.fetchOrigin(clonePath)
   return clonePath
@@ -89,7 +106,6 @@ export async function discardWorkspace(workspace: Workspace): Promise<void> {
   log.debug('worktree removed', { path: workspace.worktreePath })
 }
 
-
 /**
  * A second checkout of the branch, for the reviewer.
  *
@@ -98,15 +114,24 @@ export async function discardWorkspace(workspace: Workspace): Promise<void> {
  * independence structural: it cannot see uncommitted scratch, a stray file, or
  * anything about how the change was arrived at. It sees what was committed.
  */
-export async function prepareReviewWorkspace(workspace: Workspace): Promise<string> {
+export async function prepareReviewWorkspace(
+  workspace: Workspace,
+): Promise<string> {
   const path = worktreePathFor(workspace.repo, workspace.issueNumber, '-review')
   await git.removeWorktree(workspace.clonePath, path)
   mkdirSync(join(path, '..'), { recursive: true })
-  await git.addExistingBranchWorktree(workspace.clonePath, path, workspace.branch)
+  await git.addExistingBranchWorktree(
+    workspace.clonePath,
+    path,
+    workspace.branch,
+  )
   log.info('review worktree ready', { path })
   return path
 }
 
-export async function discardPath(workspace: Workspace, path: string): Promise<void> {
+export async function discardPath(
+  workspace: Workspace,
+  path: string,
+): Promise<void> {
   await git.removeWorktree(workspace.clonePath, path)
 }

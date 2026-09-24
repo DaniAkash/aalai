@@ -1,7 +1,7 @@
+import { beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeAll, describe, expect, test } from 'bun:test'
 import { changedFiles, partitionStagePaths, stageAll } from '@/lib/git'
 import { execOrThrow } from '@/lib/proc'
 
@@ -17,17 +17,25 @@ beforeAll(async () => {
   // Neutralise the machine's global excludes file. Without this the test passes
   // on a machine that already ignores node_modules globally, which is precisely
   // the condition the guard is not supposed to depend on.
-  await execOrThrow(['git', 'config', 'core.excludesFile', '/dev/null'], { cwd: repo })
+  await execOrThrow(['git', 'config', 'core.excludesFile', '/dev/null'], {
+    cwd: repo,
+  })
   await Bun.write(join(repo, 'src', 'a.ts'), 'export const a = 1\n')
   // No .gitignore on purpose: this is the repository shape the guard exists for.
-  await Bun.write(join(repo, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
+  await Bun.write(
+    join(repo, 'node_modules', 'left-pad', 'index.js'),
+    'module.exports = 1\n',
+  )
   await Bun.write(join(repo, 'dist', 'bundle.js'), 'console.log(1)\n')
 })
 
 describe('stageAll', () => {
   test('stages source but not dependency or build output', async () => {
     await stageAll(repo)
-    const staged = await execOrThrow(['git', 'diff', '--cached', '--name-only'], { cwd: repo })
+    const staged = await execOrThrow(
+      ['git', 'diff', '--cached', '--name-only'],
+      { cwd: repo },
+    )
     const paths = staged.split('\n').filter((line) => line !== '')
 
     expect(paths).toContain('src/a.ts')
@@ -53,25 +61,45 @@ describe('stageAll when the agent staged generated output itself', () => {
   test('removes it from the index rather than only declining to add it', async () => {
     const repo = mkdtempSync(join(tmpdir(), 'aalai-stage-idx-'))
     await execOrThrow(['git', 'init', '-q', '-b', 'main'], { cwd: repo })
-    await execOrThrow(['git', 'config', 'core.excludesFile', '/dev/null'], { cwd: repo })
+    await execOrThrow(['git', 'config', 'core.excludesFile', '/dev/null'], {
+      cwd: repo,
+    })
     await Bun.write(join(repo, 'README.md'), '# fixture\n')
     await execOrThrow(['git', 'add', 'README.md'], { cwd: repo })
     await execOrThrow(
-      ['git', '-c', 'user.name=t', '-c', 'user.email=t@e.com', 'commit', '-qm', 'init'],
+      [
+        'git',
+        '-c',
+        'user.name=t',
+        '-c',
+        'user.email=t@e.com',
+        'commit',
+        '-qm',
+        'init',
+      ],
       { cwd: repo },
     )
     await Bun.write(join(repo, 'src', 'a.ts'), 'export const a = 1\n')
-    await Bun.write(join(repo, 'node_modules', 'left-pad', 'index.js'), 'module.exports = 1\n')
+    await Bun.write(
+      join(repo, 'node_modules', 'left-pad', 'index.js'),
+      'module.exports = 1\n',
+    )
 
     // The agent has shell access, so it can stage whatever it likes. An exclude
     // pathspec on the later `git add` does not undo this.
     await execOrThrow(['git', 'add', '-f', 'node_modules'], { cwd: repo })
-    const before = await execOrThrow(['git', 'diff', '--cached', '--name-only'], { cwd: repo })
+    const before = await execOrThrow(
+      ['git', 'diff', '--cached', '--name-only'],
+      { cwd: repo },
+    )
     expect(before).toContain('node_modules/')
 
     const removed = await stageAll(repo)
 
-    const after = await execOrThrow(['git', 'diff', '--cached', '--name-only'], { cwd: repo })
+    const after = await execOrThrow(
+      ['git', 'diff', '--cached', '--name-only'],
+      { cwd: repo },
+    )
     const paths = after.split('\n').filter((line) => line !== '')
     expect(paths).toContain('src/a.ts')
     expect(paths.some((p) => p.startsWith('node_modules/'))).toBe(false)

@@ -36,12 +36,20 @@ export function screenIssue(issue: GhIssue, policy: IntakePolicy): Screening {
     return { accepted: false, reason: `state is ${issue.state}` }
   }
   if (policy.requireLabel !== null) {
-    const labelled = issue.labels.some((label) => label.name === policy.requireLabel)
+    const labelled = issue.labels.some(
+      (label) => label.name === policy.requireLabel,
+    )
     if (!labelled) {
-      return { accepted: false, reason: `missing label "${policy.requireLabel}"` }
+      return {
+        accepted: false,
+        reason: `missing label "${policy.requireLabel}"`,
+      }
     }
   }
-  if (policy.trustedAuthorsOnly && !TRUSTED_ASSOCIATIONS.has(issue.author_association)) {
+  if (
+    policy.trustedAuthorsOnly &&
+    !TRUSTED_ASSOCIATIONS.has(issue.author_association)
+  ) {
     return {
       accepted: false,
       reason: `author_association ${issue.author_association} is not trusted`,

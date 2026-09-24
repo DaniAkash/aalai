@@ -68,7 +68,11 @@ async function install(): Promise<void> {
   mkdirSync(join(homedir(), 'Library', 'LaunchAgents'), { recursive: true })
   await Bun.write(plistPath, buildPlist(bunPath, projectDir))
 
-  await exec(['launchctl', 'bootout', `gui/${process.getuid?.() ?? 501}/${LABEL}`])
+  await exec([
+    'launchctl',
+    'bootout',
+    `gui/${process.getuid?.() ?? 501}/${LABEL}`,
+  ])
   const result = await exec([
     'launchctl',
     'bootstrap',
@@ -84,7 +88,11 @@ async function install(): Promise<void> {
 }
 
 async function uninstall(): Promise<void> {
-  await exec(['launchctl', 'bootout', `gui/${process.getuid?.() ?? 501}/${LABEL}`])
+  await exec([
+    'launchctl',
+    'bootout',
+    `gui/${process.getuid?.() ?? 501}/${LABEL}`,
+  ])
   await exec(['rm', '-f', plistPath])
   log.info('uninstalled', { plist: plistPath })
 }
@@ -96,7 +104,6 @@ async function status(): Promise<void> {
     return
   }
   log.info('installed and registered')
-  console.log(result.stdout.trim())
 }
 
 const command = process.argv[2] ?? 'status'

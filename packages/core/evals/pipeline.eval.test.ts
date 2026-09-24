@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { buildAnalystPrompt, buildImplementerPrompt, buildReviewerPrompt } from '@/prompts/stations'
-import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
 import { parseStationOutput } from '@/lib/structured'
+import {
+  buildAnalystPrompt,
+  buildImplementerPrompt,
+  buildReviewerPrompt,
+} from '@/prompts/stations'
+import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
 import { issueFixture } from './harness'
 
 const analysis = {
@@ -53,7 +57,9 @@ describe('the acceptance criteria reach the stations that need them', () => {
       branch: 'aalai/issue-1',
     })
     expect(prompt).toContain('git diff main...aalai/issue-1')
-    expect(prompt).toContain('Summaries describe intent; diffs describe reality')
+    expect(prompt).toContain(
+      'Summaries describe intent; diffs describe reality',
+    )
   })
 
   test('the analyst is told not to write code', () => {
@@ -76,9 +82,15 @@ describe('the acceptance criteria reach the stations that need them', () => {
         review: {
           verdict: 'request_changes',
           criteria_results: [
-            { criterion: analysis.acceptance_criteria[1] ?? '', pass: false, evidence: 'still trailing' },
+            {
+              criterion: analysis.acceptance_criteria[1] ?? '',
+              pass: false,
+              evidence: 'still trailing',
+            },
           ],
-          blocking_findings: ['Trailing hyphen remains for punctuation-only input'],
+          blocking_findings: [
+            'Trailing hyphen remains for punctuation-only input',
+          ],
           summary: 'Close, one case left.',
         },
       },
@@ -114,7 +126,9 @@ describe('station output is validated against its schema', () => {
   test('the last JSON block wins, so a revised reply parses', () => {
     const approved = {
       verdict: 'approve',
-      criteria_results: [{ criterion: 'it works', pass: true, evidence: 'the test passes' }],
+      criteria_results: [
+        { criterion: 'it works', pass: true, evidence: 'the test passes' },
+      ],
       blocking_findings: [],
       summary: 'fine',
     }
@@ -133,7 +147,9 @@ describe('the schema is strict where it matters and forgiving where it does not'
     })}\n\`\`\``
     const parsed = parseStationOutput(reply, analysisSchema)
     expect(parsed.ok).toBe(true)
-    expect(parsed.ok && parsed.value.test_strategy).toContain('run the focused test')
+    expect(parsed.ok && parsed.value.test_strategy).toContain(
+      'run the focused test',
+    )
   })
 
   test('but acceptance criteria must still carry something', () => {
@@ -158,7 +174,10 @@ describe('a station that grouped its answer is still accepted', () => {
         verification: ['test/ordinal.test.ts'],
       },
     }
-    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``, analysisSchema)
+    const parsed = parseStationOutput(
+      `\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``,
+      analysisSchema,
+    )
     expect(parsed.ok).toBe(true)
     expect(parsed.ok && parsed.value.affected_surface).toEqual([
       'src/ordinal.ts',
@@ -169,7 +188,10 @@ describe('a station that grouped its answer is still accepted', () => {
 
   test('a single string becomes a one-entry list', () => {
     const single = { ...analysis, risks: 'nothing material' }
-    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(single)}\n\`\`\``, analysisSchema)
+    const parsed = parseStationOutput(
+      `\`\`\`json\n${JSON.stringify(single)}\n\`\`\``,
+      analysisSchema,
+    )
     expect(parsed.ok).toBe(true)
     expect(parsed.ok && parsed.value.risks).toEqual(['nothing material'])
   })
@@ -177,20 +199,36 @@ describe('a station that grouped its answer is still accepted', () => {
   test('grouped acceptance criteria still reach the gate as a flat list', () => {
     const grouped = {
       ...analysis,
-      acceptance_criteria: { behaviour: ['it rounds'], api: ['the signature is unchanged'] },
+      acceptance_criteria: {
+        behaviour: ['it rounds'],
+        api: ['the signature is unchanged'],
+      },
     }
-    const parsed = parseStationOutput(`\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``, analysisSchema)
+    const parsed = parseStationOutput(
+      `\`\`\`json\n${JSON.stringify(grouped)}\n\`\`\``,
+      analysisSchema,
+    )
     expect(parsed.ok).toBe(true)
     expect(parsed.ok && parsed.value.acceptance_criteria).toHaveLength(2)
   })
 
   test('a shape that carries no criteria at all is still refused', () => {
     const empty = { ...analysis, acceptance_criteria: {} }
-    expect(parseStationOutput(`\`\`\`json\n${JSON.stringify(empty)}\n\`\`\``, analysisSchema).ok).toBe(false)
+    expect(
+      parseStationOutput(
+        `\`\`\`json\n${JSON.stringify(empty)}\n\`\`\``,
+        analysisSchema,
+      ).ok,
+    ).toBe(false)
   })
 
   test('a list of numbers is still refused', () => {
     const wrong = { ...analysis, plan: [1, 2, 3] }
-    expect(parseStationOutput(`\`\`\`json\n${JSON.stringify(wrong)}\n\`\`\``, analysisSchema).ok).toBe(false)
+    expect(
+      parseStationOutput(
+        `\`\`\`json\n${JSON.stringify(wrong)}\n\`\`\``,
+        analysisSchema,
+      ).ok,
+    ).toBe(false)
   })
 })

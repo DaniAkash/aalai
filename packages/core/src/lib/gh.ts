@@ -54,7 +54,10 @@ export async function authenticatedLogin(): Promise<string> {
  * object per line, because otherwise each page arrives as its own top-level
  * JSON array and only the first would parse.
  */
-export async function listIssuesSince(repo: string, since: string): Promise<GhIssue[]> {
+export async function listIssuesSince(
+  repo: string,
+  since: string,
+): Promise<GhIssue[]> {
   const query = new URLSearchParams({
     state: 'open',
     since,
@@ -78,7 +81,10 @@ export async function listIssuesSince(repo: string, since: string): Promise<GhIs
     .map((line) => JSON.parse(line) as GhIssue)
 }
 
-export async function getIssue(repo: string, issueNumber: number): Promise<GhIssue> {
+export async function getIssue(
+  repo: string,
+  issueNumber: number,
+): Promise<GhIssue> {
   return ghJson<GhIssue>(['api', `repos/${repo}/issues/${issueNumber}`])
 }
 
@@ -106,7 +112,9 @@ export interface DraftPullRequest {
 }
 
 /** Opens a draft pull request and returns its URL. Draft is not configurable: it is the human gate. */
-export async function createDraftPullRequest(input: DraftPullRequest): Promise<string> {
+export async function createDraftPullRequest(
+  input: DraftPullRequest,
+): Promise<string> {
   const stdout = await gh([
     'pr',
     'create',
@@ -142,9 +150,20 @@ export interface OwnedRepo {
  */
 export async function ownedRepos(limit = 200): Promise<OwnedRepo[]> {
   const out = await execOrThrow(
-    ['gh', 'repo', 'list', '--limit', String(limit), '--json', 'nameWithOwner,isPrivate'],
+    [
+      'gh',
+      'repo',
+      'list',
+      '--limit',
+      String(limit),
+      '--json',
+      'nameWithOwner,isPrivate',
+    ],
     { env: githubEnv() },
   )
-  const parsed = JSON.parse(out) as { nameWithOwner: string; isPrivate: boolean }[]
+  const parsed = JSON.parse(out) as {
+    nameWithOwner: string
+    isPrivate: boolean
+  }[]
   return parsed.map((r) => ({ repo: r.nameWithOwner, isPrivate: r.isPrivate }))
 }

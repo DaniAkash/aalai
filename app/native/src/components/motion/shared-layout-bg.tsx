@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 import {
   AnimatePresence,
@@ -6,7 +6,7 @@ import {
   motion,
   useReducedMotion,
   type Variants,
-} from "motion/react";
+} from 'motion/react'
 import {
   Children,
   cloneElement,
@@ -19,41 +19,41 @@ import {
   type Ref,
   useId,
   useState,
-} from "react";
-import { SPRING_LAYOUT } from "@/lib/ease";
-import { cn } from "@/lib/utils";
+} from 'react'
+import { SPRING_LAYOUT } from '@/lib/ease'
+import { cn } from '@/lib/utils'
 
 export interface SharedLayoutBgProps
-  extends Omit<HTMLAttributes<HTMLElement>, "children"> {
-  children: ReactNode;
+  extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
+  children: ReactNode
   /** Semantic container used for the children. */
-  as?: "div" | "ul";
+  as?: 'div' | 'ul'
   /** Tailwind class applied to the moving pill. Defaults to a subtle foreground tint. */
-  pillClassName?: string;
+  pillClassName?: string
   /** Horizontal inset of the pill relative to each row (px). Default 20. */
-  inset?: number;
+  inset?: number
   /** Optional positioning override for the pill wrapper inside each item. */
-  pillContainerClassName?: string;
+  pillContainerClassName?: string
 }
 
 const variants: Variants = {
-  initial: { opacity: 0, filter: "blur(6px)" },
-  animate: { opacity: 1, filter: "blur(0px)" },
+  initial: { opacity: 0, filter: 'blur(6px)' },
+  animate: { opacity: 1, filter: 'blur(0px)' },
   exit: (isActive: boolean) =>
-    !isActive ? { opacity: 0, filter: "blur(6px)" } : {},
-};
+    !isActive ? { opacity: 0, filter: 'blur(6px)' } : {},
+}
 
 const reducedVariants: Variants = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
   exit: (isActive: boolean) => (!isActive ? { opacity: 0 } : {}),
-};
+}
 
 export const SharedLayoutBg = forwardRef<HTMLElement, SharedLayoutBgProps>(
   function SharedLayoutBg(
     {
       children,
-      as = "div",
+      as = 'div',
       className,
       onMouseLeave,
       pillClassName,
@@ -63,27 +63,27 @@ export const SharedLayoutBg = forwardRef<HTMLElement, SharedLayoutBgProps>(
     },
     forwardedRef,
   ) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const uid = useId();
-  const reduce = useReducedMotion();
+    const [activeId, setActiveId] = useState<string | null>(null)
+    const uid = useId()
+    const reduce = useReducedMotion()
 
     const renderedChildren = Children.toArray(children)
       .filter(isValidElement)
       .map((child, index) => {
         const el = child as ReactElement<{
-          className?: string;
-          onMouseEnter?: () => void;
-          children?: ReactNode;
-        }>;
-        const childKey = el.key ? String(el.key) : `item-${index}`;
+          className?: string
+          onMouseEnter?: () => void
+          children?: ReactNode
+        }>
+        const childKey = el.key ? String(el.key) : `item-${index}`
         return cloneElement(
           el,
           {
             key: childKey,
-            className: cn("relative", el.props.className),
+            className: cn('relative', el.props.className),
             onMouseEnter: () => {
-              el.props.onMouseEnter?.();
-              setActiveId(childKey);
+              el.props.onMouseEnter?.()
+              setActiveId(childKey)
             },
           },
           <>
@@ -96,7 +96,7 @@ export const SharedLayoutBg = forwardRef<HTMLElement, SharedLayoutBgProps>(
                   exit="exit"
                   custom={activeId !== null}
                   className={cn(
-                    "pointer-events-none absolute inset-y-0",
+                    'pointer-events-none absolute inset-y-0',
                     pillContainerClassName,
                   )}
                   style={{ left: -inset, right: -inset }}
@@ -106,7 +106,7 @@ export const SharedLayoutBg = forwardRef<HTMLElement, SharedLayoutBgProps>(
                       layoutId={`shared-bg-${uid}`}
                       transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
                       className={cn(
-                        "pointer-events-none h-full w-full rounded-2xl bg-muted/80",
+                        'pointer-events-none h-full w-full rounded-2xl bg-muted/80',
                         pillClassName,
                       )}
                     />
@@ -116,36 +116,36 @@ export const SharedLayoutBg = forwardRef<HTMLElement, SharedLayoutBgProps>(
             </AnimatePresence>
             <div className="relative z-10">{el.props.children}</div>
           </>,
-        );
-      });
+        )
+      })
 
     const handleMouseLeave = (event: MouseEvent<HTMLElement>) => {
-      setActiveId(null);
-      onMouseLeave?.(event);
-    };
+      setActiveId(null)
+      onMouseLeave?.(event)
+    }
 
     // layoutRoot scopes the pill's layout projection to this list, so fixed or
     // scrolled ancestors can't smear scroll offsets into its movement.
-    return as === "ul" ? (
+    return as === 'ul' ? (
       <motion.ul
-        {...(props as HTMLMotionProps<"ul">)}
+        {...(props as HTMLMotionProps<'ul'>)}
         ref={forwardedRef as Ref<HTMLUListElement>}
         layoutRoot
         onMouseLeave={handleMouseLeave}
-        className={cn("flex w-full flex-col", className)}
+        className={cn('flex w-full flex-col', className)}
       >
         {renderedChildren}
       </motion.ul>
     ) : (
       <motion.div
-        {...(props as HTMLMotionProps<"div">)}
+        {...(props as HTMLMotionProps<'div'>)}
         ref={forwardedRef as Ref<HTMLDivElement>}
         layoutRoot
         onMouseLeave={handleMouseLeave}
-        className={cn("flex w-full flex-col", className)}
+        className={cn('flex w-full flex-col', className)}
       >
         {renderedChildren}
       </motion.div>
-    );
+    )
   },
-);
+)

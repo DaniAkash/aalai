@@ -27,35 +27,48 @@ describe('screenIssue', () => {
   })
 
   test('rejects pull requests, which the REST issues endpoint also returns', () => {
-    const screening = screenIssue(issue({ pull_request: { url: 'https://…' } }), OPEN_POLICY)
+    const screening = screenIssue(
+      issue({ pull_request: { url: 'https://…' } }),
+      OPEN_POLICY,
+    )
     expect(screening.accepted).toBe(false)
     expect(screening).toHaveProperty('reason', 'is a pull request')
   })
 
   test('rejects closed issues', () => {
-    expect(screenIssue(issue({ state: 'closed' }), OPEN_POLICY).accepted).toBe(false)
+    expect(screenIssue(issue({ state: 'closed' }), OPEN_POLICY).accepted).toBe(
+      false,
+    )
   })
 
   test('rejects an untrusted author when the trust gate is on', () => {
-    const screening = screenIssue(issue({ author_association: 'NONE' }), TRUSTED_POLICY)
+    const screening = screenIssue(
+      issue({ author_association: 'NONE' }),
+      TRUSTED_POLICY,
+    )
     expect(screening.accepted).toBe(false)
   })
 
   test('accepts an untrusted author when the trust gate is off', () => {
-    expect(screenIssue(issue({ author_association: 'NONE' }), OPEN_POLICY).accepted).toBe(true)
+    expect(
+      screenIssue(issue({ author_association: 'NONE' }), OPEN_POLICY).accepted,
+    ).toBe(true)
   })
 
   test('accepts COLLABORATOR and MEMBER as trusted', () => {
     for (const association of ['COLLABORATOR', 'MEMBER']) {
-      expect(screenIssue(issue({ author_association: association }), TRUSTED_POLICY).accepted).toBe(
-        true,
-      )
+      expect(
+        screenIssue(issue({ author_association: association }), TRUSTED_POLICY)
+          .accepted,
+      ).toBe(true)
     }
   })
 
   test('honours a required label', () => {
     const policy = { trustedAuthorsOnly: false, requireLabel: 'aalai' }
     expect(screenIssue(issue(), policy).accepted).toBe(false)
-    expect(screenIssue(issue({ labels: [{ name: 'aalai' }] }), policy).accepted).toBe(true)
+    expect(
+      screenIssue(issue({ labels: [{ name: 'aalai' }] }), policy).accepted,
+    ).toBe(true)
   })
 })

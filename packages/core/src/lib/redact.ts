@@ -9,14 +9,25 @@ import { workbenchDir } from '@/config'
  * rather than replaced wholesale.
  */
 function localRoots(worktree: string): string[] {
-  const roots = [worktree, workbenchDir(), homedir(), '/tmp', '/private/tmp', '/var/folders', '/root']
+  const roots = [
+    worktree,
+    workbenchDir(),
+    homedir(),
+    '/tmp',
+    '/private/tmp',
+    '/var/folders',
+    '/root',
+  ]
   // Longest first, so the most specific root wins and a worktree under the
   // workbench is not truncated to the workbench.
-  return [...new Set(roots.filter((r) => r !== ''))].sort((a, b) => b.length - a.length)
+  return [...new Set(roots.filter((r) => r !== ''))].sort(
+    (a, b) => b.length - a.length,
+  )
 }
 
 /** Directory names that mark where the repository-relative part of a path begins. */
-const REPO_ANCHOR = /\/(?:src|test|tests|lib|app|apps|packages|docs|scripts|evals|bin)\//
+const REPO_ANCHOR =
+  /\/(?:src|test|tests|lib|app|apps|packages|docs|scripts|evals|bin)\//
 
 /**
  * Rewrites machine-local paths out of text that is about to be published.
@@ -61,7 +72,10 @@ export function redactDeep<T>(value: T, worktree: string): T {
   }
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, redactDeep(entry, worktree)]),
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        redactDeep(entry, worktree),
+      ]),
     ) as T
   }
   return value

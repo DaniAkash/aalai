@@ -25,7 +25,10 @@ export type Parsed<T> =
   | { readonly ok: false; readonly error: string }
 
 /** Extracts and validates a station's structured output against its schema. */
-export function parseStationOutput<T>(text: string, schema: z.ZodType<T>): Parsed<T> {
+export function parseStationOutput<T>(
+  text: string,
+  schema: z.ZodType<T>,
+): Parsed<T> {
   const block = extractJsonBlock(text)
   if (block === null) {
     return { ok: false, error: 'the reply carried no JSON block' }
@@ -34,10 +37,18 @@ export function parseStationOutput<T>(text: string, schema: z.ZodType<T>): Parse
   try {
     raw = JSON.parse(block)
   } catch (error) {
-    return { ok: false, error: `the JSON block did not parse: ${(error as Error).message}` }
+    return {
+      ok: false,
+      error: `the JSON block did not parse: ${(error as Error).message}`,
+    }
   }
   const result = schema.safeParse(raw)
   return result.success
     ? { ok: true, value: result.data }
-    : { ok: false, error: result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }
+    : {
+        ok: false,
+        error: result.error.issues
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
+          .join('; '),
+      }
 }

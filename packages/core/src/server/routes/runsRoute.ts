@@ -18,7 +18,10 @@ export const runsRoute = new Hono()
   .get('/live', (c) =>
     c.json({
       latest: latestRunId(),
-      runs: activeRuns().map((run) => ({ runId: run.runId, events: run.events.length })),
+      runs: activeRuns().map((run) => ({
+        runId: run.runId,
+        events: run.events.length,
+      })),
     }),
   )
   .get('/live/:runId', (c) => {

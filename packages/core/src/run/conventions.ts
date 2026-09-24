@@ -29,7 +29,11 @@ export async function detectConventions(root: string): Promise<string[]> {
   }
   for (const pattern of RULE_GLOBS) {
     const glob = new Glob(pattern)
-    for await (const match of glob.scan({ cwd: root, dot: true, onlyFiles: true })) {
+    for await (const match of glob.scan({
+      cwd: root,
+      dot: true,
+      onlyFiles: true,
+    })) {
       found.push(match)
     }
   }

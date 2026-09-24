@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
-import { hc } from 'hono/client'
 import type { AppType } from 'aalai-core/app'
+import { hc } from 'hono/client'
 
 interface ApiInfo {
   port: number | null

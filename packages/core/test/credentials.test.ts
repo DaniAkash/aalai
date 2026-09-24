@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { captureInheritedTokens, githubEnv, resetCapturedTokens } from '@/lib/credentials'
+import {
+  captureInheritedTokens,
+  githubEnv,
+  resetCapturedTokens,
+} from '@/lib/credentials'
 
 const SAVED = { ...process.env }
 

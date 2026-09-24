@@ -115,7 +115,10 @@ export function buildPullRequestBody(input: PullRequestBodyInput): string {
   const { issue, analysis, review, report, diffStat, changedFiles } = input
 
   const criteria = review.criteria_results
-    .map((r) => `| ${r.pass ? 'pass' : '**fail**'} | ${r.criterion} | ${r.evidence} |`)
+    .map(
+      (r) =>
+        `| ${r.pass ? 'pass' : '**fail**'} | ${r.criterion} | ${r.evidence} |`,
+    )
     .join('\n')
 
   const files =

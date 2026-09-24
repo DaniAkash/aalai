@@ -39,7 +39,9 @@ const looseList = z
         ? [value]
         : Array.isArray(value)
           ? value
-          : Object.values(value).flatMap((entry) => (Array.isArray(entry) ? entry : [entry]))
+          : Object.values(value).flatMap((entry) =>
+              Array.isArray(entry) ? entry : [entry],
+            )
     // Blank entries are dropped, so an empty string cannot pass a minimum-length
     // check as one criterion that says nothing.
     return entries.map((entry) => entry.trim()).filter((entry) => entry !== '')

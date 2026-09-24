@@ -1,5 +1,5 @@
-import { redactDeep } from '@/lib/redact'
 import type { RunEvent, RunLog } from '@/events/events.types'
+import { redactDeep } from '@/lib/redact'
 
 /** How many events one run keeps. Long enough to replay a full run into a late subscriber. */
 const RING_SIZE = 400

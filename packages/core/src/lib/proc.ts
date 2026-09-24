@@ -32,7 +32,10 @@ export async function exec(
     cmd: [...command],
     cwd: options.cwd,
     env: options.env ? { ...process.env, ...options.env } : process.env,
-    stdin: options.stdin === undefined ? 'ignore' : new TextEncoder().encode(options.stdin),
+    stdin:
+      options.stdin === undefined
+        ? 'ignore'
+        : new TextEncoder().encode(options.stdin),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -51,7 +54,11 @@ export async function execOrThrow(
 ): Promise<string> {
   const result = await exec(command, options)
   if (result.exitCode !== 0) {
-    throw new ProcError(command.join(' '), result.exitCode, result.stderr || result.stdout)
+    throw new ProcError(
+      command.join(' '),
+      result.exitCode,
+      result.stderr || result.stdout,
+    )
   }
   return result.stdout.trim()
 }
