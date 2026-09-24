@@ -181,17 +181,12 @@
       "indexes": {
         "gates_status_opened_idx": {
           "name": "gates_status_opened_idx",
-          "columns": [
-            "status",
-            "opened_at"
-          ],
+          "columns": ["status", "opened_at"],
           "isUnique": false
         },
         "gates_run_idx": {
           "name": "gates_run_idx",
-          "columns": [
-            "run_id"
-          ],
+          "columns": ["run_id"],
           "isUnique": false
         }
       },
@@ -325,11 +320,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "runs_repo_subject_kind_subject_number_pk": {
-          "columns": [
-            "repo",
-            "subject_kind",
-            "subject_number"
-          ],
+          "columns": ["repo", "subject_kind", "subject_number"],
           "name": "runs_repo_subject_kind_subject_number_pk"
         }
       },
@@ -426,10 +417,7 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {
         "station_sessions_run_id_station_pk": {
-          "columns": [
-            "run_id",
-            "station"
-          ],
+          "columns": ["run_id", "station"],
           "name": "station_sessions_run_id_station_pk"
         }
       },

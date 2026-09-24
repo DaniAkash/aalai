@@ -1,5 +1,7 @@
 import init from './0000_init_schema.sql' with { type: 'text' }
-import gateStatus from './0001_add_gate_status_and_indexes.sql' with { type: 'text' }
+import gateStatus from './0001_add_gate_status_and_indexes.sql' with {
+  type: 'text',
+}
 
 export interface Migration {
   readonly name: string

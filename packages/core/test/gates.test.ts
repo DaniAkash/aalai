@@ -49,8 +49,16 @@ describe('opening', () => {
   })
 
   test('a gate on a new version is a different gate', () => {
-    const v1 = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '1' })
-    const v2 = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '2' })
+    const v1 = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
+    const v2 = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '2',
+    })
 
     expect(v2).not.toBe(v1)
     expect(listGates(db, { runId: RUN_ID })).toHaveLength(2)
@@ -59,7 +67,11 @@ describe('opening', () => {
 
 describe('answering', () => {
   test('an approval is recorded with who answered and from where', () => {
-    const id = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '1' })
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
 
     const result = answerGate(db, {
       gateId: id,
@@ -77,7 +89,11 @@ describe('answering', () => {
   })
 
   test('a second answer is refused rather than overwriting the first', () => {
-    const id = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '1' })
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
     answerGate(db, {
       gateId: id,
       decision: 'approved',
@@ -113,7 +129,11 @@ describe('answering', () => {
   })
 
   test('a reason is kept, because it becomes the issue comment', () => {
-    const id = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '1' })
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
 
     answerGate(db, {
       gateId: id,
@@ -155,7 +175,11 @@ describe('superseding, which is what stops an approval transferring', () => {
   })
 
   test('superseding leaves an already answered gate alone', () => {
-    const id = openGate(db, { runId: RUN_ID, kind: 'plan', artifactVersion: '1' })
+    const id = openGate(db, {
+      runId: RUN_ID,
+      kind: 'plan',
+      artifactVersion: '1',
+    })
     answerGate(db, {
       gateId: id,
       decision: 'approved',
@@ -170,8 +194,16 @@ describe('superseding, which is what stops an approval transferring', () => {
 
 describe('listing, which is what the inbox asks', () => {
   test('open gates only, newest first', () => {
-    const a = openGate(db, { runId: 'a#1@1', kind: 'plan', artifactVersion: '1' })
-    const b = openGate(db, { runId: 'b#2@2', kind: 'plan', artifactVersion: '1' })
+    const a = openGate(db, {
+      runId: 'a#1@1',
+      kind: 'plan',
+      artifactVersion: '1',
+    })
+    const b = openGate(db, {
+      runId: 'b#2@2',
+      kind: 'plan',
+      artifactVersion: '1',
+    })
     answerGate(db, {
       gateId: a,
       decision: 'approved',

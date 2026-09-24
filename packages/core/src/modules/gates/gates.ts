@@ -70,10 +70,7 @@ export function listGates(db: Database, filter: GateQuery = {}): GateRow[] {
  * it, because two surfaces answering at the same moment is the expected case
  * rather than the rare one, and a check outside the write is a race.
  */
-export function answerGate(
-  db: Database,
-  input: AnswerGateInput,
-): AnswerResult {
+export function answerGate(db: Database, input: AnswerGateInput): AnswerResult {
   return db.transaction(() => {
     const gate = readGate(db, input.gateId)
     if (gate === undefined) {
