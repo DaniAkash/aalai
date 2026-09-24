@@ -104,9 +104,10 @@ export function answerGate(db: Database, input: AnswerGateInput): AnswerResult {
  * answered with no run parked on it: a second window, or a terminal, then has
  * no way to learn it happened until it next polls.
  *
- * A run parked in this process announces it again when its own watcher
- * notices. The duplicate is harmless: subscribers invalidate a cache, and
- * invalidating twice costs one extra read.
+ * A run parked in this process hears the same answer through the in-process
+ * bus, and its watcher deliberately stays quiet in that case: the event log is
+ * replayed into the interface, so a second announcement is a visible duplicate
+ * rather than a spare cache invalidation.
  */
 function announce(gate: GateRow): void {
   if (gate.decision === null) {

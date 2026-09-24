@@ -96,6 +96,7 @@ export function Repos() {
           />
           <button
             type="button"
+            aria-label={`Stop watching ${repo.repo}`}
             onClick={() => unwatch.mutate({ repo: repo.repo })}
             disabled={unwatch.isPending}
             className="rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground"
@@ -131,6 +132,7 @@ function Picker({
         />
         <button
           type="button"
+          aria-label="Close the repository picker"
           onClick={onDone}
           className="text-muted-foreground hover:text-foreground"
         >

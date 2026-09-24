@@ -18,8 +18,11 @@ export function useInboxData() {
     working:
       runs.data?.runs.filter((run) => run.status === 'claimed').length ?? 0,
     isPending: gates.isPending,
-    isError: gates.isError,
-    error: gates.error?.message ?? '',
+    // Both, because "nothing is waiting" and "0 runs in flight" are claims
+    // about two requests, and a screen that makes the second one while the
+    // request behind it failed is stating something it does not know.
+    isError: gates.isError || runs.isError,
+    error: (gates.error ?? runs.error)?.message ?? '',
     retry: () => {
       void gates.refetch()
       void runs.refetch()

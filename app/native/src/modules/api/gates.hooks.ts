@@ -82,7 +82,14 @@ export const useAnswerGate = createMutation<
     return parseResponse<unknown>(response)
   },
   onSettled: (_data, _error, vars) => {
-    void queryClient.invalidateQueries({ queryKey: useGate.getKey(vars) })
+    // Only the id, because that is what the detail query was keyed with.
+    // Passing the whole of vars builds a key carrying the decision too, which
+    // matches nothing. The list invalidation below happens to cover the detail
+    // anyway, since ['gates'] is a prefix of it, so this was not broken so much
+    // as inert: a line that reads as though it does the work and does not.
+    void queryClient.invalidateQueries({
+      queryKey: useGate.getKey({ id: vars.id }),
+    })
     void queryClient.invalidateQueries({ queryKey: useOpenGates.getKey() })
   },
 })

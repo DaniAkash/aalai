@@ -27,6 +27,7 @@ export function DecisionPanel({
   return (
     <>
       <textarea
+        aria-label="Reason for this decision"
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         placeholder="Why, if you are rejecting or asking for changes. This travels with the decision."

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { type StreamState, subscribeToRunEvents } from '@/modules/api/events'
 import { useGate, useOpenGates } from '@/modules/api/gates.hooks'
 import { queryClient } from '@/modules/api/queryClient'
-import { usePastRuns } from '@/modules/api/runs.hooks'
+import { useActiveRuns, usePastRuns } from '@/modules/api/runs.hooks'
 
 /**
  * Keeps the cache honest while the factory works.
@@ -40,6 +40,9 @@ function invalidateFor(event: RunEvent): void {
     })
     return
   }
-  // Everything else moves a run, and the list is what shows runs.
+  // Everything else moves a run. Both lists, because the row comes from the
+  // history and the link to its detail comes from what is still in memory: a
+  // row whose events arrived but whose lookup did not has nowhere to go.
   void queryClient.invalidateQueries({ queryKey: usePastRuns.getKey() })
+  void queryClient.invalidateQueries({ queryKey: useActiveRuns.getKey() })
 }

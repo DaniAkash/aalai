@@ -74,6 +74,7 @@ async function serve(config: Config): Promise<void> {
   })
 
   let watching = config.watch.map((w) => w.repo).join(',')
+  let interval = config.pollSeconds
   while (!controller.signal.aborted) {
     try {
       // Re-read each tick. Settings and watched repositories are changed while
@@ -86,6 +87,7 @@ async function serve(config: Config): Promise<void> {
         watching = repos
         log.info('watching changed', { repos: repos || 'nothing' })
       }
+      interval = current.pollSeconds
       const handled = await pollOnce(db, current)
       if (handled > 0) {
         log.info('tick complete', { handled })
@@ -98,7 +100,9 @@ async function serve(config: Config): Promise<void> {
     if (controller.signal.aborted) {
       break
     }
-    await sleep(config.pollSeconds * 1000, controller.signal)
+    // The freshly read one, or changing the interval in the interface would
+    // wait out the old one before it ever took effect.
+    await sleep(interval * 1000, controller.signal)
   }
 
   db.close()

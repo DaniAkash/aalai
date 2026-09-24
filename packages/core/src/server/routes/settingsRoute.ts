@@ -35,16 +35,34 @@ const patchSchema = z.object({
   reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
 })
 
+/**
+ * Settings writes, one at a time.
+ *
+ * A patch is a read then a write, so two of them arriving together can both
+ * read the same settings and the second can drop the first's field. Controls
+ * save independently by design, which makes that ordinary rather than rare.
+ */
+let writing: Promise<unknown> = Promise.resolve()
+
+function serialised<T>(work: () => Promise<T>): Promise<T> {
+  const next = writing.then(work, work)
+  writing = next.catch(() => {})
+  return next
+}
+
 export const settingsRoute = new Hono()
   .get('/settings', async (c) => c.json({ settings: await loadConfig() }))
   .patch('/settings', zValidator('json', patchSchema), async (c) => {
     const patch = c.req.valid('json')
-    const current = await loadConfig()
-    const next = {
-      ...current,
-      ...patch,
-      agents: { ...current.agents, ...(patch.agents ?? {}) },
-    }
-    await saveConfig(next)
+    const next = await serialised(async () => {
+      const current = await loadConfig()
+      const merged = {
+        ...current,
+        ...patch,
+        agents: { ...current.agents, ...(patch.agents ?? {}) },
+      }
+      await saveConfig(merged)
+      return merged
+    })
     return c.json({ settings: next })
   })
