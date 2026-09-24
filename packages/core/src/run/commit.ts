@@ -4,8 +4,10 @@ import type { GhIssue } from '@/lib/gh'
 import * as git from '@/lib/git'
 import { logger } from '@/lib/log'
 import { buildCommitMessage } from '@/prompts/implement-issue'
-import type { CommitOutcome } from '@/run/loop'
 import type { Workspace } from '@/run/workspace'
+
+/** What committing the implementer's work produced. */
+export type CommitOutcome = 'committed' | 'no-changes' | 'generated-only'
 
 const log = logger('pipeline')
 

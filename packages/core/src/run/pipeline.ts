@@ -2,23 +2,16 @@ import type { Config } from '@/config'
 import { emit, registerRunRoot } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { redactDeep } from '@/lib/redact'
+import { getDb } from '@/modules/db/db'
 import type { RunRef, Subject } from '@/modules/work/paths'
-import {
-  recordAnalysis,
-  recordReview,
-  recordRun,
-  snapshotOf,
-} from '@/run/artifacts'
-import { commitImplementerWork } from '@/run/commit'
+import { recordRun, snapshotOf } from '@/run/artifacts'
 import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
-import { runReviewLoop } from '@/run/loop'
-import { runAnalyst, runImplementer, runReviewer } from '@/run/stations'
+import { driveIssueWork } from '@/run/machines/drive'
+import type { IssueWorkContext } from '@/run/machines/issueWork'
 import {
   discardPath,
   discardWorkspace,
-  prepareReviewWorkspace,
   prepareWorkspace,
   type Workspace,
 } from '@/run/workspace'
@@ -134,122 +127,30 @@ export async function runIssue(
       conventions: conventionFiles,
       at: Date.now(),
     })
-    emit({ type: 'stage.entered', runId, stage: 'analyst', at: Date.now() })
-
-    const { analysis, result: analystTurn } = await runAnalyst({
+    const settled = await driveIssueWork({
       runId,
       repo,
-      issue,
-      worktree: workspace.worktreePath,
-      conventionFiles,
-      config,
-    })
-    log.info('plan ready', {
-      steps: analysis.plan.length,
-      criteria: analysis.acceptance_criteria.length,
-    })
-    emit({
-      type: 'analysis.ready',
-      runId,
-      steps: analysis.plan.length,
-      criteria: analysis.acceptance_criteria,
-      at: Date.now(),
-    })
-    // Only when the station did not record it itself. A tool call already
-    // wrote the plan and the criteria, and writing them again here would
-    // produce a second version of each for one run, which is exactly what
-    // pinning an approval to a version is meant to make impossible.
-    if (analystTurn.recorded.analysis === undefined) {
-      await record('analysis', () =>
-        recordAnalysis(subject, run, issue, analysis),
-      )
-    }
-
-    const outcome = await runReviewLoop(
-      {
-        implement: async (revision) => {
-          emit({
-            type: 'stage.entered',
-            runId,
-            stage: 'implementer',
-            at: Date.now(),
-          })
-          if (revision !== undefined) {
-            emit({
-              type: 'revision.started',
-              runId,
-              attempt: revision.attempt,
-              findings: revision.review.blocking_findings,
-              at: Date.now(),
-            })
-          }
-          const turn = await runImplementer({
-            runId,
-            repo,
-            issue,
-            worktree: workspace.worktreePath,
-            analysis,
-            conventionFiles,
-            revision,
-            config,
-          })
-          return turn.text
-        },
-        commit: (attempt) =>
-          commitImplementerWork(runId, workspace, issue, attempt, config),
-        review: async () => {
-          emit({
-            type: 'stage.entered',
-            runId,
-            stage: 'reviewer',
-            at: Date.now(),
-          })
-          const path = await prepareReviewWorkspace(workspace)
-          reviewWorktree = path
-          const { review, result: reviewerTurn } = await runReviewer({
-            runId,
-            repo,
-            issue,
-            worktree: path,
-            analysis,
-            base: workspace.base,
-            branch: workspace.branch,
-            config,
-          })
-          // Redacted at the boundary: every field below is published, either in
-          // the pull request body or in an issue comment on a stopped run.
-          const safe = redactDeep(review, workspace.worktreePath)
-          emit({
-            type: 'review.verdict',
-            runId,
-            verdict: safe.verdict,
-            results: safe.criteria_results,
-            at: Date.now(),
-          })
-          if (reviewerTurn.recorded.review === undefined) {
-            await record('review', () =>
-              recordReview(subject, run, issue, safe),
-            )
-          }
-          return safe
-        },
+      issueNumber: issue.number,
+      run,
+      deps: {
+        db: getDb().sqlite,
+        config,
+        issue,
+        repo,
+        workspace,
+        run,
+        conventionFiles,
       },
-      analysis,
-      config,
-    )
+    })
+    reviewWorktree = settled.context.reviewWorktree ?? null
 
-    if (outcome.kind === 'stopped') {
-      emit({
-        type: 'run.stopped',
-        runId,
-        reason: outcome.reason,
-        at: Date.now(),
-      })
-      await reportOutcomeOnIssue(repo, issue, {
-        delivered: false,
-        reason: outcome.reason,
-      })
-      result = { status: 'skipped', error: outcome.reason }
+    const { analysis, review } = settled.context
+    if (
+      settled.state !== 'approved' ||
+      analysis === undefined ||
+      review === undefined
+    ) {
+      result = await reportUnapproved(runId, repo, issue, settled.context)
       return result
     }
 
@@ -259,8 +160,8 @@ export async function runIssue(
       workspace,
       issue,
       analysis,
-      review: outcome.review,
-      report: outcome.implementerReport,
+      review,
+      report: settled.context.implementerReport,
       config,
     })
     await reportOutcomeOnIssue(repo, issue, delivery)
@@ -308,4 +209,32 @@ export async function runIssue(
       await discardWorkspace(workspace)
     }
   }
+}
+
+/**
+ * A run the machine did not carry to an approved verdict.
+ *
+ * A failure is the factory's own problem and is not reported on the issue; a
+ * stop is a decision somebody asked for, and is.
+ */
+async function reportUnapproved(
+  runId: string,
+  repo: string,
+  issue: GhIssue,
+  context: IssueWorkContext,
+): Promise<PipelineResult> {
+  const stopped = context.outcome ?? {
+    kind: 'stopped' as const,
+    reason: 'the run ended without an outcome',
+  }
+  if (stopped.kind === 'failed') {
+    emit({ type: 'run.failed', runId, error: stopped.error, at: Date.now() })
+    return { status: 'failed', error: stopped.error }
+  }
+  emit({ type: 'run.stopped', runId, reason: stopped.reason, at: Date.now() })
+  await reportOutcomeOnIssue(repo, issue, {
+    delivered: false,
+    reason: stopped.reason,
+  })
+  return { status: 'skipped', error: stopped.reason }
 }
