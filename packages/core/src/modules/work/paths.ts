@@ -105,6 +105,35 @@ export function artifactId(subject: Subject, filename: string): string {
  * an issue body by way of an agent. `join` resolves `..`, so without this
  * `../../../../etc/passwd` is a readable file rather than a rejected id.
  */
+/** `<repo>/<subject>/artifacts/<name>`, which is the only shape an id may take. */
+const ARTIFACT_ID =
+  /^(?<repo>[A-Za-z0-9._-]+__[A-Za-z0-9._-]+)\/(?<subject>(?:issue|pr)-\d+)\/artifacts\/(?<file>[a-z][a-z0-9-]*\.v\d+\.md|conversation\.md)$/
+
+export interface ParsedArtifactId {
+  readonly repoSegment: string
+  readonly subjectSegment: string
+  readonly file: string
+}
+
+/**
+ * Reads an id, or refuses it.
+ *
+ * Structural rather than prefix based, and deliberately so: a check like
+ * `id.startsWith(repo)` passes for `acme__widgets/../other__repo/...`, which
+ * then resolves into the other repository. Matching the whole shape leaves no
+ * room for a `..` segment to appear anywhere, and it also keeps run internals
+ * out of reach, because `runs/<id>/machine.json` is not this shape.
+ */
+export function parseArtifactId(id: string): ParsedArtifactId | undefined {
+  const match = ARTIFACT_ID.exec(id)
+  const repo = match?.groups?.repo
+  const subject = match?.groups?.subject
+  const file = match?.groups?.file
+  return repo === undefined || subject === undefined || file === undefined
+    ? undefined
+    : { repoSegment: repo, subjectSegment: subject, file }
+}
+
 export function artifactPath(id: string): string {
   const root = resolve(workRoot())
   const target = resolve(root, ...id.split('/'))

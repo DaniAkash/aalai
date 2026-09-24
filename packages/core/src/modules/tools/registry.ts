@@ -7,7 +7,7 @@ import {
   findArtifacts,
   readArtifact,
 } from '@/modules/work/artifacts'
-import { repoSegment } from '@/modules/work/paths'
+import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { queueOutbound } from '@/modules/work/store'
 import { recordAnalysis, recordReview } from '@/run/artifacts'
 import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
@@ -152,10 +152,13 @@ function registerRecall(server: McpServer, ctx: ToolContext): void {
       annotations: { readOnlyHint: true },
     },
     async ({ id }) => {
-      // Scoped to the repository this run is about. The work directory guard
-      // in artifactPath stops an id leaving the tree at all; this stops one
-      // reaching a repository the station was never given.
-      if (!id.startsWith(`${repoSegment(ctx.subject.repo)}/`)) {
+      // Parsed, not prefix matched. A prefix check runs against the raw id and
+      // `acme__widgets/../other__repo/...` passes it, so the repository has to
+      // be read out of an id whose whole shape was validated first. This also
+      // keeps run internals unreachable: a snapshot or an attempt outcome is
+      // not an artifact id and never parses as one.
+      const parsed = parseArtifactId(id)
+      if (parsed?.repoSegment !== repoSegment(ctx.subject.repo)) {
         return text(`no artifact at ${id}`)
       }
       const body = await readArtifact(id)
