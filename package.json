@@ -22,10 +22,11 @@
     "check:eval": "bun run --filter aalai-core eval",
     "check:rust": "bun run build:sidecar && cd app/native/src-tauri && cargo clippy --all-targets",
     "check:fallow": "fallow",
-    "check:fix": "biome check --write --unsafe && cd app/native/src-tauri && cargo clippy --all-targets --fix --allow-dirty --allow-staged",
+    "check:fix": "concurrently --group --names biome,rust --prefix-colors auto \"biome check --write\" \"bun run fix:rust\"",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter aalai-core test",
-    "eval": "bun run --filter aalai-core eval"
+    "eval": "bun run --filter aalai-core eval",
+    "fix:rust": "cd app/native/src-tauri && cargo clippy --all-targets --fix --allow-dirty --allow-staged"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
