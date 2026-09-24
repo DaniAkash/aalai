@@ -91,6 +91,28 @@ export async function writeAttemptOutcome<T>(
   return await writeJson(run, join(id), outcome)
 }
 
+/**
+ * What was true before an attempt ran, captured the first time it begins.
+ *
+ * Reconciling asks whether the work landed, and "landed" is only meaningful
+ * against a starting point. Without one, a second revision sees the first
+ * revision's commit and calls itself done.
+ */
+export async function writeAttemptBefore<T>(
+  run: RunRef,
+  id: string,
+  before: T,
+): Promise<void> {
+  await writeJson(run, `${join(id)}.before`, before)
+}
+
+export async function readAttemptBefore<T>(
+  run: RunRef,
+  id: string,
+): Promise<T | undefined> {
+  return await readJson<T>(run, `${join(id)}.before`)
+}
+
 export async function readAttemptOutcome<T>(
   run: RunRef,
   id: string,

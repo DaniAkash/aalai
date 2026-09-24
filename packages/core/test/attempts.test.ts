@@ -8,6 +8,7 @@ import {
   attemptIdFor,
   beginAttempt,
   readAttempt,
+  writeAttemptBefore,
 } from '@/run/machines/attempts'
 import { runAttempt } from '@/run/machines/runner'
 
@@ -206,5 +207,86 @@ describe('running a station attempt', () => {
 
     expect(ran).toBe(2)
     expect(second.source).toBe('executed')
+  })
+})
+
+describe('reconciling against where the work started', () => {
+  test('a later revision does not inherit an earlier one as its own', async () => {
+    let ran = 0
+    // Revision 0 committed, so anything comparing against the base sees a
+    // change and would call revision 1 finished without it doing anything.
+    const headAtStart = 'sha-after-revision-0'
+    let head = headAtStart
+
+    const attempt = (revision: number) => ({
+      db: db.sqlite,
+      run: RUN,
+      runId: RUN_ID,
+      station: 'implementer' as const,
+      revision,
+      captureBefore: async () => ({ head }),
+      reconcile: async (
+        before: { head: string } | undefined,
+      ): Promise<{ sha: string; from: string } | undefined> =>
+        before !== undefined && head !== before.head
+          ? { sha: head, from: 'reconciled' }
+          : undefined,
+      execute: async (): Promise<{ sha: string; from: string }> => {
+        ran += 1
+        head = `sha-from-revision-${revision}`
+        return { sha: head, from: 'executed' }
+      },
+    })
+
+    // Revision 1 starts and is interrupted before it does anything.
+    const input = attempt(1)
+    await writeAttemptBefore(RUN, attemptIdFor(RUN_ID, 'implementer', 1), {
+      head: headAtStart,
+    })
+    beginAttempt(db.sqlite, {
+      id: attemptIdFor(RUN_ID, 'implementer', 1),
+      runId: RUN_ID,
+      station: 'implementer',
+    })
+
+    const outcome = await runAttempt(input)
+
+    // Nothing new was committed, so the revision has to actually run.
+    expect(outcome.source).toBe('executed')
+    expect(ran).toBe(1)
+  })
+
+  test('a revision that did commit is reconciled rather than repeated', async () => {
+    let ran = 0
+    const before = { head: 'sha-before' }
+    await writeAttemptBefore(
+      RUN,
+      attemptIdFor(RUN_ID, 'implementer', 1),
+      before,
+    )
+    beginAttempt(db.sqlite, {
+      id: attemptIdFor(RUN_ID, 'implementer', 1),
+      runId: RUN_ID,
+      station: 'implementer',
+    })
+
+    const outcome = await runAttempt({
+      db: db.sqlite,
+      run: RUN,
+      runId: RUN_ID,
+      station: 'implementer',
+      revision: 1,
+      captureBefore: async () => before,
+      // The commit landed before the process died.
+      reconcile: async (stored: { head: string } | undefined) =>
+        stored?.head === 'sha-before' ? { sha: 'sha-after' } : undefined,
+      execute: async () => {
+        ran += 1
+        return { sha: 'fresh' }
+      },
+    })
+
+    expect(outcome.source).toBe('reconciled')
+    expect(ran).toBe(0)
   })
 })

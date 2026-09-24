@@ -2,14 +2,19 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createActor, waitFor } from 'xstate'
+import { createActor } from 'xstate'
 import type { Config } from '@/config'
 import type { GhIssue } from '@/lib/gh'
 import { openDb } from '@/modules/db/db'
+import { writeArtifact } from '@/modules/work/artifacts'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { writeJson } from '@/modules/work/store'
 import { analyst, reviewer } from '@/run/machines/actors'
-import { attemptIdFor, beginAttempt } from '@/run/machines/attempts'
+import {
+  attemptIdFor,
+  beginAttempt,
+  writeAttemptBefore,
+} from '@/run/machines/attempts'
 import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
 import type { Analysis, Review } from '@/run/stations/schemas'
 import type { Workspace } from '@/run/workspace'
@@ -70,14 +75,33 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-async function settle<T>(
+/**
+ * Runs one actor to a settled state.
+ *
+ * Subscribed rather than awaited, because an actor that errors reports it
+ * through the subscription and rejects anything waiting on it. Erroring is a
+ * legitimate outcome here: a station that refuses to reconcile is supposed to
+ * run, and one that cannot run is supposed to fail rather than invent an answer.
+ */
+function settle<T>(
   logic: Parameters<typeof createActor>[0],
   input: unknown,
-) {
-  const actor = createActor(logic, { input } as never)
-  actor.start()
-  const snapshot = await waitFor(actor, (s) => s.status !== 'active')
-  return snapshot as { status: string; output: T; error: unknown }
+): Promise<{ status: string; output?: T }> {
+  return new Promise((resolve) => {
+    const actor = createActor(logic, { input } as never)
+    actor.subscribe({
+      next: (snapshot) => {
+        if (snapshot.status === 'done') {
+          resolve({
+            status: 'done',
+            output: (snapshot as { output?: T }).output,
+          })
+        }
+      },
+      error: () => resolve({ status: 'error' }),
+    })
+    actor.start()
+  })
 }
 
 describe('an attempt that started and never settled', () => {
@@ -92,44 +116,49 @@ describe('an attempt that started and never settled', () => {
     const settled = await settle<Analysis>(analyst, { runId: RUN_ID })
 
     expect(settled.status).toBe('done')
-    expect(settled.output.problem_statement).toBe('recovered from disk')
+    expect(settled.output?.problem_statement).toBe('recovered from disk')
   })
 
-  test('the reviewer answers from the verdict it already recorded', async () => {
+  test('the reviewer answers from a verdict written after it began', async () => {
     await writeJson(RUN, 'review', review)
-    beginAttempt(db.sqlite, {
-      id: attemptIdFor(RUN_ID, 'reviewer', 0),
-      runId: RUN_ID,
-      station: 'reviewer',
-    })
-
-    const settled = await settle<{ review: Review }>(reviewer, {
-      runId: RUN_ID,
-      revision: 0,
-    })
-
-    expect(settled.status).toBe('done')
-    expect(settled.output.review.criteria_results[0]?.evidence).toBe(
-      'recovered from disk',
-    )
-  })
-
-  test('the reviewer does not rebuild a checkout it has no use for', async () => {
-    await writeJson(RUN, 'review', review)
-    beginAttempt(db.sqlite, {
-      id: attemptIdFor(RUN_ID, 'reviewer', 0),
-      runId: RUN_ID,
-      station: 'reviewer',
-    })
+    await writeArtifact(SUBJECT, 'review', 'the verdict this attempt produced')
+    const id = attemptIdFor(RUN_ID, 'reviewer', 0)
+    // Nothing had been reviewed when this attempt started.
+    await writeAttemptBefore(RUN, id, { reviews: 0 })
+    beginAttempt(db.sqlite, { id, runId: RUN_ID, station: 'reviewer' })
 
     const settled = await settle<{ review: Review; worktree?: string }>(
       reviewer,
       { runId: RUN_ID, revision: 0 },
     )
 
+    expect(settled.status).toBe('done')
+    expect(settled.output?.review.criteria_results[0]?.evidence).toBe(
+      'recovered from disk',
+    )
     // No clone exists here, so rebuilding one would have thrown. Answering
     // from the record is what makes that unnecessary.
-    expect(settled.status).toBe('done')
-    expect(settled.output.worktree).toBeUndefined()
+    expect(settled.output?.worktree).toBeUndefined()
+  })
+
+  test('a revision does not adopt the previous revision verdict', async () => {
+    // review.json holds the latest verdict for the whole run, so an earlier
+    // revision's verdict is sitting right there. Revision 1 began after it was
+    // written, and must not mistake it for its own.
+    await writeJson(RUN, 'review', review)
+    await writeArtifact(SUBJECT, 'review', 'the verdict from revision 0')
+    const id = attemptIdFor(RUN_ID, 'reviewer', 1)
+    await writeAttemptBefore(RUN, id, { reviews: 1 })
+    beginAttempt(db.sqlite, { id, runId: RUN_ID, station: 'reviewer' })
+
+    const settled = await settle<{ review: Review }>(reviewer, {
+      runId: RUN_ID,
+      revision: 1,
+    })
+
+    // Nothing new was written, so reconciling answers nothing and the station
+    // is asked to run. It cannot here, and failing is the correct outcome:
+    // the alternative is judging code this verdict never saw.
+    expect(settled.status).toBe('error')
   })
 })

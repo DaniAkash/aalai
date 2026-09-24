@@ -1,7 +1,8 @@
 import { fromPromise } from 'xstate'
-import { diffNames } from '@/lib/git'
+import { headSha } from '@/lib/git'
 import { logger } from '@/lib/log'
 import { redactDeep } from '@/lib/redact'
+import { latestArtifact } from '@/modules/work/artifacts'
 import { readJson } from '@/modules/work/store'
 import { recordAnalysis, recordReview } from '@/run/artifacts'
 import type { CommitOutcome } from '@/run/commit'
@@ -78,52 +79,56 @@ export const implementer = fromPromise(
     input: { runId: string; revision: number; review?: Review }
   }): Promise<{ report: string; commit: CommitOutcome }> => {
     const deps = runDeps(input.runId)
-    const outcome = await runAttempt<{ report: string; commit: CommitOutcome }>(
-      {
-        db: deps.db,
-        run: deps.run,
-        runId: input.runId,
-        station: 'implementer',
-        revision: input.revision,
-        // A commit on the branch is the work having landed. The report is lost
-        // with the turn that produced it, which costs a paragraph in the pull
-        // request body and saves writing the change on top of itself.
-        reconcile: async () => {
-          const changed = await diffNames(
-            deps.workspace.worktreePath,
-            deps.workspace.base,
-          )
-          return changed.length === 0
-            ? undefined
-            : { report: '', commit: 'committed' as const }
-        },
-        execute: async () => {
-          const analysis = await requireAnalysis(input.runId)
-          const turn = await runImplementer({
-            runId: input.runId,
-            repo: deps.repo,
-            issue: deps.issue,
-            worktree: deps.workspace.worktreePath,
-            analysis,
-            conventionFiles: deps.conventionFiles,
-            ...(input.review === undefined
-              ? {}
-              : {
-                  revision: { review: input.review, attempt: input.revision },
-                }),
-            config: deps.config,
-          })
-          const commit = await commitImplementerWork(
-            input.runId,
-            deps.workspace,
-            deps.issue,
-            input.revision,
-            deps.config,
-          )
-          return { report: turn.text, commit }
-        },
+    const outcome = await runAttempt<
+      { report: string; commit: CommitOutcome },
+      { head: string | undefined }
+    >({
+      db: deps.db,
+      run: deps.run,
+      runId: input.runId,
+      station: 'implementer',
+      revision: input.revision,
+      // The branch already differs from the base once any revision has
+      // committed, so the aggregate diff cannot say whether *this* revision
+      // did anything. The commit it started from can.
+      captureBefore: async () => ({
+        head: await headSha(deps.workspace.worktreePath),
+      }),
+      reconcile: async (before) => {
+        if (before?.head === undefined) {
+          return undefined
+        }
+        const head = await headSha(deps.workspace.worktreePath)
+        return head === undefined || head === before.head
+          ? undefined
+          : { report: '', commit: 'committed' as const }
       },
-    )
+      execute: async () => {
+        const analysis = await requireAnalysis(input.runId)
+        const turn = await runImplementer({
+          runId: input.runId,
+          repo: deps.repo,
+          issue: deps.issue,
+          worktree: deps.workspace.worktreePath,
+          analysis,
+          conventionFiles: deps.conventionFiles,
+          ...(input.review === undefined
+            ? {}
+            : {
+                revision: { review: input.review, attempt: input.revision },
+              }),
+          config: deps.config,
+        })
+        const commit = await commitImplementerWork(
+          input.runId,
+          deps.workspace,
+          deps.issue,
+          input.revision,
+          deps.config,
+        )
+        return { report: turn.text, commit }
+      },
+    })
     return outcome.value
   },
 )
@@ -135,17 +140,36 @@ export const reviewer = fromPromise(
     input: { runId: string; revision: number }
   }): Promise<{ review: Review; worktree?: string }> => {
     const deps = runDeps(input.runId)
-    const outcome = await runAttempt<{ review: Review; worktree?: string }>({
+    const outcome = await runAttempt<
+      { review: Review; worktree?: string },
+      { reviews: number }
+    >({
       db: deps.db,
       run: deps.run,
       runId: input.runId,
       station: 'reviewer',
       revision: input.revision,
-      // The verdict is on disk under this run for the same reason the plan is.
-      // No worktree comes back with it: one is only needed to produce a review,
-      // and this attempt already produced one. Rebuilding a checkout to hand
-      // back a path that only exists to be deleted would be work for nothing.
-      reconcile: async () => {
+      // review.json holds the latest verdict for the run, not for this
+      // attempt, so a revision that was interrupted would otherwise adopt the
+      // previous revision's verdict and judge code it never saw. The versioned
+      // artifact is what distinguishes them: only a review written after this
+      // attempt began belongs to it.
+      //
+      // No worktree comes back either: one is only needed to produce a verdict
+      // and this attempt already produced one, so rebuilding it would be a
+      // checkout made to be deleted.
+      captureBefore: async () => ({
+        reviews:
+          (await latestArtifact(deps.run.subject, 'review'))?.version ?? 0,
+      }),
+      reconcile: async (before) => {
+        if (before === undefined || before === null) {
+          return undefined
+        }
+        const latest = await latestArtifact(deps.run.subject, 'review')
+        if (latest === undefined || latest.version <= before.reviews) {
+          return undefined
+        }
         const recorded = await readJson<Review>(deps.run, 'review')
         return recorded === undefined ? undefined : { review: recorded }
       },
