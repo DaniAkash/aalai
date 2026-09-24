@@ -1,5 +1,4 @@
 'use client'
-// beui.dev/components/motion/button
 
 import {
   AnimatePresence,
@@ -106,7 +105,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         transition={SPRING_PRESS}
         onPointerDown={handlePointerDown}
         className={cn(
-          'inline-flex select-none items-center justify-center font-medium',
+          'inline-flex items-center justify-center font-medium select-none',
           'transition-colors',
           'disabled:pointer-events-none disabled:opacity-50',
           ripple && 'relative overflow-hidden',
@@ -171,7 +170,7 @@ export const ButtonLink = forwardRef<HTMLAnchorElement, ButtonLinkProps>(
         whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
         transition={SPRING_PRESS}
         className={cn(
-          'inline-flex select-none items-center justify-center font-medium',
+          'inline-flex items-center justify-center font-medium select-none',
           'transition-colors',
           VARIANT_CLASS[variant],
           SIZE_CLASS[size],

@@ -73,9 +73,22 @@ async function serve(config: Config): Promise<void> {
     trustedOnly: config.trustedAuthorsOnly,
   })
 
+  let watching = config.watch.map((w) => w.repo).join(',')
+  let interval = config.pollSeconds
   while (!controller.signal.aborted) {
     try {
-      const handled = await pollOnce(db, config)
+      // Re-read each tick. Settings and watched repositories are changed while
+      // this is running, by the app and by a terminal, and a loop holding the
+      // config it started with silently ignores every one of them: a repository
+      // added in the interface would do nothing until a restart.
+      const current = await loadConfig()
+      const repos = current.watch.map((w) => w.repo).join(',')
+      if (repos !== watching) {
+        watching = repos
+        log.info('watching changed', { repos: repos || 'nothing' })
+      }
+      interval = current.pollSeconds
+      const handled = await pollOnce(db, current)
       if (handled > 0) {
         log.info('tick complete', { handled })
       }
@@ -87,7 +100,9 @@ async function serve(config: Config): Promise<void> {
     if (controller.signal.aborted) {
       break
     }
-    await sleep(config.pollSeconds * 1000, controller.signal)
+    // The freshly read one, or changing the interval in the interface would
+    // wait out the old one before it ever took effect.
+    await sleep(interval * 1000, controller.signal)
   }
 
   db.close()

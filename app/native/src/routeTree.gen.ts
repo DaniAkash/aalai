@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReposRouteImport } from './routes/repos'
-import { Route as RunsRouteImport } from './routes/runs'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as GatesGateIdRouteImport } from './routes/gates/$gateId'
+import { Route as RunsIndexRouteImport } from './routes/runs/index'
+import { Route as RunsRunIdRouteImport } from './routes/runs/$runId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -23,40 +26,75 @@ const ReposRoute = ReposRouteImport.update({
   path: '/repos',
   getParentRoute: () => rootRouteImport,
 } as any)
-const RunsRoute = RunsRouteImport.update({
-  id: '/runs',
-  path: '/runs',
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GatesGateIdRoute = GatesGateIdRouteImport.update({
+  id: '/gates/$gateId',
+  path: '/gates/$gateId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunsIndexRoute = RunsIndexRouteImport.update({
+  id: '/runs/',
+  path: '/runs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RunsRunIdRoute = RunsRunIdRouteImport.update({
+  id: '/runs/$runId',
+  path: '/runs/$runId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
-  '/runs': typeof RunsRoute
+  '/settings': typeof SettingsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
+  '/runs/$runId': typeof RunsRunIdRoute
+  '/runs/': typeof RunsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
-  '/runs': typeof RunsRoute
+  '/settings': typeof SettingsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
+  '/runs/$runId': typeof RunsRunIdRoute
+  '/runs': typeof RunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/repos': typeof ReposRoute
-  '/runs': typeof RunsRoute
+  '/settings': typeof SettingsRoute
+  '/gates/$gateId': typeof GatesGateIdRoute
+  '/runs/$runId': typeof RunsRunIdRoute
+  '/runs/': typeof RunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/repos' | '/runs'
+  fullPaths:
+    '/' | '/repos' | '/settings' | '/gates/$gateId' | '/runs/$runId' | '/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/repos' | '/runs'
-  id: '__root__' | '/' | '/repos' | '/runs'
+  to: '/' | '/repos' | '/settings' | '/gates/$gateId' | '/runs/$runId' | '/runs'
+  id:
+    | '__root__'
+    | '/'
+    | '/repos'
+    | '/settings'
+    | '/gates/$gateId'
+    | '/runs/$runId'
+    | '/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ReposRoute: typeof ReposRoute
-  RunsRoute: typeof RunsRoute
+  SettingsRoute: typeof SettingsRoute
+  GatesGateIdRoute: typeof GatesGateIdRoute
+  RunsRunIdRoute: typeof RunsRunIdRoute
+  RunsIndexRoute: typeof RunsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -75,11 +113,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReposRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/runs': {
-      id: '/runs'
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gates/$gateId': {
+      id: '/gates/$gateId'
+      path: '/gates/$gateId'
+      fullPath: '/gates/$gateId'
+      preLoaderRoute: typeof GatesGateIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runs/': {
+      id: '/runs/'
       path: '/runs'
-      fullPath: '/runs'
-      preLoaderRoute: typeof RunsRouteImport
+      fullPath: '/runs/'
+      preLoaderRoute: typeof RunsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runs/$runId': {
+      id: '/runs/$runId'
+      path: '/runs/$runId'
+      fullPath: '/runs/$runId'
+      preLoaderRoute: typeof RunsRunIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -88,7 +147,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ReposRoute: ReposRoute,
-  RunsRoute: RunsRoute,
+  SettingsRoute: SettingsRoute,
+  GatesGateIdRoute: GatesGateIdRoute,
+  RunsRunIdRoute: RunsRunIdRoute,
+  RunsIndexRoute: RunsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

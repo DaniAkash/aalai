@@ -1,6 +1,7 @@
 import { emit } from '@/events/bus'
 import type { Stage } from '@/events/events.types'
 import { logger } from '@/lib/log'
+import type { Analysis } from '@/run/stations/schemas'
 import type { IssueWorkContext } from './types'
 
 const log = logger('pipeline')
@@ -14,6 +15,26 @@ const log = logger('pipeline')
  */
 export function entered(context: IssueWorkContext, stage: Stage): void {
   emit({ type: 'stage.entered', runId: context.runId, stage, at: Date.now() })
+}
+
+/**
+ * The plan and the acceptance criteria, as soon as the analyst has them.
+ *
+ * The criteria are the contract the implementer is graded against, so anything
+ * watching should have them from the moment they exist rather than learning
+ * them from the verdict at the end.
+ */
+export function analysisReady(
+  context: IssueWorkContext,
+  analysis: Analysis,
+): void {
+  emit({
+    type: 'analysis.ready',
+    runId: context.runId,
+    steps: analysis.plan.length,
+    criteria: analysis.acceptance_criteria,
+    at: Date.now(),
+  })
 }
 
 export function revisionStarted(context: IssueWorkContext): void {

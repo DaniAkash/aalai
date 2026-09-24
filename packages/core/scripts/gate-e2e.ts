@@ -16,24 +16,10 @@ import {
   supersedeOpenGates,
 } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
+import { check, finish, plain, scenario } from './e2e-report'
 
 const dir = mkdtempSync(join(tmpdir(), 'aalai-e2e-'))
 const env = { ...process.env, AALAI_STATE_DIR: dir, AALAI_NO_SERVER: '1' }
-let failures = 0
-
-const ESCAPE = String.fromCharCode(27)
-const COLOUR = new RegExp(`${ESCAPE}\\[[0-9;]*m`, 'g')
-
-function check(name: string, passed: boolean): void {
-  process.stdout.write(`${passed ? '  PASS  ' : '  FAIL  '}${name}\n`)
-  if (!passed) {
-    failures += 1
-  }
-}
-
-function scenario(name: string): void {
-  process.stdout.write(`\n${name}\n`)
-}
 
 async function cli(args: string[]): Promise<{ out: string; code: number }> {
   const proc = Bun.spawn(['bun', 'run', 'src/index.ts', ...args], {
@@ -44,7 +30,7 @@ async function cli(args: string[]): Promise<{ out: string; code: number }> {
   const stdout = await new Response(proc.stdout).text()
   const stderr = await new Response(proc.stderr).text()
   return {
-    out: `${stdout}${stderr}`.replace(COLOUR, ''),
+    out: plain(`${stdout}${stderr}`),
     code: await proc.exited,
   }
 }
@@ -175,7 +161,4 @@ scenario('7. Oldest first, because that is what an inbox is for')
 
 sqlite.close()
 rmSync(dir, { recursive: true, force: true })
-process.stdout.write(
-  `\n${failures === 0 ? 'all scenarios passed' : `${failures} checks failed`}\n`,
-)
-process.exit(failures === 0 ? 0 : 1)
+finish()

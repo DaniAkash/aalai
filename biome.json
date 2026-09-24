@@ -97,7 +97,8 @@
     {
       "includes": [
         "app/native/src/components/motion/**",
-        "app/native/src/components/ui/**"
+        "app/native/src/components/ui/**",
+        "app/native/src/components/agents/**"
       ],
       "linter": {
         "rules": {
@@ -113,6 +114,9 @@
           "a11y": {
             "useKeyWithClickEvents": "off",
             "useSemanticElements": "off"
+          },
+          "nursery": {
+            "useSortedClasses": "off"
           }
         }
       }

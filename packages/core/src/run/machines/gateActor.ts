@@ -64,14 +64,20 @@ export const gateKeeper = fromCallback<
       on: gate.answeredOn ?? 'unknown',
       noticedBy: source,
     })
-    emit({
-      type: 'gate.answered',
-      runId: input.runId,
-      gateId: gate.id,
-      decision: gate.decision,
-      answeredOn: gate.answeredOn ?? 'unknown',
-      at: Date.now(),
-    })
+    // Announced only when the answer came from somewhere else. `bus` means
+    // answerGate ran in this process and already announced it, and a second
+    // one is not a harmless duplicate: the event log is replayed into the
+    // interface, so it shows as the gate being answered twice.
+    if (source !== 'bus') {
+      emit({
+        type: 'gate.answered',
+        runId: input.runId,
+        gateId: gate.id,
+        decision: gate.decision,
+        answeredOn: gate.answeredOn ?? 'unknown',
+        at: Date.now(),
+      })
+    }
     sendBack({
       type: 'GATE_ANSWERED',
       gateId: gate.id,

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createActor, setup, waitFor } from 'xstate'
+import { subscribe } from '@/events/bus'
 import { openDb } from '@/modules/db/db'
 import { answerGate, listGates, supersedeOpenGates } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
@@ -158,5 +159,35 @@ describe('parking', () => {
       timeout: 4000,
     })
     expect(settled.value).toBe('reasking')
+  })
+})
+
+describe('announcing an answer exactly once', () => {
+  test('an answer in this process is announced by the writer, not the watcher', async () => {
+    const heard: string[] = []
+    const stop = subscribe((event) => {
+      if (event.type === 'gate.answered') {
+        heard.push(event.gateId)
+      }
+    })
+    const actor = createActor(gating).start()
+    await waitFor(actor, () => listGates(handle.sqlite).length > 0, {
+      timeout: 2000,
+    })
+    const [gate] = listGates(handle.sqlite)
+    if (gate === undefined) throw new Error('no gate opened')
+
+    answerGate(handle.sqlite, {
+      gateId: gate.id,
+      decision: 'approved',
+      answeredBy: 'the app',
+      answeredOn: 'app',
+    })
+    await waitFor(actor, (s) => s.status === 'done', { timeout: 4000 })
+    stop()
+
+    // One announcement. The log is replayed into the interface, so a second
+    // shows the gate being answered twice.
+    expect(heard).toEqual([gate.id])
   })
 })

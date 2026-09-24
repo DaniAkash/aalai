@@ -34,7 +34,8 @@
         "app/native/src/components/ui/**",
         "app/native/src/routeTree.gen.ts",
         "app/native/src/lib/ease.ts",
-        "app/native/src/lib/hooks/**"
+        "app/native/src/lib/hooks/**",
+        "app/native/src/components/agents/**"
       ],
       "rules": {
         "unused-exports": "off",
@@ -75,6 +76,10 @@
         "patterns": ["app/native/src/components/**"]
       },
       {
+        "name": "ui-screens",
+        "patterns": ["app/native/src/screens/**"]
+      },
+      {
         "name": "ui-routes",
         "patterns": ["app/native/src/routes/**"]
       }
@@ -109,8 +114,18 @@
         "allow": ["ui-components", "ui-modules", "ui-lib"]
       },
       {
+        "from": "ui-screens",
+        "allow": ["ui-screens", "ui-components", "ui-modules", "ui-lib"]
+      },
+      {
         "from": "ui-routes",
-        "allow": ["ui-routes", "ui-components", "ui-modules", "ui-lib"]
+        "allow": [
+          "ui-routes",
+          "ui-screens",
+          "ui-components",
+          "ui-modules",
+          "ui-lib"
+        ]
       }
     ]
   },
@@ -121,9 +136,17 @@
       "**/dist/**",
       "**/target/**",
       "app/native/src/components/motion/**",
-      "app/native/src/routeTree.gen.ts"
+      "app/native/src/routeTree.gen.ts",
+      "app/native/src/components/agents/**"
     ],
     "maxUnitSize": 120,
     "maxCrap": 240
+  },
+  "duplicates": {
+    "ignore": [
+      "app/native/src/components/motion/**",
+      "app/native/src/components/agents/**",
+      "app/native/src/components/ui/**"
+    ]
   }
 }

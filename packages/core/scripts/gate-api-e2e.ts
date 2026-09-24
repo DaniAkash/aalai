@@ -17,23 +17,12 @@ import { writeArtifact } from '@/modules/work/artifacts'
 import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
 import { gateKeeper } from '@/run/machines/gateActor'
 import { startServer, stopServer } from '@/server/serve'
+import { check, finish, scenario } from './e2e-report'
 
 const dir = mkdtempSync(join(tmpdir(), 'aalai-api-e2e-'))
 process.env.AALAI_STATE_DIR = dir
-let failures = 0
 
 const TOKEN = 'e2e-token'
-
-function check(name: string, passed: boolean): void {
-  process.stdout.write(`${passed ? '  PASS  ' : '  FAIL  '}${name}\n`)
-  if (!passed) {
-    failures += 1
-  }
-}
-
-function scenario(name: string): void {
-  process.stdout.write(`\n${name}\n`)
-}
 
 const handle = startServer(0, TOKEN)
 if (handle === null) {
@@ -309,7 +298,4 @@ scenario('8. A parked machine resumes when a terminal answers it')
 stopServer()
 sqlite.close()
 rmSync(dir, { recursive: true, force: true })
-process.stdout.write(
-  `\n${failures === 0 ? 'all scenarios passed' : `${failures} checks failed`}\n`,
-)
-process.exit(failures === 0 ? 0 : 1)
+finish()
