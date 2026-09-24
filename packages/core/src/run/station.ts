@@ -5,11 +5,7 @@ import { emit } from '@/events/bus'
 import type { StationId } from '@/events/events.types'
 import { logger, raw } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
-import {
-  readStationSession,
-  rememberSession,
-  sessionKeyFor,
-} from '@/modules/sessions/sessions'
+import { rememberSession, sessionKeyFor } from '@/modules/sessions/sessions'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
 // documented compatibility path. Its warning fires on every turn with a full
@@ -122,20 +118,19 @@ export async function runStation(input: StationInput): Promise<StationResult> {
   const log = logger(input.label)
   const { sqlite } = getDb()
   const sessionKey = sessionKeyFor(input.runId, input.station)
-  const previous = readStationSession(sqlite, input.runId, input.station)
 
   const provider = createAcpxProvider({
     agent: input.agent,
     cwd: input.worktree,
     // Persistent and keyed, so a station re-entered by a revision resumes its
-    // own context instead of starting cold. stateDir is deliberately unset:
-    // acpx defaults under ~/.acpx and owns what it keeps there.
+    // own context instead of starting cold. The key is the whole mechanism:
+    // close() keeps the persistent record, and the next ensureSession with the
+    // same key reloads it. resumeSessionId is not that lever, it takes an agent
+    // side session id, and handing it the acpx runtime name makes the agent
+    // reject the turn outright. stateDir is deliberately unset: acpx defaults
+    // under ~/.acpx and owns what it keeps there.
     sessionMode: 'persistent',
     sessionKey,
-    ...(previous?.acpxSessionId === null ||
-    previous?.acpxSessionId === undefined
-      ? {}
-      : { resumeSessionId: previous.acpxSessionId }),
     permissionMode: input.permission,
     // Headless: an unexpected permission request is refused so the turn
     // continues, rather than hanging on a prompt nobody is there to answer.
