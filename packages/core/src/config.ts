@@ -82,6 +82,7 @@ const configSchema = z.object({
 })
 
 export type Config = z.infer<typeof configSchema>
+export type WatchedRepo = z.infer<typeof watchedRepoSchema>
 
 const DEFAULT_CONFIG_PATH = 'aalai.config.json'
 

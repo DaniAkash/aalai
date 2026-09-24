@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import type { Config } from '@/config'
 import type { GhIssue } from '@/lib/gh'
-import { screenIssue } from '@/watch/intake'
+import { intakePolicyFor, screenIssue } from '@/watch/intake'
 
 function issue(overrides: Partial<GhIssue> = {}): GhIssue {
   return {
@@ -69,6 +70,49 @@ describe('screenIssue', () => {
     expect(screenIssue(issue(), policy).accepted).toBe(false)
     expect(
       screenIssue(issue({ labels: [{ name: 'aalai' }] }), policy).accepted,
+    ).toBe(true)
+  })
+})
+
+describe('intakePolicyFor', () => {
+  const config = {
+    trustedAuthorsOnly: true,
+    requireLabel: 'factory',
+  } as Config
+
+  test("a repository's own label overrides the global default", () => {
+    const policy = intakePolicyFor(config, {
+      repo: 'acme/widgets',
+      requireLabel: 'ready',
+    })
+    expect(policy.requireLabel).toBe('ready')
+  })
+
+  test('a repository without one falls back to the global default', () => {
+    const policy = intakePolicyFor(config, { repo: 'acme/widgets' })
+    expect(policy.requireLabel).toBe('factory')
+  })
+
+  test('both absent leaves the gate open', () => {
+    const policy = intakePolicyFor(
+      { ...config, requireLabel: null } as Config,
+      {
+        repo: 'acme/widgets',
+      },
+    )
+    expect(policy.requireLabel).toBeNull()
+  })
+
+  // The label only matters if screening actually applies it, which is the hop
+  // that was missing: the value was read from config rather than the repository.
+  test('a per repository label actually gates an issue', () => {
+    const policy = intakePolicyFor(config, {
+      repo: 'acme/widgets',
+      requireLabel: 'ready',
+    })
+    expect(screenIssue(issue({ labels: [] }), policy).accepted).toBe(false)
+    expect(
+      screenIssue(issue({ labels: [{ name: 'ready' }] }), policy).accepted,
     ).toBe(true)
   })
 })

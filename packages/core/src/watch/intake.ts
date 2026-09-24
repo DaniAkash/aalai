@@ -1,3 +1,4 @@
+import type { Config, WatchedRepo } from '@/config'
 import type { GhIssue } from '@/lib/gh'
 
 /**
@@ -14,6 +15,22 @@ const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
 export interface IntakePolicy {
   readonly trustedAuthorsOnly: boolean
   readonly requireLabel: string | null
+}
+
+/**
+ * The policy one watched repository is screened under.
+ *
+ * A repository's own label gate overrides the global default, so one
+ * repository can demand a label without imposing it on every other.
+ */
+export function intakePolicyFor(
+  config: Config,
+  watched: WatchedRepo,
+): IntakePolicy {
+  return {
+    trustedAuthorsOnly: config.trustedAuthorsOnly,
+    requireLabel: watched.requireLabel ?? config.requireLabel,
+  }
 }
 
 export type Screening =

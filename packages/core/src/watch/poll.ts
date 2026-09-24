@@ -1,11 +1,11 @@
 import type { Database } from 'bun:sqlite'
-import type { Config } from '@/config'
+import type { Config, WatchedRepo } from '@/config'
 import { emit } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
-import { screenIssue } from '@/watch/intake'
+import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
 const log = logger('poll')
@@ -16,7 +16,7 @@ const COLD_START_LOOKBACK_MS = 10 * 60 * 1000
 export async function pollOnce(db: Database, config: Config): Promise<number> {
   let handled = 0
   for (const watched of config.watch) {
-    handled += await pollRepo(db, config, watched.repo)
+    handled += await pollRepo(db, config, watched)
   }
   return handled
 }
@@ -24,8 +24,9 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
 async function pollRepo(
   db: Database,
   config: Config,
-  repo: string,
+  watched: WatchedRepo,
 ): Promise<number> {
+  const { repo } = watched
   const since =
     readCursor(db, repo) ??
     new Date(Date.now() - COLD_START_LOOKBACK_MS).toISOString()
@@ -54,7 +55,7 @@ async function pollRepo(
     })
   }
 
-  const worked = await workBatch(db, config, repo, batch)
+  const worked = await workBatch(db, config, watched, batch)
 
   // The cursor advances only after the batch has been worked, and only as far
   // as the batch actually reached. Advancing it up front would permanently skip
@@ -91,16 +92,17 @@ interface Worked {
 async function workBatch(
   db: Database,
   config: Config,
-  repo: string,
+  watched: WatchedRepo,
   batch: GhIssue[],
 ): Promise<Worked> {
+  const { repo } = watched
   let handled = 0
   let lastProcessed: GhIssue | undefined
   let earliestFailure: GhIssue | undefined
 
   for (const issue of batch) {
     try {
-      handled += (await handleIssue(db, config, repo, issue)) ? 1 : 0
+      handled += (await handleIssue(db, config, watched, issue)) ? 1 : 0
       lastProcessed = issue
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -154,13 +156,11 @@ function nextCursor(input: CursorInput): string {
 async function handleIssue(
   db: Database,
   config: Config,
-  repo: string,
+  watched: WatchedRepo,
   issue: GhIssue,
 ): Promise<boolean> {
-  const screening = screenIssue(issue, {
-    trustedAuthorsOnly: config.trustedAuthorsOnly,
-    requireLabel: config.requireLabel,
-  })
+  const { repo } = watched
+  const screening = screenIssue(issue, intakePolicyFor(config, watched))
   if (!screening.accepted) {
     log.debug('issue skipped', {
       repo,
