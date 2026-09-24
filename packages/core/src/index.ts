@@ -1,20 +1,14 @@
-import { type Config, loadConfig, serverDisabled, stateDir } from '@/config'
-import { captureInheritedTokens, githubEnv } from '@/lib/credentials'
-import { authenticatedLogin, getIssue } from '@/lib/gh'
+import { doctor, showStatus } from '@/commands'
+import { type Config, loadConfig, serverDisabled } from '@/config'
+import { captureInheritedTokens } from '@/lib/credentials'
+import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { exitWithParent } from '@/lib/parent'
-import { exec } from '@/lib/proc'
 import { runIssue } from '@/run/pipeline'
 import { announceReady, startServer } from '@/server/serve'
 import { screenIssue } from '@/watch/intake'
 import { pollOnce } from '@/watch/poll'
-import {
-  claimRun,
-  completeRun,
-  forgetRun,
-  listRuns,
-  openState,
-} from '@/watch/state'
+import { claimRun, completeRun, forgetRun, openState } from '@/watch/state'
 
 const log = logger('aalai')
 
@@ -158,56 +152,6 @@ async function runOne(
     process.exitCode = 1
   }
   db.close()
-}
-
-function showStatus(): void {
-  const db = openState()
-  const runs = listRuns(db)
-  if (runs.length === 0) {
-    log.info('no runs recorded yet')
-  }
-  for (const run of runs) {
-    log.info(`${run.repo}#${run.issue}`, {
-      status: run.status,
-      pr: run.pr_url ?? undefined,
-      error: run.error ?? undefined,
-    })
-  }
-  db.close()
-}
-
-async function doctor(): Promise<void> {
-  let ok = true
-
-  const gh = await exec(['gh', 'auth', 'status'], { env: githubEnv() })
-  if (gh.exitCode === 0) {
-    log.info('gh authenticated', { as: await authenticatedLogin() })
-  } else {
-    ok = false
-    log.error('gh is not authenticated; run `gh auth login`')
-  }
-
-  const git = await exec(['git', '--version'])
-  log.info(git.exitCode === 0 ? 'git present' : 'git missing')
-  ok &&= git.exitCode === 0
-
-  try {
-    const config = await loadConfig()
-    log.info('config valid', {
-      repos: config.watch.length,
-      agents: Object.values(config.agents).join(','),
-    })
-  } catch (error) {
-    ok = false
-    log.error('config problem', {
-      error: error instanceof Error ? error.message : error,
-    })
-  }
-
-  log.info('state directory', { path: stateDir() })
-  if (!ok) {
-    process.exitCode = 1
-  }
 }
 
 function parseRepoIssue(

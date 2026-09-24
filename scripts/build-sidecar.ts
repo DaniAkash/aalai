@@ -8,6 +8,7 @@
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { $ } from 'bun'
+import { ok } from '../packages/core/src/lib/output'
 
 const TRIPLES: Record<string, string> = {
   'aarch64-apple-darwin': 'bun-darwin-arm64',
@@ -39,3 +40,4 @@ const suffix = triple.includes('windows') ? '.exe' : ''
 const out = join(outDir, `aalai-core-${triple}${suffix}`)
 
 await $`bun build --compile --target=${target} --outfile=${out} ${join(root, 'packages', 'core', 'src', 'index.ts')}`
+ok('sidecar built', out)

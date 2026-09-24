@@ -1,10 +1,8 @@
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { logger } from '@/lib/log'
+import { bad, block, note, ok } from '@/lib/output'
 import { exec } from '@/lib/proc'
-
-const log = logger('service')
 
 const LABEL = 'com.daniakash.aalai'
 const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
@@ -80,11 +78,14 @@ async function install(): Promise<void> {
     plistPath,
   ])
   if (result.exitCode !== 0) {
-    log.error('launchctl bootstrap failed', { stderr: result.stderr.trim() })
+    bad('launchctl bootstrap failed')
+    block(result.stderr)
     process.exitCode = 1
     return
   }
-  log.info('installed', { plist: plistPath, logs: logDir })
+  ok('installed')
+  note('plist', plistPath)
+  note('logs', logDir)
 }
 
 async function uninstall(): Promise<void> {
@@ -94,16 +95,17 @@ async function uninstall(): Promise<void> {
     `gui/${process.getuid?.() ?? 501}/${LABEL}`,
   ])
   await exec(['rm', '-f', plistPath])
-  log.info('uninstalled', { plist: plistPath })
+  ok('uninstalled', plistPath)
 }
 
 async function status(): Promise<void> {
   const result = await exec(['launchctl', 'list', LABEL])
   if (result.exitCode !== 0) {
-    log.info('not installed')
+    note('not installed')
     return
   }
-  log.info('installed and registered')
+  ok('installed and registered')
+  block(result.stdout)
 }
 
 const command = process.argv[2] ?? 'status'
@@ -114,6 +116,6 @@ if (command === 'install') {
 } else if (command === 'status') {
   await status()
 } else {
-  log.error('usage: bun run service <install|uninstall|status>')
+  bad('usage: bun run service <install|uninstall|status>')
   process.exitCode = 1
 }
