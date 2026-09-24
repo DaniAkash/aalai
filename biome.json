@@ -83,7 +83,8 @@
         "packages/core/src/lib/env.ts",
         "packages/core/src/lib/proc.ts",
         "packages/core/src/lib/credentials.ts",
-        "app/native/vite.config.ts"
+        "app/native/vite.config.ts",
+        "scripts/**"
       ],
       "linter": {
         "rules": {

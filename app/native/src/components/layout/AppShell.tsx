@@ -78,7 +78,7 @@ export function AppShell({ pending }: { pending?: number }) {
         </AnimatedSidebarContent>
       </AnimatedSidebar>
 
-      <AnimatedSidebarInset className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col">
+      <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <TitleBar crumb={crumb(path)} />
         <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           <Outlet />

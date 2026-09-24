@@ -138,10 +138,12 @@ What differs between them is the transport, and only the transport:
 | authentication | a token per launch | held by the proxy, never in the page |
 | needs CORS | no, requests go through Rust | no, requests are same origin |
 
-Point the web build at a factory elsewhere, or at one you started with a token,
-with `AALAI_API_URL` and `AALAI_API_TOKEN`. Both are read by the Vite proxy,
-which runs in node, so a secret stays out of the browser exactly as it stays
-out of the webview.
+`dev:web` mints a token for the factory it starts and hands the same value to
+the proxy, because the factory can add repositories, change settings and answer
+gates, and an unauthenticated port is reachable by every process on the machine.
+Point it at a factory you started yourself with `AALAI_API_URL` and
+`AALAI_API_TOKEN`. Both are read by the Vite proxy, which runs in node, so a
+secret stays out of the browser exactly as it stays out of the webview.
 
 Features that only the desktop window can offer are wrapped so they simply are
 not there on the web, rather than breaking the page around them.

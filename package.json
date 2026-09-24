@@ -28,7 +28,7 @@
     "test": "bun run --filter aalai-core test",
     "eval": "bun run --filter aalai-core eval",
     "fix:rust": "cd app/native/src-tauri && cargo clippy --all-targets --fix --allow-dirty --allow-staged",
-    "dev:web": "concurrently --group --names factory,vite --prefix-colors auto \"bun run --filter aalai-core start\" \"bun run --filter aalai-native dev:web\""
+    "dev:web": "bun scripts/dev-web.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

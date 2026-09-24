@@ -10,7 +10,7 @@ import { TauriOnly } from '@/modules/host/TauriOnly'
  */
 export function TitleBar({ crumb }: { crumb: string }) {
   return (
-    <div className="flex h-[38px] shrink-0 items-center border-border border-b px-3">
+    <div className="relative flex h-[38px] shrink-0 items-center border-border border-b px-3">
       <TauriOnly feature="window dragging">
         <DragSurface />
       </TauriOnly>
@@ -25,7 +25,10 @@ export function TitleBar({ crumb }: { crumb: string }) {
  * Covers the strip so the window moves when it is dragged.
  *
  * Absolute rather than wrapping the crumb, because the whole strip should drag
- * and text selection inside a drag region does not work anyway.
+ * and text selection inside a drag region does not work anyway. The strip
+ * itself has to be the positioning context: without that this resolves against
+ * whatever ancestor happens to be positioned and swallows the clicks of the
+ * entire pane below it.
  */
 function DragSurface() {
   return <div data-tauri-drag-region className="absolute inset-0" />
