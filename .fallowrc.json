@@ -1,0 +1,127 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": [
+    "packages/core/src/index.ts",
+    "packages/core/scripts/service.ts",
+    "scripts/build-sidecar.ts",
+    "app/native/src/main.tsx",
+    "packages/core/test/**/*.ts",
+    "packages/core/evals/**/*.ts"
+  ],
+  "ignorePatterns": [
+    "**/*.d.ts",
+    "**/dist/**",
+    "**/target/**",
+    "**/node_modules/**",
+    "**/routeTree.gen.ts"
+  ],
+  "rules": {
+    "private-type-leaks": "warn",
+    "unused-class-members": "off",
+    "circular-dependencies": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/test/**", "**/evals/**", "**/*.config.ts"],
+      "rules": {
+        "unused-exports": "off",
+        "unused-files": "off"
+      }
+    },
+    {
+      "files": [
+        "app/native/src/components/motion/**",
+        "app/native/src/components/ui/**",
+        "app/native/src/routeTree.gen.ts",
+        "app/native/src/lib/ease.ts",
+        "app/native/src/lib/hooks/**"
+      ],
+      "rules": {
+        "unused-exports": "off",
+        "unused-files": "off",
+        "unused-types": "off",
+        "private-type-leaks": "off"
+      }
+    }
+  ],
+  "boundaries": {
+    "zones": [
+      {
+        "name": "core-lib",
+        "patterns": ["packages/core/src/lib/**"]
+      },
+      {
+        "name": "core-run",
+        "patterns": ["packages/core/src/run/**"]
+      },
+      {
+        "name": "core-watch",
+        "patterns": ["packages/core/src/watch/**"]
+      },
+      {
+        "name": "core-server",
+        "patterns": ["packages/core/src/server/**"]
+      },
+      {
+        "name": "ui-lib",
+        "patterns": ["app/native/src/lib/**"]
+      },
+      {
+        "name": "ui-modules",
+        "patterns": ["app/native/src/modules/**"]
+      },
+      {
+        "name": "ui-components",
+        "patterns": ["app/native/src/components/**"]
+      },
+      {
+        "name": "ui-routes",
+        "patterns": ["app/native/src/routes/**"]
+      }
+    ],
+    "rules": [
+      {
+        "from": "core-lib",
+        "allow": ["core-lib"]
+      },
+      {
+        "from": "core-run",
+        "allow": ["core-run", "core-lib"]
+      },
+      {
+        "from": "core-watch",
+        "allow": ["core-watch", "core-run", "core-lib"]
+      },
+      {
+        "from": "core-server",
+        "allow": ["core-server", "core-run", "core-watch", "core-lib"]
+      },
+      {
+        "from": "ui-lib",
+        "allow": ["ui-lib"]
+      },
+      {
+        "from": "ui-modules",
+        "allow": ["ui-modules", "ui-lib", "core-server"]
+      },
+      {
+        "from": "ui-components",
+        "allow": ["ui-components", "ui-modules", "ui-lib"]
+      },
+      {
+        "from": "ui-routes",
+        "allow": ["ui-routes", "ui-components", "ui-modules", "ui-lib"]
+      }
+    ]
+  },
+  "health": {
+    "maxCyclomatic": 20,
+    "maxCognitive": 15,
+    "ignore": [
+      "**/dist/**",
+      "**/target/**",
+      "app/native/src/components/motion/**",
+      "app/native/src/routeTree.gen.ts"
+    ]
+  }
+}
