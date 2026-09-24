@@ -1,6 +1,11 @@
 import { assign, setup, stateIn } from 'xstate'
 import { analyst, implementer, premise, reviewer } from './actors'
-import { entered, revisionStarted, verdictReached } from './announce'
+import {
+  analysisReady,
+  entered,
+  revisionStarted,
+  verdictReached,
+} from './announce'
 import { initialContext } from './context'
 import type { IssueWorkEvent } from './events'
 import { gateKeeper } from './gateActor'
@@ -89,15 +94,24 @@ export const issueWorkMachine = setup({
               runId: context.runId,
               planGeneration: context.planGeneration,
             }),
+            // Both paths announce, so neither can forget: the criteria are the
+            // contract, and anything watching should have them when they exist
+            // rather than learning them from the verdict at the end.
             onDone: [
               {
                 target: 'gatingPlan',
                 guard: 'planNeedsApproval',
-                actions: assign({ analysis: ({ event }) => event.output }),
+                actions: [
+                  assign({ analysis: ({ event }) => event.output }),
+                  ({ context, event }) => analysisReady(context, event.output),
+                ],
               },
               {
                 target: 'implementing',
-                actions: assign({ analysis: ({ event }) => event.output }),
+                actions: [
+                  assign({ analysis: ({ event }) => event.output }),
+                  ({ context, event }) => analysisReady(context, event.output),
+                ],
               },
             ],
             onError: {

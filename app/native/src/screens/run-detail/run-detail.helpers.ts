@@ -44,10 +44,20 @@ export function stationStates(
   return states
 }
 
-/** The acceptance criteria, once the analyst has written them. */
+/**
+ * The acceptance criteria, as early as they can be known.
+ *
+ * The analyst announces them, which is the point: they are the contract the
+ * implementer is graded against and waiting for the verdict to see them
+ * defeats it. The verdict is the fallback, so a run recorded before that
+ * announcement existed still shows what it was judged on.
+ */
 export function criteriaOf(events: readonly RunEvent[]): readonly string[] {
   const analysis = events.findLast((event) => event.type === 'analysis.ready')
-  return analysis?.criteria ?? []
+  if (analysis !== undefined) {
+    return analysis.criteria
+  }
+  return verdictOf(events)?.results.map((result) => result.criterion) ?? []
 }
 
 /** What the reviewer said about each of them, once it has. */
