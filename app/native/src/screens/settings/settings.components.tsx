@@ -12,8 +12,10 @@ export function Field({
   return (
     <div className="flex flex-col items-stretch gap-2 border-border border-b py-3 last:border-b-0 md:flex-row md:items-center md:gap-4">
       <div className="min-w-0 flex-1">
-        <div className="text-[13.5px]">{label}</div>
-        <div className="text-[12px] text-muted-foreground">{detail}</div>
+        <div className="text-[14px]">{label}</div>
+        <div className="max-w-[60ch] text-[13px] text-muted-foreground">
+          {detail}
+        </div>
       </div>
       {children}
     </div>

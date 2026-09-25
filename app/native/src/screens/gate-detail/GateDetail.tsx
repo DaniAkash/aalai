@@ -83,7 +83,7 @@ export function GateDetail() {
             Uncapped this rendered 122 characters per line at 1280 and 143 at
             1440, against a readable maximum of about 75.
           */}
-          <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[12.5px] leading-relaxed">
+          <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[13.5px] leading-relaxed">
             {artifact}
           </pre>
         </article>

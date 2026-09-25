@@ -65,7 +65,7 @@ export function Inbox() {
             <div className="font-mono text-[11.5px] text-muted-foreground">
               {subjectOf(gate.runId)}
             </div>
-            <div className="mt-0.5 truncate text-[13.5px]">{asking(gate)}</div>
+            <div className="mt-0.5 truncate text-[14px]">{asking(gate)}</div>
           </div>
           <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
             {waitedFor(gate.openedAt)}

@@ -85,7 +85,7 @@ export function Repos() {
         >
           <span className="size-[7px] shrink-0 rounded-full bg-chart-2" />
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-[13px]">{repo.repo}</div>
+            <div className="font-mono text-[14px]">{repo.repo}</div>
             <div className="font-mono text-[11.5px] text-muted-foreground">
               {repo.requireLabel
                 ? `only issues labelled ${repo.requireLabel}`
