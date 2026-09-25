@@ -36,7 +36,10 @@ export function PolicyPicker({
 }) {
   return (
     <fieldset
-      className="flex shrink-0 overflow-hidden rounded-lg border border-border"
+      // Wraps rather than forcing one line: three segments plus a long repo
+      // name do not fit a phone row, and nowrap is what pushed the row past
+      // the viewport.
+      className="flex shrink-0 flex-wrap overflow-hidden rounded-lg border border-border"
       aria-label="run policy"
     >
       {POLICIES.map((policy) => (

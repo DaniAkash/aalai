@@ -78,7 +78,10 @@ export function Repos() {
       {watched.data.repos.map((repo) => (
         <div
           key={repo.repo}
-          className="mb-1.5 flex items-center gap-3 rounded-xl border border-border bg-card p-3"
+          // Stacked by default, a row from md up. The policy picker cannot
+          // shrink, so on a narrow row it takes the whole width and starves
+          // the name to zero, which then paints underneath it.
+          className="mb-1.5 flex flex-col items-stretch gap-2 rounded-xl border border-border bg-card p-3 md:flex-row md:items-center md:gap-3"
         >
           <span className="size-[7px] shrink-0 rounded-full bg-chart-2" />
           <div className="min-w-0 flex-1">
