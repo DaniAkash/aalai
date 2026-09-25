@@ -1,4 +1,4 @@
-import type { RunPolicy } from 'aalai-core/shared'
+import type { RunPolicy } from 'aalai/shared'
 
 const POLICIES: { value: RunPolicy; label: string; detail: string }[] = [
   {

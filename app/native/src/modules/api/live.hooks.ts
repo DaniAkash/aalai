@@ -1,4 +1,4 @@
-import type { RunEvent } from 'aalai-core/events'
+import type { RunEvent } from 'aalai/events'
 import { useEffect, useState } from 'react'
 import { type StreamState, subscribeToRunEvents } from '@/modules/api/events'
 import { useGate, useOpenGates } from '@/modules/api/gates.hooks'

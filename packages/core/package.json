@@ -1,9 +1,33 @@
 {
-  "name": "aalai-core",
-  "version": "0.1.0",
-  "private": true,
+  "name": "aalai",
+  "version": "0.0.1",
+  "description": "A local software factory: watches your repositories, turns issues into reviewed draft pull requests.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaniAkash/aalai.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/DaniAkash/aalai#readme",
+  "bugs": {
+    "url": "https://github.com/DaniAkash/aalai/issues"
+  },
+  "keywords": [
+    "agent",
+    "acp",
+    "github",
+    "automation",
+    "pull-request",
+    "bun"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
   "type": "module",
+  "files": [
+    "src",
+    "README.md"
+  ],
   "exports": {
     "./app": "./src/server/app.ts",
     "./events": "./src/events/events.types.ts",

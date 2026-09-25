@@ -1,4 +1,4 @@
-import type { RunEvent } from 'aalai-core/events'
+import type { RunEvent } from 'aalai/events'
 
 export const STATIONS = [
   'analyst',

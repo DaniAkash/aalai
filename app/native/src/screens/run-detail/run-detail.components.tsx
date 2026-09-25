@@ -1,4 +1,4 @@
-import type { RunEvent } from 'aalai-core/events'
+import type { RunEvent } from 'aalai/events'
 import { STATIONS, type StationState } from './run-detail.helpers'
 
 const MARK: Record<StationState, string> = {

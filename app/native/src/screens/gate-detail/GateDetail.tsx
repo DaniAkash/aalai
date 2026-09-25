@@ -1,5 +1,5 @@
 import { Link, useParams } from '@tanstack/react-router'
-import { subjectOf, waitedFor } from 'aalai-core/shared'
+import { subjectOf, waitedFor } from 'aalai/shared'
 import { Screen } from '@/components/layout/Screen'
 import { ErrorNote, Loading } from '@/components/state'
 import { useAnswerGate, useGate } from '@/modules/api/gates.hooks'

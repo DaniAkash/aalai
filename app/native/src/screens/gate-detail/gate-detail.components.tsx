@@ -1,4 +1,4 @@
-import type { GateRow } from 'aalai-core/shared'
+import type { GateRow } from 'aalai/shared'
 import { useState } from 'react'
 import { ApprovalCard } from '@/components/agents/approval-card'
 
