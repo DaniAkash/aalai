@@ -102,7 +102,7 @@ export function Repos() {
             aria-label={`Stop watching ${repo.repo}`}
             onClick={() => unwatch.mutate({ repo: repo.repo })}
             disabled={unwatch.isPending}
-            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground lg:min-h-0"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground lg:min-h-0 lg:min-w-0"
           >
             <X className="size-3.5" />
           </button>
