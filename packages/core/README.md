@@ -297,7 +297,7 @@ ALL   /api/mcp/:runToken  the tool surface agents call
 
 Bodies go through `zValidator`, so a client derives its payload types from the
 route rather than restating them. The typed client is exported precompiled from
-`aalai-core/client` as `hcWithType`, which is Hono's own remedy for the type
+`aalai/client` as `hcWithType`, which is Hono's own remedy for the type
 instantiation cost that otherwise grows with every route added.
 
 ---
