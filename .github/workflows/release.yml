@@ -1,0 +1,250 @@
+# Tag-triggered npm release, plus a draft GitHub Release.
+#
+# How to cut one:
+#   1. Bump the version in packages/core/package.json
+#   2. Commit as `chore(release): X.Y.Z`. That prefix is filtered out of
+#      cliff.toml, so the bump itself never appears in the next changelog.
+#   3. git tag <pkg>-vX.Y.Z && git push origin main --tags
+#         e.g. aalai-v0.0.2
+#   4. Wait for this to finish, then approve the staged version so it goes
+#      live: `npm stage list aalai` then `npm stage approve <stage-id>`
+#   5. Publish the draft from the Releases page
+#
+# Authentication is npm trusted publishing over OIDC. No token is stored
+# anywhere. The package on npmjs.com carries a trusted publisher under its
+# Settings, pinned to:
+#
+#   Organization or user   DaniAkash
+#   Repository             aalai
+#   Workflow filename      release.yml     (the bare filename, not a path)
+#   Environment            (blank)         (this workflow declares none)
+#
+# Renaming this file, or adding an `environment:` key below, breaks the claim
+# match and every publish fails. A trusted publisher cannot be edited after
+# it is created; it has to be deleted and made again.
+#
+# Whether this can stage or must publish directly depends on the allowed
+# actions on that trusted publisher. Staging is the safer default because a
+# staged version is uploaded but not installable until a maintainer approves
+# it with a second factor. Staging also requires the package to already exist
+# on the registry, which aalai does.
+
+name: Release (npm publish + draft GitHub release)
+
+on:
+  push:
+    tags:
+      # One prefix per publishable package, so a single tag can never try to
+      # publish two of them. Adding a package means adding a line here and a
+      # case in the resolve step below.
+      - 'aalai-v[0-9]*'
+
+permissions:
+  contents: write
+  id-token: write # required for OIDC trusted publishing and provenance
+
+jobs:
+  release:
+    name: Verify, publish, and draft release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        # v7 runs on the node24 Actions runtime; v4 is node20, which GitHub is
+        # retiring.
+        uses: actions/checkout@v7
+        with:
+          # git-cliff walks back to the previous tag to compute the changelog
+          # range, which needs the full history.
+          fetch-depth: 0
+
+      - name: Resolve the package from the tag prefix
+        id: pkg
+        # The tag decides which package this release is for. An unrecognised
+        # prefix fails loudly rather than publishing the wrong directory.
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          case "$TAG" in
+            aalai-v*)
+              echo "name=aalai" >> "$GITHUB_OUTPUT"
+              echo "dir=packages/core" >> "$GITHUB_OUTPUT"
+              echo "match=aalai-v[0-9]*" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown tag prefix: $TAG" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Refuse a tag that does not match the package version
+        # The tag triggers this and the version in package.json is what npm
+        # publishes. If they disagree the release is mislabelled everywhere
+        # afterwards, and a pushed tag cannot be moved.
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#${{ steps.pkg.outputs.name }}-v}"
+          PKG_VERSION=$(node -p "require('./${{ steps.pkg.outputs.dir }}/package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag says $TAG_VERSION, ${{ steps.pkg.outputs.dir }}/package.json says $PKG_VERSION." >&2
+            echo "Bump the version, commit, then retag." >&2
+            exit 1
+          fi
+          echo "Releasing ${{ steps.pkg.outputs.name }} $PKG_VERSION"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install Node and npm
+        # Everything else runs on Bun. Node is here only for npm, whose OIDC
+        # trusted-publishing support Bun does not implement.
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Drop the _authToken line so OIDC is used
+        # registry-url above makes setup-node write
+        # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` into the npmrc,
+        # and it writes that line even when no token exists. npm reads its
+        # presence as "credentials already configured", never performs the OIDC
+        # exchange, and fails with ENEEDAUTH or E404. Removing the line is what
+        # lets trusted publishing engage.
+        # https://github.com/actions/setup-node/issues/1551
+        run: |
+          NPMRC="$(npm config get userconfig)"
+          if [ -f "$NPMRC" ]; then
+            sed -i '/^\/\/registry\.npmjs\.org\/:_authToken=/d' "$NPMRC"
+          fi
+
+      - name: Upgrade npm
+        # Trusted publishing needs npm >= 11.5.1 and `npm stage publish` needs
+        # >= 11.15.0. No Node line bundles a new enough npm dependably.
+        #
+        # A range rather than @latest: a release must not silently adopt an npm
+        # major that changes publish behaviour or raises its Node floor.
+        run: |
+          npm install -g npm@^12.0.2
+          npm --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check
+        # The whole suite, again. A green tag has to mean a green tree: CI at
+        # pull request time says nothing about what landed after the merge.
+        # This one command runs biome, both typecheck projects, the tests, the
+        # evals, clippy and fallow.
+        run: bun run check
+
+      - name: Verify the package runs from its own tarball
+        # Guards the thing this package exists to do. `bun run src/index.ts`
+        # passing in the workspace proves nothing about whether the published
+        # files are sufficient: `files` could omit something, and the launcher
+        # resolves paths relative to itself rather than the repository.
+        run: |
+          cd "${{ steps.pkg.outputs.dir }}"
+          npm pack
+          TARBALL="$PWD/$(ls ${{ steps.pkg.outputs.name }}-*.tgz)"
+          WORK="$(mktemp -d)"
+          cd "$WORK"
+          npm init -y > /dev/null
+          npm install "$TARBALL" > /dev/null
+          export AALAI_STATE_DIR="$(mktemp -d)"
+          export AALAI_NO_SERVER=1
+          ./node_modules/.bin/${{ steps.pkg.outputs.name }} gates
+          echo "the packed tarball runs"
+
+      - name: Determine the previous tag
+        id: previous_tag
+        run: |
+          set +e
+          # Only prior releases of the SAME package count as the range start.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match '${{ steps.pkg.outputs.match }}' "${GITHUB_REF_NAME}^" 2>/dev/null)
+          set -e
+          if [ -z "$PREVIOUS" ]; then
+            echo "first_release=true" >> "$GITHUB_OUTPUT"
+            echo "No previous tag, treating this as the first release."
+          else
+            echo "first_release=false" >> "$GITHUB_OUTPUT"
+            echo "previous_tag=$PREVIOUS" >> "$GITHUB_OUTPUT"
+            echo "Previous tag: $PREVIOUS"
+          fi
+
+      - name: Generate the changelog
+        if: steps.previous_tag.outputs.first_release == 'false'
+        id: changelog
+        # Both scoping flags are load-bearing once there is more than one
+        # package, and cliff.toml cannot supply either: one config serves every
+        # package while these differ per release.
+        #
+        # --include-path restricts commits to the package being released.
+        # Without it the range is filtered only by date, so each package's notes
+        # replay every other package's commits from the same period.
+        #
+        # --tag-pattern narrows tag recognition to this package's own tags.
+        # cliff.toml matches any package prefix, so without this a sibling's tag
+        # acts as a release boundary and one release renders as several blocks.
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: >-
+            --strip header
+            --include-path '${{ steps.pkg.outputs.dir }}/**'
+            --tag-pattern '^${{ steps.pkg.outputs.name }}-v[0-9].*'
+            ${{ steps.previous_tag.outputs.previous_tag }}..${{ github.ref_name }}
+
+      - name: Pick the dist-tag from the version
+        id: dist_tag
+        # A pre-release must not land on `latest`, or `bunx aalai` serves it to
+        # everybody. Stable versions, the ones with no hyphen, stay on latest.
+        run: |
+          VERSION=$(node -p "require('./${{ steps.pkg.outputs.dir }}/package.json').version")
+          case "$VERSION" in
+            *-alpha*) TAG=alpha ;;
+            *-beta*)  TAG=beta ;;
+            *-rc*)    TAG=rc ;;
+            *-next*)  TAG=next ;;
+            *-*)      TAG=next ;;
+            *)        TAG=latest ;;
+          esac
+          echo "Version $VERSION -> dist-tag $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        # No token. The id-token permission above lets the runner mint an OIDC
+        # token, which npm exchanges for a short-lived credential after matching
+        # organisation, repository and workflow filename against the trusted
+        # publisher on the package.
+        #
+        # `stage publish` uploads without making the version installable; a
+        # maintainer approves it with a second factor afterwards. If the trusted
+        # publisher is set to allow direct publishing instead, swap this for
+        # `npm publish`.
+        #
+        # --access public is required for an unscoped package. No --provenance:
+        # it is automatic under trusted publishing for a public package from a
+        # public repository.
+        run: |
+          cd "${{ steps.pkg.outputs.dir }}"
+          npm stage publish --access public --tag ${{ steps.dist_tag.outputs.tag }}
+
+      - name: Create a draft GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # Draft, never automatic. Read the body, then click publish.
+          draft: true
+          prerelease: ${{ steps.dist_tag.outputs.tag != 'latest' }}
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          # The rendered changelog, or one of two fallbacks that the `||` alone
+          # cannot tell apart: a genuine first release, where the step was
+          # skipped, and a release whose commits touched nothing under the
+          # package, which git-cliff reports as empty output and exit 0.
+          body: >-
+            ${{ steps.changelog.outputs.content
+                || (steps.previous_tag.outputs.first_release == 'true'
+                    && 'First release.'
+                    || 'No changes under this package since the previous release.') }}

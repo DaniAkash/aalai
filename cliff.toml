@@ -1,0 +1,68 @@
+# git-cliff configuration. The release workflow uses it to turn the
+# conventional-commit history between two tags into grouped release notes.
+#
+# This is a monorepo, so a range between two of a package's tags still
+# contains every other package's commits, and the desktop app shares the
+# history with the factory besides. Two scoping flags fix that, and both live
+# in the workflow rather than here, because one config serves every package
+# while these values differ per release:
+#
+#   --include-path 'packages/<dir>/**'    only this package's commits
+#   --tag-pattern  '^<pkg>-v[0-9].*'      only this package's tags
+#
+# Without the first, notes list unrelated work. Without the second, a sibling
+# package's tag acts as a release boundary and one release renders as several
+# blocks with repeated headings.
+#
+# Local use, scoped the way the workflow does it:
+#   git-cliff --config cliff.toml \
+#     --include-path 'packages/core/**' \
+#     --tag-pattern '^aalai-v[0-9].*' \
+#     aalai-v0.0.1..aalai-v0.0.2
+
+[changelog]
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+# Parse as conventional commits and drop anything that is not, so the notes
+# stay free of stray fixups.
+conventional_commits = true
+filter_unconventional = true
+filter_commits = true
+
+# Every release tag carries its package as a prefix: `aalai-v0.0.2`. Matching
+# any `<name>-v<digit>` rather than an explicit list means this cannot go stale
+# when a package is added, and nothing is lost by being broad: every tag in
+# this repository is a release tag, and the workflow's own prefix allowlist is
+# what fails loudly on a typo.
+#
+# This is the fallback for ad-hoc local runs. The workflow overrides it with
+# --tag-pattern for the single package being released.
+tag_pattern = "^([a-z0-9-]+-)?v[0-9].*"
+
+# How each prefix maps to a section. Order matters, first match wins.
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^docs?", group = "Documentation" },
+  { message = "^style", group = "Styling" },
+  { message = "^test", group = "Tests" },
+  { message = "^audit", group = "Audits" },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore\\(deps\\)", group = "Dependencies" },
+  { message = "^chore", group = "Miscellaneous" },
+  { message = "^ci", group = "CI" },
+  { message = "^revert", group = "Reverts" },
+]

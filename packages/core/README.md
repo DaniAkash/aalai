@@ -337,3 +337,37 @@ Migrations are generated with drizzle-kit and imported as text, so they travel i
 ```bash
 bunx drizzle-kit generate --name=add_something   # always name it
 ```
+
+## Releasing
+
+Tags drive it. The prefix names the package, so a tag can never publish the
+wrong one.
+
+```sh
+# 1. bump the version in packages/core/package.json
+# 2. commit it
+git commit -m "chore(release): 0.0.2"
+# 3. tag and push
+git tag aalai-v0.0.2
+git push origin main --tags
+```
+
+The workflow then re-runs the whole check suite, packs the tarball and
+installs it into a scratch directory to prove the published files actually
+run, and stages the version on npm. Staged is not live: approve it with a
+second factor to release it.
+
+```sh
+npm stage list aalai
+npm stage approve <stage-id>
+```
+
+A draft GitHub release is created at the same time, with notes generated from
+the conventional commits since the previous `aalai-v*` tag. Read it, then
+publish it from the Releases page.
+
+Authentication is npm trusted publishing over OIDC, so no token is stored
+anywhere. The claim is pinned to the repository and the workflow **filename**,
+which means renaming `release.yml`, or adding an `environment:` key to it,
+breaks every publish. A trusted publisher cannot be edited after it is
+created, only deleted and remade.

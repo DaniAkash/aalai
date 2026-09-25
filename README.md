@@ -90,7 +90,17 @@ The draft pull request is the artefact. Pushing and opening it are aalai's, outs
 
 ## The factory, on its own
 
-`packages/core` is a normal Bun project with its own tests and evals, and none of them know a desktop app exists. Everything below works with no app installed.
+`packages/core` is a normal Bun project with its own tests and evals, and none of them know a desktop app exists. Everything below works with no app installed, and it is published to npm, so the quickest way to try it is not to clone anything:
+
+```sh
+bunx aalai doctor            # gh, git and settings check
+bunx aalai --once            # one polling pass, then exit
+bunx aalai                   # watch until interrupted
+```
+
+It runs on Bun. `npx aalai` works too, but what npm installs is a launcher that starts node and hands straight over, so `bunx` is one process fewer.
+
+From a checkout:
 
 ```sh
 bun install
