@@ -49,7 +49,7 @@ export function DecisionPanel({
         onApprove={() => onDecide('approved', reason)}
         onRequestChanges={() => onDecide('changes', reason)}
         onReject={() => onDecide('rejected', reason)}
-        className="[&_button]:min-h-11 md:[&_button]:min-h-0"
+        className="[&_button]:min-h-11 lg:[&_button]:min-h-0"
       />
       {error === undefined ? null : (
         <p className="mt-3 text-[12.5px] text-destructive">{error}</p>

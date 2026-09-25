@@ -48,7 +48,7 @@ export function NumberField({
           onCommit(next)
         }
       }}
-      className="min-h-11 w-24 shrink-0 rounded-lg border border-border bg-card px-2.5 py-1.5 text-right font-mono text-[12.5px] outline-none focus:border-ring md:min-h-0"
+      className="min-h-11 w-24 shrink-0 rounded-lg border border-border bg-card px-2.5 py-1.5 text-right font-mono text-[12.5px] outline-none focus:border-ring lg:min-h-0"
     />
   )
 }
@@ -71,7 +71,7 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       // The pill stays 40x24. The target around it grows to 44 on a phone,
       // so the hit area clears the minimum without the control changing size.
-      className="grid size-11 shrink-0 place-items-center md:size-auto"
+      className="grid size-11 shrink-0 place-items-center lg:size-auto"
     >
       <span
         className={`flex h-6 w-10 items-center rounded-full border transition-colors ${

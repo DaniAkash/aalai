@@ -64,7 +64,7 @@ export function GateDetail() {
       actions={
         <Link
           to="/"
-          className="inline-flex min-h-11 shrink-0 items-center text-[12px] text-muted-foreground hover:underline md:min-h-0"
+          className="inline-flex min-h-11 shrink-0 items-center text-[12px] text-muted-foreground hover:underline lg:min-h-0"
         >
           back to inbox
         </Link>
