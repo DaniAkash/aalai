@@ -133,11 +133,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check
-        # The whole suite, again. A green tag has to mean a green tree: CI at
-        # pull request time says nothing about what landed after the merge.
-        # This one command runs biome, both typecheck projects, the tests, the
-        # evals, clippy and fallow.
-        run: bun run check
+        # The package's own suite, again. A green tag has to mean a green
+        # package: CI at pull request time says nothing about what landed after
+        # the merge.
+        #
+        # Scoped to the package rather than `bun run check` at the root. The
+        # root suite also builds the sidecar and runs clippy over the desktop
+        # shell, none of which is in the tarball, so a red Rust lint would block
+        # a release of sources it cannot affect. Each publishable package owns a
+        # `check` script covering what it ships, and that is the release gate.
+        run: bun run --filter ${{ steps.pkg.outputs.name }} check
 
       - name: Verify the package runs from its own tarball
         # Guards the thing this package exists to do. `bun run src/index.ts`

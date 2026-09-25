@@ -41,6 +41,7 @@
     "start": "bun run src/index.ts",
     "once": "bun run src/index.ts --once",
     "run-issue": "bun run src/index.ts run",
+    "check": "concurrently --group --names biome,tsc,test,eval --prefix-colors auto \"biome check .\" \"bun run typecheck\" \"bun run test\" \"bun run eval\"",
     "typecheck": "tsc --noEmit",
     "test": "bun test ./test/",
     "eval": "bun test ./evals/",
