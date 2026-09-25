@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'
-import { type Client, hcWithType } from 'aalai-core/client'
+import { type Client, hcWithType } from 'aalai/client'
 import { isDesktop } from '@/modules/host/host'
 
 interface ApiInfo {

@@ -24,7 +24,7 @@
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-http": "^2.6.1",
         "@tauri-apps/plugin-opener": "^2.5.5",
-        "aalai-core": "workspace:*",
+        "aalai": "workspace:*",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cn": "^0.3.2",
@@ -53,8 +53,9 @@
       },
     },
     "packages/core": {
-      "name": "aalai-core",
-      "version": "0.1.0",
+      "name": "aalai",
+      "version": "0.0.1",
+      "bin": "./bin/aalai.mjs",
       "dependencies": {
         "@hono/zod-validator": "^0.9.1",
         "@modelcontextprotocol/sdk": "^1.30.0",
@@ -480,7 +481,7 @@
 
     "@workflow/serde": ["@workflow/serde@4.1.0", "", {}, "sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ=="],
 
-    "aalai-core": ["aalai-core@workspace:packages/core"],
+    "aalai": ["aalai@workspace:packages/core"],
 
     "aalai-native": ["aalai-native@workspace:app/native"],
 

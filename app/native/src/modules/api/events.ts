@@ -1,4 +1,4 @@
-import type { RunEvent } from 'aalai-core/events'
+import type { RunEvent } from 'aalai/events'
 import { api } from '@/modules/api/client'
 
 /** What the stream sends that is not a run event. */

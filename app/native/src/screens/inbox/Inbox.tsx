@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { subjectOf, waitedFor } from 'aalai-core/shared'
+import { subjectOf, waitedFor } from 'aalai/shared'
 import { GroupHead, Screen } from '@/components/layout/Screen'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { useInboxData } from './inbox.data'

@@ -1,5 +1,5 @@
 import { Link, useParams } from '@tanstack/react-router'
-import { subjectOf } from 'aalai-core/shared'
+import { subjectOf } from 'aalai/shared'
 import { Screen } from '@/components/layout/Screen'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { useRunEvents } from '@/modules/api/runs.hooks'
