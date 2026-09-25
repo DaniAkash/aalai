@@ -81,8 +81,8 @@ updates:
   # Workflow action bumps. Lower cap because the surface is one workflow.
   #
   # The rust toolchain in ci.yml is pinned on purpose: rust-cache keys on the
-  # toolchain, so a floating version turns a warm cache into a coin flip.
-  # Dependabot does not manage that pin, so it stays a deliberate bump.
+  # toolchain, so a floating version turns a warm cache into a coin flip. The
+  # ignore below is what actually keeps that pin a deliberate bump.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -97,6 +97,16 @@ updates:
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
+      # The Rust toolchain version is a pin, not a dependency, and this action
+      # carries that version in its git ref. Those version-shaped refs are
+      # branches rather than tags, and upstream pre-creates them in bulk for
+      # releases that have never shipped, so ranking them by semver always
+      # selects the furthest-ahead placeholder and rustup 404s on install.
+      # ci.yml pins the action to its `v1` tag and passes the version as an
+      # input, which leaves nothing here to rank; this rule holds the line if
+      # the ref is ever written the old way again. No update-types, so every
+      # update for this action is ignored.
+      - dependency-name: "dtolnay/rust-toolchain"
     groups:
       minor-and-patch:
         update-types:
