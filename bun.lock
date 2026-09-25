@@ -55,6 +55,7 @@
     "packages/core": {
       "name": "aalai",
       "version": "0.0.1",
+      "bin": "./bin/aalai.mjs",
       "dependencies": {
         "@hono/zod-validator": "^0.9.1",
         "@modelcontextprotocol/sdk": "^1.30.0",

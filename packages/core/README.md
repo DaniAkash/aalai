@@ -1,6 +1,11 @@
-# aalai-core
+# aalai
 
 **The factory. It runs without the desktop app, from a terminal.**
+
+```sh
+bunx aalai doctor     # check the machine is ready
+bunx aalai            # watch your repositories
+```
 
 This package polls your watched repositories, screens new issues, and takes each accepted one through three stations to a reviewed draft pull request. The desktop app in `app/native` bundles a compiled copy of this as a sidecar and supervises it; it holds no factory logic of its own. If the app is broken or absent, everything below still works.
 
@@ -15,16 +20,36 @@ This package polls your watched repositories, screens new issues, and takes each
 
 ## Quick start
 
-```bash
-bun install
-cd packages/core
-
-bun run src/index.ts doctor     # check the machine is ready
-bun run src/index.ts --once     # one pass, then exit
-bun run src/index.ts            # watch forever
+```sh
+bunx aalai doctor     # check the machine is ready
+bunx aalai --once     # one pass, then exit
+bunx aalai            # watch until interrupted
 ```
 
 A first run creates `~/.aalai`, migrates the database, and watches nothing. Add a repository through the desktop app, or import a config file once (see [Settings](#settings)).
+
+### Why bunx rather than npx
+
+aalai is written against Bun. It opens its database with `bun:sqlite`, reads and
+writes through `Bun.file`, serves over `Bun.serve`, and ships as TypeScript
+rather than compiled output. node cannot run any of that.
+
+`npx aalai` still works, and does the same thing in the end: what npm installs
+is a small launcher that starts node, finds Bun and hands over. `bunx` skips
+that first process. Without Bun installed either way, the launcher says so and
+exits rather than failing somewhere deeper.
+
+```sh
+curl -fsSL https://bun.sh/install | bash
+```
+
+### From a checkout
+
+```sh
+bun install
+cd packages/core
+bun run src/index.ts doctor
+```
 
 ---
 
@@ -46,7 +71,7 @@ A first run creates `~/.aalai`, migrates the database, and watches nothing. Add 
 
 Package scripts wrap the common ones:
 
-```bash
+```sh
 bun run start              # watch forever
 bun run once               # a single pass
 bun run run-issue acme/widgets 27

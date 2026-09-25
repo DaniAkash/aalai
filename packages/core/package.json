@@ -21,15 +21,18 @@
     "bun"
   ],
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.3.0",
+    "node": ">=20"
   },
   "type": "module",
+  "bin": "./bin/aalai.mjs",
   "files": [
+    "bin",
     "src",
+    "tsconfig.json",
     "README.md"
   ],
   "exports": {
-    "./app": "./src/server/app.ts",
     "./events": "./src/events/events.types.ts",
     "./client": "./src/server/client.ts",
     "./shared": "./src/shared/format.ts"
