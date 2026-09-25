@@ -102,7 +102,7 @@ export function Repos() {
             aria-label={`Stop watching ${repo.repo}`}
             onClick={() => unwatch.mutate({ repo: repo.repo })}
             disabled={unwatch.isPending}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground md:min-h-0"
           >
             <X className="size-3.5" />
           </button>
@@ -203,7 +203,7 @@ function Head({ onAdd }: { onAdd: () => void }) {
       <button
         type="button"
         onClick={onAdd}
-        className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-medium text-[12.5px] text-primary-foreground"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-medium text-[12.5px] text-primary-foreground md:min-h-0"
       >
         <Plus className="size-3.5" /> Add repo
       </button>

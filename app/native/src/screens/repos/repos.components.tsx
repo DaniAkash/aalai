@@ -51,9 +51,11 @@ export function PolicyPicker({
           disabled={pending}
           onClick={() => onChange(policy.value)}
           className={
+            // min-h-11 clears the 44px touch minimum on a phone; from md up a
+            // pointer is likely and the denser original height returns.
             policy.value === value
-              ? 'bg-primary px-2.5 py-1.5 text-[11.5px] text-primary-foreground'
-              : 'px-2.5 py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground'
+              ? 'min-h-11 flex-1 bg-primary px-2.5 py-1.5 text-[11.5px] text-primary-foreground md:min-h-0 md:flex-none'
+              : 'min-h-11 flex-1 px-2.5 py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground md:min-h-0 md:flex-none'
           }
         >
           {policy.label}
