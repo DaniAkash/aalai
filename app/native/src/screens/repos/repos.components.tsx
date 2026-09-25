@@ -36,7 +36,10 @@ export function PolicyPicker({
 }) {
   return (
     <fieldset
-      className="flex shrink-0 overflow-hidden rounded-lg border border-border"
+      // Wraps rather than forcing one line: three segments plus a long repo
+      // name do not fit a phone row, and nowrap is what pushed the row past
+      // the viewport.
+      className="flex shrink-0 flex-wrap overflow-hidden rounded-lg border border-border"
       aria-label="run policy"
     >
       {POLICIES.map((policy) => (
@@ -48,9 +51,12 @@ export function PolicyPicker({
           disabled={pending}
           onClick={() => onChange(policy.value)}
           className={
+            // min-h-11 clears the 44px touch minimum. It holds until lg
+            // rather than md because 768 is iPad portrait, still a touch
+            // context; the denser height returns where a pointer is likely.
             policy.value === value
-              ? 'bg-primary px-2.5 py-1.5 text-[11.5px] text-primary-foreground'
-              : 'px-2.5 py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground'
+              ? 'min-h-11 flex-1 bg-primary px-2.5 py-1.5 text-[11.5px] text-primary-foreground lg:min-h-0 lg:flex-none'
+              : 'min-h-11 flex-1 px-2.5 py-1.5 text-[11.5px] text-muted-foreground hover:text-foreground lg:min-h-0 lg:flex-none'
           }
         >
           {policy.label}

@@ -78,11 +78,14 @@ export function Repos() {
       {watched.data.repos.map((repo) => (
         <div
           key={repo.repo}
-          className="mb-1.5 flex items-center gap-3 rounded-xl border border-border bg-card p-3"
+          // Stacked by default, a row from md up. The policy picker cannot
+          // shrink, so on a narrow row it takes the whole width and starves
+          // the name to zero, which then paints underneath it.
+          className="mb-1.5 flex flex-col items-stretch gap-2 rounded-xl border border-border bg-card p-3 md:flex-row md:items-center md:gap-3"
         >
           <span className="size-[7px] shrink-0 rounded-full bg-chart-2" />
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-[13px]">{repo.repo}</div>
+            <div className="font-mono text-[14px]">{repo.repo}</div>
             <div className="font-mono text-[11.5px] text-muted-foreground">
               {repo.requireLabel
                 ? `only issues labelled ${repo.requireLabel}`
@@ -99,7 +102,7 @@ export function Repos() {
             aria-label={`Stop watching ${repo.repo}`}
             onClick={() => unwatch.mutate({ repo: repo.repo })}
             disabled={unwatch.isPending}
-            className="rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-border px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground lg:min-h-0 lg:min-w-0"
           >
             <X className="size-3.5" />
           </button>
@@ -200,7 +203,7 @@ function Head({ onAdd }: { onAdd: () => void }) {
       <button
         type="button"
         onClick={onAdd}
-        className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-medium text-[12.5px] text-primary-foreground"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-medium text-[12.5px] text-primary-foreground lg:min-h-0"
       >
         <Plus className="size-3.5" /> Add repo
       </button>

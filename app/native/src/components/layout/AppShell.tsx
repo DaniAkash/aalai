@@ -88,17 +88,41 @@ export function AppShell() {
         </AnimatedSidebarContent>
       </AnimatedSidebar>
 
-      <AnimatedSidebarInset className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
+      <AnimatedSidebarInset className="@container flex min-h-0 w-full min-w-0 flex-1 flex-col">
         <TitleBar crumb={crumb(path)} stream={stream} />
-        <main className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <Outlet />
-        </main>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
+          {/*
+            Capped and centred. Without it the column grows 1:1 with the
+            window forever: at 2560 a gate summary rendered 128px of ink in a
+            2186px box, and prose reached 97 characters per line with room for
+            328 before wrapping.
+          */}
+          <div className="mx-auto flex min-h-full w-full max-w-[72rem] flex-col">
+            <Outlet />
+          </div>
+        </div>
       </AnimatedSidebarInset>
     </AnimatedSidebarProvider>
   )
 }
 
+/**
+ * The trail, as a person reads it.
+ *
+ * A gate or run id is a slash, a hash and an at sign, so it arrives percent
+ * encoded and is not something to put on screen. The section plus a word for
+ * what is being looked at says the same thing and fits.
+ */
 function crumb(path: string): string {
-  if (path === '/') return 'aalai / inbox'
-  return `aalai${path.replace(/\//g, ' / ')}`
+  if (path === '/') {
+    return 'aalai / inbox'
+  }
+  const [, section, id] = path.split('/')
+  if (section === undefined) {
+    return 'aalai'
+  }
+  if (id === undefined || id === '') {
+    return `aalai / ${section}`
+  }
+  return `aalai / ${section} / ${section === 'gates' ? 'one gate' : 'one run'}`
 }

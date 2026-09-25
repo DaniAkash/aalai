@@ -31,8 +31,13 @@ export function DecisionPanel({
         value={reason}
         onChange={(event) => setReason(event.target.value)}
         placeholder="Why, if you are rejecting or asking for changes. This travels with the decision."
-        className="mb-3 h-20 w-full resize-none rounded-xl border border-border bg-card p-3 text-[13px] outline-none focus:border-ring"
+        className="mb-3 h-20 w-full resize-none rounded-xl border border-border bg-card p-3 text-[14px] outline-none focus:border-ring"
       />
+      {/*
+        The card is vendored, and its buttons are 32px. Raising them from here
+        keeps the change on our side of the boundary rather than editing a
+        component the shadcn CLI will overwrite.
+      */}
       <ApprovalCard
         title={
           gate.summary ??
@@ -44,6 +49,7 @@ export function DecisionPanel({
         onApprove={() => onDecide('approved', reason)}
         onRequestChanges={() => onDecide('changes', reason)}
         onReject={() => onDecide('rejected', reason)}
+        className="[&_button]:min-h-11 lg:[&_button]:min-h-0"
       />
       {error === undefined ? null : (
         <p className="mt-3 text-[12.5px] text-destructive">{error}</p>
