@@ -72,7 +72,12 @@ export function GateDetail() {
     >
       {artifact === null ? null : (
         <article className="mb-4 max-h-[46vh] overflow-y-auto rounded-xl border border-border bg-card p-4">
-          <pre className="whitespace-pre-wrap font-mono text-[12.5px] leading-relaxed">
+          {/*
+            Capped by measure rather than pixels, so it holds at every width.
+            Uncapped this rendered 122 characters per line at 1280 and 143 at
+            1440, against a readable maximum of about 75.
+          */}
+          <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[12.5px] leading-relaxed">
             {artifact}
           </pre>
         </article>
