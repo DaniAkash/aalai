@@ -70,8 +70,14 @@ export function GateDetail() {
         </Link>
       }
     >
+      {/*
+        The artifact is sized by what is left rather than by a share of the
+        viewport. The old 46vh cap could not see the header, textarea and
+        decision card below it, so at 1024 it hid six pixels behind a scrollbar
+        while 120px sat empty, and at 768 it hid a fifth of the plan.
+      */}
       {artifact === null ? null : (
-        <article className="mb-4 max-h-[46vh] overflow-y-auto rounded-xl border border-border bg-card p-4">
+        <article className="mb-4 min-h-32 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4">
           {/*
             Capped by measure rather than pixels, so it holds at every width.
             Uncapped this rendered 122 characters per line at 1280 and 143 at

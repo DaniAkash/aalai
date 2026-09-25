@@ -20,7 +20,7 @@ export function TitleBar({
   stream: StreamState
 }) {
   return (
-    <div className="relative flex h-[38px] shrink-0 items-center border-border border-b px-3">
+    <div className="relative flex min-h-[38px] shrink-0 items-center border-border border-b px-3">
       <TauriOnly feature="window dragging">
         <DragSurface />
       </TauriOnly>
@@ -33,7 +33,7 @@ export function TitleBar({
       <AnimatedSidebarTrigger className="relative mr-2 -ml-1 size-11 shrink-0 text-muted-foreground md:size-10">
         <PanelLeft className="size-4" />
       </AnimatedSidebarTrigger>
-      <span className="relative font-mono text-[11px] text-muted-foreground">
+      <span className="relative min-w-0 truncate font-mono text-[11px] text-muted-foreground">
         {crumb}
       </span>
       <StreamDot state={stream} />

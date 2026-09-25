@@ -106,7 +106,23 @@ export function AppShell() {
   )
 }
 
+/**
+ * The trail, as a person reads it.
+ *
+ * A gate or run id is a slash, a hash and an at sign, so it arrives percent
+ * encoded and is not something to put on screen. The section plus a word for
+ * what is being looked at says the same thing and fits.
+ */
 function crumb(path: string): string {
-  if (path === '/') return 'aalai / inbox'
-  return `aalai${path.replace(/\//g, ' / ')}`
+  if (path === '/') {
+    return 'aalai / inbox'
+  }
+  const [, section, id] = path.split('/')
+  if (section === undefined) {
+    return 'aalai'
+  }
+  if (id === undefined || id === '') {
+    return `aalai / ${section}`
+  }
+  return `aalai / ${section} / ${section === 'gates' ? 'one gate' : 'one run'}`
 }
