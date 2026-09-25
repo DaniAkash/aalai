@@ -4,6 +4,16 @@
 @import "@fontsource-variable/instrument-sans";
 @import "@fontsource-variable/space-grotesk";
 
+/*
+  The mobile drawer is portaled to <body>, outside the wrapper that defines
+  this, and a custom property only inherits down the tree it is declared on.
+  Undefined, the width declaration is invalid at computed-value time and falls
+  back to auto, which shrink-wraps the drawer to about 134px instead of 288.
+*/
+:root {
+  --sidebar-width-mobile: 18rem;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {

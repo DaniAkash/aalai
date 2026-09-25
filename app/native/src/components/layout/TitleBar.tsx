@@ -1,3 +1,5 @@
+import { PanelLeft } from 'lucide-react'
+import { AnimatedSidebarTrigger } from '@/components/motion/animated-sidebar'
 import { cn } from '@/lib/utils'
 import type { StreamState } from '@/modules/api/events'
 import { TauriOnly } from '@/modules/host/TauriOnly'
@@ -22,6 +24,15 @@ export function TitleBar({
       <TauriOnly feature="window dragging">
         <DragSurface />
       </TauriOnly>
+      {/*
+        The only way to reach navigation below 768px, where the sidebar becomes
+        an off-canvas sheet. Both beUI and shadcn put it in the inset header,
+        which is this bar. size-11 clears the 44px touch minimum; a pointer is
+        likely from md up, so it drops to the component's own 40px there.
+      */}
+      <AnimatedSidebarTrigger className="relative mr-2 -ml-1 size-11 shrink-0 text-muted-foreground md:size-10">
+        <PanelLeft className="size-4" />
+      </AnimatedSidebarTrigger>
       <span className="relative font-mono text-[11px] text-muted-foreground">
         {crumb}
       </span>
