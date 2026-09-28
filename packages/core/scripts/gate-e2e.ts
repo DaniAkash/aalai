@@ -61,7 +61,36 @@ const planGate = openGate(sqlite, {
   check('it says what it is asking', out.includes('approve the plan'))
   const shown = await cli(['show', planGate])
   check('the artifact is rendered', shown.out.includes('Add the guard'))
-  check('the version is stamped', shown.out.includes('version 1'))
+  // The version lives in the path rather than in a line counting it at the
+  // reader. It is what approval pins to, so it has to be reachable; it is not a
+  // milestone, so it is not announced.
+  check('the exact bytes are named', shown.out.includes('plan.v1.md'))
+  check(
+    'and a first version is not announced as one',
+    !shown.out.includes('revised'),
+  )
+}
+
+scenario('2b. A revised plan says so in words, not as a version number')
+{
+  await writeArtifact(
+    SUBJECT,
+    'plan',
+    '# Plan\n\n1. Add the guard\n2. Test it\n3. And the constraint\n',
+  )
+  const revisedGate = openGate(sqlite, {
+    runId: RUN,
+    kind: 'plan',
+    artifactPath: 'acme__widgets/issue-7/artifacts/plan.v2.md',
+    artifactVersion: '2',
+  })
+  const shown = await cli(['show', revisedGate])
+  check('a revision is announced', shown.out.includes('revised once'))
+  check('and not as a version number', !shown.out.includes('version 2'))
+  // Answered so this scenario leaves the inbox as it found it: the later
+  // scenarios assert on what is waiting, and a gate left open here would
+  // fail one of them somewhere else entirely.
+  await cli(['approve', revisedGate])
 }
 
 scenario('3. Approving from a terminal, with nothing else running')
