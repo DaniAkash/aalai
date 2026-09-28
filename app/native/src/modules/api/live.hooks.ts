@@ -4,7 +4,9 @@ import { type StreamState, subscribeToRunEvents } from '@/modules/api/events'
 import { useGate, useOpenGates } from '@/modules/api/gates.hooks'
 import { queryClient } from '@/modules/api/queryClient'
 import { useActiveRuns, usePastRuns } from '@/modules/api/runs.hooks'
+import { useSettings } from '@/modules/api/settings.hooks'
 import { useThread } from '@/modules/api/thread.hooks'
+import { announceGate } from '@/modules/notify/notify'
 
 /**
  * Keeps the cache honest while the factory works.
@@ -14,8 +16,19 @@ import { useThread } from '@/modules/api/thread.hooks'
  * to stale data instead of to a screen showing something the factory never
  * said.
  */
+/**
+ * Whether to announce a gate, read from settings rather than passed down.
+ *
+ * The event handler is not a component and cannot call a hook, and threading a
+ * setting through the subscription would mean tearing the stream down and
+ * rebuilding it every time an unrelated setting changed.
+ */
+let notificationsOn = true
+
 export function useLiveEvents(): StreamState {
   const [state, setState] = useState<StreamState>('connecting')
+  const settings = useSettings()
+  notificationsOn = settings.data?.settings.notifications !== false
 
   // The one legitimate effect here: subscribing to an event source outside
   // React, which cannot be expressed as a render or an event handler.
@@ -41,6 +54,19 @@ function invalidateFor(event: RunEvent): void {
       queryKey: useThread.getKey({ id: event.gateId }),
     })
     return
+  }
+  if (event.type === 'gate.opened') {
+    // Announced from here because this subscription is the one thing still
+    // running when the window is closed: closing hides the webview rather than
+    // destroying it, so the stream and this handler outlive the window.
+    if (notificationsOn) {
+      void announceGate({
+        gateId: event.gateId,
+        repo: event.repo,
+        issue: event.issue,
+        summary: event.summary,
+      })
+    }
   }
   if (event.type === 'gate.opened' || event.type === 'gate.answered') {
     void queryClient.invalidateQueries({ queryKey: useOpenGates.getKey() })

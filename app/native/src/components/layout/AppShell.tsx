@@ -16,6 +16,7 @@ import {
 } from '@/components/motion/animated-sidebar'
 import { useOpenGates } from '@/modules/api/gates.hooks'
 import { useLiveEvents } from '@/modules/api/live.hooks'
+import { useGateOnActivation } from '@/modules/notify/useGateOnActivation'
 
 interface NavItem {
   to: string
@@ -42,6 +43,7 @@ export function AppShell() {
   // Mounted once, here, so one connection serves every screen and the cache
   // stays current no matter which one is open.
   const stream = useLiveEvents()
+  useGateOnActivation()
   const gates = useOpenGates()
   const pending = gates.data?.gates.length ?? 0
   const path = useRouterState({ select: (s) => s.location.pathname })

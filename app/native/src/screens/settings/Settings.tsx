@@ -93,6 +93,16 @@ export function Settings() {
             onChange={(askOnPermission) => save.mutate({ askOnPermission })}
           />
         </Field>
+        <Field
+          label="Tell me when a gate opens"
+          detail="One notification per gate, never one per station. A run passing through four stations still asks once."
+        >
+          <Toggle
+            checked={current.notifications}
+            label="notify on a gate"
+            onChange={(notifications) => save.mutate({ notifications })}
+          />
+        </Field>
       </section>
 
       {save.isError ? (
