@@ -7,6 +7,7 @@ import {
   answerGate,
   listGates,
   readGate,
+  readThread,
 } from '@/modules/gates'
 import { readArtifact } from '@/modules/work/artifacts'
 import { openState } from '@/watch/state'
@@ -55,6 +56,15 @@ export const gatesRoute = new Hono()
         ? undefined
         : await readArtifact(gate.artifactPath)
     return c.json({ gate, artifact: artifact ?? null })
+  })
+  .get('/gates/:id/thread', async (c) => {
+    const db = openState()
+    const thread = await readThread(db, c.req.param('id'))
+    db.close()
+    if (thread === undefined) {
+      return c.json({ error: 'no such gate' }, 404)
+    }
+    return c.json(thread)
   })
   .post('/gates/:id/answer', zValidator('json', answerSchema), async (c) => {
     const body = c.req.valid('json')

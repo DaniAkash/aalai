@@ -14,6 +14,7 @@ import { createActor, setup, waitFor } from 'xstate'
 import { openDb } from '@/modules/db/db'
 import { listGates, openGate, readGate } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
+import { appendEntry } from '@/modules/work/conversation'
 import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
 import { gateKeeper } from '@/run/machines/gateActor'
 import { startServer, stopServer } from '@/server/serve'
@@ -293,6 +294,63 @@ scenario('8. A parked machine resumes when a terminal answers it')
   check('the run resumed past the gate', settled.value === 'moving')
   actor.stop()
   releaseRunDeps(RESUME_RUN)
+}
+
+scenario('7. The discussion behind a gate is readable over HTTP')
+{
+  const THREAD_RUN = 'acme/widgets#21@1790000000021'
+  const subject = { repo: 'acme/widgets', kind: 'issue' as const, number: 21 }
+  const artifact = await writeArtifact(
+    subject,
+    'plan',
+    '# Plan\n\n1. Stream it\n',
+  )
+  const openedId = openGate(sqlite, {
+    runId: THREAD_RUN,
+    kind: 'plan',
+    artifactPath: artifact.id,
+    artifactVersion: String(artifact.version),
+  })
+
+  const empty = await call(`/api/gates/${encodeURIComponent(openedId)}/thread`)
+  check(
+    'an untouched gate has an empty thread rather than a 404',
+    empty.status === 200,
+  )
+  const emptyBody = empty.body as { entries: unknown[]; state: string }
+  check('nothing has been said yet', emptyBody.entries.length === 0)
+  check('and nothing is mid answer', emptyBody.state === 'idle')
+
+  await appendEntry(subject, {
+    author: 'analyst',
+    role: 'station',
+    body: 'Plan recorded.',
+  })
+  await appendEntry(subject, {
+    author: 'dani',
+    role: 'maintainer',
+    // A heading, which is what broke the old delimiter.
+    body: '## Why\n\nWhy stream rather than buffer?',
+  })
+
+  const full = await call(`/api/gates/${encodeURIComponent(openedId)}/thread`)
+  const body = full.body as {
+    entries: { author: string; role: string; body: string }[]
+    state: string
+  }
+  check('both entries came back', body.entries.length === 2)
+  check('in the order they were said', body.entries[0]?.author === 'analyst')
+  check(
+    'the maintainer entry carries its role',
+    body.entries[1]?.role === 'maintainer',
+  )
+  check(
+    'a heading in a reply did not split it into two entries',
+    body.entries[1]?.body.includes('## Why') === true,
+  )
+
+  const missing = await call('/api/gates/nope/thread')
+  check('an unknown gate is a 404, not an empty thread', missing.status === 404)
 }
 
 stopServer()

@@ -200,3 +200,11 @@ function matchHead(
 function entryId(author: string, at: string): string {
   return Bun.hash(`${author}|${at}`).toString(36)
 }
+
+/** The subject's discussion as entries, or none if nothing has been said. */
+export async function readConversation(
+  subject: Subject,
+): Promise<ConversationEntry[]> {
+  const file = Bun.file(join(artifactsDir(subject), CONVERSATION))
+  return (await file.exists()) ? parseConversation(await file.text()) : []
+}
