@@ -442,7 +442,10 @@ scenario(
 
   await waitFor(actor, () => asked.length === 1, { timeout: 8000 })
   check('it woke a turn in the parked machine', asked.length === 1)
-  check('and the turn was given the question', asked[0]?.includes('Why buffer'))
+  check(
+    'and the turn was given the question',
+    asked[0]?.includes('Why buffer') === true,
+  )
 
   const still = readGate(sqlite, gateId)
   check('the gate is still open', still?.status === 'open')
