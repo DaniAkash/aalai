@@ -154,6 +154,7 @@ export const issueWorkMachine = setup({
               on: {
                 REPLY_RECEIVED: {
                   target: 'answering',
+                  guard: 'replyIsNew',
                   actions: assign({
                     pendingReply: ({ event }) => ({
                       entryId: event.entryId,
@@ -183,6 +184,7 @@ export const issueWorkMachine = setup({
                   actions: assign({
                     analysis: ({ context, event }) =>
                       event.output.analysis ?? context.analysis,
+                    repliedTo: ({ context }) => context.pendingReply?.entryId,
                     pendingReply: () => undefined,
                   }),
                 },
@@ -190,7 +192,10 @@ export const issueWorkMachine = setup({
                 // run: the maintainer can still decide without one.
                 onError: {
                   target: 'waiting',
-                  actions: assign({ pendingReply: () => undefined }),
+                  actions: assign({
+                    repliedTo: ({ context }) => context.pendingReply?.entryId,
+                    pendingReply: () => undefined,
+                  }),
                 },
               },
             },

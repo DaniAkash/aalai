@@ -24,6 +24,19 @@ export const guards = {
     context.revision < context.maxRevisions,
   /** Whether this repository's policy asks a person before any code is written. */
   planNeedsApproval: ({ context }: Args) => context.planGated === true,
+  /**
+   * Whether this reply is one a turn has not already been spent on.
+   *
+   * The keeper re-announces a pending reply on every tick, because only the
+   * machine knows whether it is mid answer and a reply arriving during a turn
+   * would otherwise be dropped by a state with no handler and never mentioned
+   * again. This is what keeps that re-announcement from buying a second turn,
+   * and what stops a failed answer retrying in a loop.
+   */
+  replyIsNew: ({ context, event }: Args) =>
+    event.type === 'REPLY_RECEIVED' &&
+    event.entryId !== '' &&
+    event.entryId !== context.repliedTo,
   answeredApproved: ({ event }: Args) =>
     event.type === 'GATE_ANSWERED' && event.decision === 'approved',
   answeredChanges: ({ event }: Args) =>

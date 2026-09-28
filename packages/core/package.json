@@ -48,7 +48,8 @@
     "service": "bun run scripts/service.ts",
     "e2e:gates": "bun run scripts/gate-e2e.ts",
     "e2e:api": "bun run scripts/gate-api-e2e.ts",
-    "e2e": "bun run e2e:gates && bun run e2e:api"
+    "e2e": "bun run e2e:gates && bun run e2e:api && bun run e2e:cli",
+    "e2e:cli": "bun run scripts/gate-cli-e2e.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

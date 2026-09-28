@@ -44,6 +44,15 @@ export interface IssueWorkContext {
     readonly entryId: string
     readonly question: string
   }
+  /**
+   * The reply a turn was last spent on.
+   *
+   * The keeper re-announces a pending reply on every tick, because only the
+   * machine knows whether it is already mid answer. This is what stops that
+   * re-announcement buying a second turn, and what stops a failed answer
+   * retrying in a loop.
+   */
+  readonly repliedTo?: string
   /** How often a parked run rechecks its gate. Lowered by tests. */
   readonly gatePollMs?: number
 }

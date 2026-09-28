@@ -8,6 +8,7 @@ import { logger } from '@/lib/log'
 import { exitWithParent } from '@/lib/parent'
 import { runIssue } from '@/run/pipeline'
 import { announceReady, startServer, stopServer } from '@/server/serve'
+import { replyCommand, showThread } from '@/threadCommands'
 import { screenIssue } from '@/watch/intake'
 import { pollOnce } from '@/watch/poll'
 import { claimRun, completeRun, forgetRun, openState } from '@/watch/state'
@@ -246,6 +247,20 @@ function holdInheritedTokens(): void {
   }
 }
 
+/** The gate surface, answerable with nothing else running. */
+const GATE_COMMANDS: Record<
+  string,
+  (args: readonly string[]) => void | Promise<void>
+> = {
+  gates: showGates,
+  show: showGate,
+  thread: showThread,
+  reply: replyCommand,
+  approve: (args) => answerGateCommand('approved', args),
+  reject: (args) => answerGateCommand('rejected', args),
+  changes: (args) => answerGateCommand('changes', args),
+}
+
 async function main(): Promise<void> {
   holdInheritedTokens()
 
@@ -263,26 +278,11 @@ async function main(): Promise<void> {
     await doctor()
     return
   }
-  // Answering needs no factory running and no window open, which is the
-  // property that makes a gate a property of the run rather than of an app.
-  if (command === 'gates') {
-    showGates(rest)
-    return
-  }
-  if (command === 'show') {
-    await showGate(rest)
-    return
-  }
-  if (command === 'approve') {
-    await answerGateCommand('approved', rest)
-    return
-  }
-  if (command === 'reject') {
-    await answerGateCommand('rejected', rest)
-    return
-  }
-  if (command === 'changes') {
-    await answerGateCommand('changes', rest)
+  // None of these need a factory running or a window open, which is the
+  // property that makes a gate belong to the run rather than to an app.
+  const gateCommand = command === undefined ? undefined : GATE_COMMANDS[command]
+  if (gateCommand !== undefined) {
+    await gateCommand(rest)
     return
   }
 

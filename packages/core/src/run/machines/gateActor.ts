@@ -49,26 +49,28 @@ export const gateKeeper = fromCallback<
   // The last thing said, when a person said it, is a reply nobody has answered.
   // Derived from the conversation rather than tracked in a row: the answer is an
   // entry in the same file, so a turn that landed leaves nothing pending and a
-  // restart reconciles itself. Deduped in memory so a two second poll does not
-  // re-raise the same reply while the turn it started is still running.
-  let notified: string | undefined
+  // restart reconciles itself.
+  //
+  // Announced on every tick while one is pending, rather than once. The machine
+  // decides what to do with it, because only the machine knows whether it is
+  // already mid answer: a reply that arrived during a turn would otherwise be
+  // dropped by a state with no handler for it and never mentioned again.
+  let announced: string | undefined
   const noticeReply = async (): Promise<void> => {
     const deps = runDeps(input.runId)
     const entries = await readConversation(deps.run.subject)
     const last = entries.at(-1)
     if (last === undefined || last.role !== 'maintainer') {
-      // An answer landed, so the next reply is a new one.
-      notified = undefined
+      announced = undefined
       return
     }
-    if (last.id === notified) {
-      return
+    if (last.id !== announced) {
+      announced = last.id
+      log.info('a maintainer replied at the gate', {
+        runId: input.runId,
+        entry: last.id,
+      })
     }
-    notified = last.id
-    log.info('a maintainer replied at the gate', {
-      runId: input.runId,
-      entry: last.id,
-    })
     sendBack({ type: 'REPLY_RECEIVED', entryId: last.id, question: last.body })
   }
 

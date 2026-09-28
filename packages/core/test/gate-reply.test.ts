@@ -138,6 +138,7 @@ function machine() {
 }
 
 beforeEach(async () => {
+  actors = []
   asked = []
   behaviour = 'talk'
   dir = mkdtempSync(join(tmpdir(), 'aalai-reply-'))
@@ -152,13 +153,27 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
+  for (const actor of actors) {
+    actor.stop()
+  }
   releaseRunDeps(RUN_ID)
   handle.sqlite.close()
   rmSync(dir, { recursive: true, force: true })
 })
 
+/**
+ * Every actor started by a test, stopped in afterEach.
+ *
+ * A keeper left running polls into the next test and its fake turn appends an
+ * answer there, which clears that test's pending reply before its own keeper
+ * notices. The symptom is a timeout in an unrelated test, so cleanup is
+ * unconditional rather than left to each test remembering.
+ */
+let actors: { stop: () => void }[] = []
+
 async function parked(): Promise<ReturnType<typeof createActor>> {
   const actor = createActor(machine()).start()
+  actors.push(actor)
   await waitFor(
     actor,
     () =>
@@ -189,7 +204,6 @@ describe('a reply reaches the analyst without answering the gate', () => {
     const gate = readGate(handle.sqlite, gateId)
     expect(gate?.status).toBe('open')
     expect(gate?.decision).toBeNull()
-    actor.stop()
   })
 
   test('the turn is told which entry it is answering', async () => {
@@ -197,7 +211,6 @@ describe('a reply reaches the analyst without answering the gate', () => {
     await reply('first question')
     await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
     expect(asked[0]?.entryId).not.toBe('')
-    actor.stop()
   })
 
   test('the gate keeps its artifact version across a reply', async () => {
@@ -208,7 +221,6 @@ describe('a reply reaches the analyst without answering the gate', () => {
     const after = readGate(handle.sqlite, openGateId())
     expect(after?.artifactVersion).toBe(before?.artifactVersion as string)
     expect(after?.openedAt).toBe(before?.openedAt as string)
-    actor.stop()
   })
 
   test('it returns to waiting, so a second reply is answered too', async () => {
@@ -218,7 +230,6 @@ describe('a reply reaches the analyst without answering the gate', () => {
     await reply('second')
     await waitFor(actor, () => asked.length === 2, { timeout: 5000 })
     expect(asked.map((a) => a.question)).toEqual(['first', 'second'])
-    actor.stop()
   })
 
   test('one reply buys exactly one turn, however often the poll runs', async () => {
@@ -228,7 +239,6 @@ describe('a reply reaches the analyst without answering the gate', () => {
     // Several poll intervals, with the answer already appended.
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(asked).toHaveLength(1)
-    actor.stop()
   })
 })
 
@@ -241,7 +251,6 @@ describe('a reply that revises the plan', () => {
       timeout: 5000,
     })
     expect(actor.getSnapshot().context.analysis?.approach).toBe('streamed')
-    actor.stop()
   })
 
   test('a plan written during a reply supersedes the gate it was asked about', async () => {
@@ -300,13 +309,12 @@ describe('a person and the analyst acting at once', () => {
       { timeout: 5000 },
     )
     expect(readGate(handle.sqlite, gateId)?.status).toBe('open')
-    actor.stop()
   })
 })
 
 describe('what does not count as a reply', () => {
   test("a station's own note does not wake a turn", async () => {
-    const actor = await parked()
+    const _actor = await parked()
     await appendEntry(SUBJECT, {
       author: 'analyst',
       role: 'station',
@@ -314,7 +322,6 @@ describe('what does not count as a reply', () => {
     })
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(asked).toHaveLength(0)
-    actor.stop()
   })
 
   test('an already answered reply does not wake one on restart', async () => {
@@ -330,10 +337,9 @@ describe('what does not count as a reply', () => {
       role: 'station',
       body: 'answered earlier',
     })
-    const actor = await parked()
+    const _actor = await parked()
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(asked).toHaveLength(0)
-    actor.stop()
   })
 
   test('a reply left unanswered when the app died is picked up on restart', async () => {
@@ -345,6 +351,5 @@ describe('what does not count as a reply', () => {
     const actor = await parked()
     await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
     expect(asked[0]?.question).toBe('asked before the crash')
-    actor.stop()
   })
 })
