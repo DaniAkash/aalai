@@ -99,9 +99,3 @@ export async function announceGate(gate: GateOpened): Promise<boolean> {
     return false
   }
 }
-
-/** Only for tests: the set is process scoped and would otherwise leak between them. */
-export function forgetAnnounced(): void {
-  announced.clear()
-  lastAnnounced = undefined
-}

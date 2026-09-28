@@ -29,7 +29,7 @@ export interface ThreadView {
 }
 
 /** The subject a gate belongs to, from the run that opened it. */
-export function gateSubject(runId: string): Subject | undefined {
+function gateSubject(runId: string): Subject | undefined {
   const parsed = parseRunId(runId)
   return parsed === undefined
     ? undefined

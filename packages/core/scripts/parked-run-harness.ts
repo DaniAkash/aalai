@@ -15,13 +15,10 @@ import { listGates } from '@/modules/gates'
 import { appendEntry } from '@/modules/work/conversation'
 import { provideRunDeps } from '@/run/machines/deps'
 import { gateKeeper } from '@/run/machines/gateActor'
-import { persistSnapshot } from '@/run/machines/snapshots'
-import { workState } from '@/run/machines/types'
+import { persistEveryTransition } from '@/run/machines/snapshots'
+import { demoSubject } from './demo-subject'
 
-const repo = process.env.SEED_REPO ?? 'DaniAkash/aalai-demo'
-const issue = Number(process.env.SEED_ISSUE ?? '412')
-const subject = { repo, kind: 'issue' as const, number: issue }
-const runId = `${repo}#${issue}@1790000000412`
+const { repo, issue, subject, runId } = demoSubject()
 
 const { sqlite } = openDb()
 provideRunDeps(runId, {
@@ -89,22 +86,15 @@ const machine = setup({
 
 const actor = createActor(machine).start()
 
-// Same as the real driver: every transition writes the compact value and the
-// whole snapshot, which is what lets the thread endpoint report `answering`.
-let writes: Promise<void> = Promise.resolve()
-actor.subscribe((snapshot) => {
-  const value = workState(snapshot.value)
-  const persisted = actor.getPersistedSnapshot()
-  writes = writes.then(() =>
-    persistSnapshot({
-      db: sqlite,
-      run: { subject, runId },
-      runId,
-      machine: 'issueWork',
-      value,
-      snapshot: persisted,
-    }),
-  )
+// The same helper the real driver uses, rather than a copy of it: a harness that
+// mirrors production by duplication stops mirroring it the moment production
+// changes.
+persistEveryTransition({
+  db: sqlite,
+  run: { subject, runId },
+  runId,
+  machine: 'issueWork',
+  actor,
 })
 
 await waitFor(

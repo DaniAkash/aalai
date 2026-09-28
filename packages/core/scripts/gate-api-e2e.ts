@@ -10,7 +10,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createActor, fromPromise, setup, waitFor } from 'xstate'
+import { createActor, setup, waitFor } from 'xstate'
 import { openDb } from '@/modules/db/db'
 import { listGates, openGate, readGate } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
@@ -19,6 +19,7 @@ import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
 import { gateKeeper } from '@/run/machines/gateActor'
 import { startServer, stopServer } from '@/server/serve'
 import { check, finish, scenario } from './e2e-report'
+import { parkOnGate } from './parked-machine'
 
 const dir = mkdtempSync(join(tmpdir(), 'aalai-api-e2e-'))
 process.env.AALAI_STATE_DIR = dir
@@ -369,72 +370,23 @@ scenario(
   const subject = { repo: 'acme/widgets', kind: 'issue' as const, number: 22 }
   await writeArtifact(subject, 'plan', '# Plan\n\n1. Buffer it\n')
 
-  const asked: string[] = []
-  const machine = setup({
-    actors: {
-      gateKeeper,
-      replier: fromPromise(
-        async ({ input }: { input: { question: string } }) => {
-          asked.push(input.question)
-          // What a real turn does to answer: append, which is also what stops
-          // the reply being pending.
-          await appendEntry(subject, {
-            author: 'analyst',
-            role: 'station',
-            body: 'because a 2GB dump does not fit in memory',
-          })
-          return {}
-        },
-      ),
-    },
-  }).createMachine({
-    id: 'replying',
-    initial: 'gatingPlan',
-    states: {
-      gatingPlan: {
-        initial: 'waiting',
-        invoke: {
-          src: 'gateKeeper',
-          input: {
-            runId: REPLY_RUN,
-            repo: subject.repo,
-            issue: 22,
-            kind: 'plan',
-            pollMs: 50,
-          },
-        },
-        states: {
-          waiting: { on: { REPLY_RECEIVED: 'answering' } },
-          answering: {
-            invoke: {
-              src: 'replier',
-              input: ({ event }) => ({
-                question: String(
-                  (event as { question?: string }).question ?? '',
-                ),
-              }),
-              onDone: 'waiting',
-              onError: 'waiting',
-            },
-          },
-        },
-        on: { GATE_ANSWERED: 'settled' },
-      },
-      settled: { type: 'final' },
+  const parkedRun = await parkOnGate({
+    db: sqlite,
+    subject,
+    runId: REPLY_RUN,
+    issue: 22,
+    onAnswer: async () => {
+      // What a real turn does to answer, which is also what stops the reply
+      // being outstanding.
+      await appendEntry(subject, {
+        author: 'analyst',
+        role: 'station',
+        body: 'because a 2GB dump does not fit in memory',
+      })
     },
   })
+  const asked = parkedRun.asked
 
-  provideRunDeps(REPLY_RUN, {
-    db: sqlite,
-    run: { subject, runId: REPLY_RUN },
-    repo: subject.repo,
-  } as never)
-  const actor = createActor(machine).start()
-  await waitFor(
-    actor,
-    () => listGates(sqlite, { runId: REPLY_RUN, status: 'open' }).length > 0,
-    { timeout: 5000 },
-  )
   const [parked] = listGates(sqlite, { runId: REPLY_RUN, status: 'open' })
   const gateId = parked?.id ?? ''
   check('the run parked on a plan gate', gateId !== '')
@@ -448,7 +400,9 @@ scenario(
   })
   check('the reply was accepted', posted.status === 200)
 
-  await waitFor(actor, () => asked.length === 1, { timeout: 8000 })
+  for (let i = 0; i < 80 && asked.length === 0; i += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
   check('it woke a turn in the parked machine', asked.length === 1)
   check(
     'and the turn was given the question',
@@ -477,12 +431,12 @@ scenario(
     'the gate can still be approved after a discussion',
     approved.status === 200,
   )
-  const settled = await waitFor(actor, (state) => state.status === 'done', {
-    timeout: 8000,
-  })
-  check('and the run moved on', settled.value === 'settled')
-  actor.stop()
-  releaseRunDeps(REPLY_RUN)
+  const settled = await parkedRun.settled()
+  check(
+    'and the run moved on',
+    (settled as { value: string }).value === 'settled',
+  )
+  parkedRun.stop()
 
   const refused = await call(`/api/gates/${encodeURIComponent(gateId)}/reply`, {
     method: 'POST',
@@ -552,72 +506,20 @@ scenario('10. A stale question is not adopted by a later gate')
   })
   await new Promise((resolve) => setTimeout(resolve, 1100))
 
-  const asked: string[] = []
-  const machine = setup({
-    actors: {
-      gateKeeper,
-      replier: fromPromise(
-        async ({ input }: { input: { question: string } }) => {
-          asked.push(input.question)
-          return {}
-        },
-      ),
-    },
-  }).createMachine({
-    id: 'stale',
-    initial: 'gatingPlan',
-    states: {
-      gatingPlan: {
-        initial: 'waiting',
-        invoke: {
-          src: 'gateKeeper',
-          input: {
-            runId: STALE_RUN,
-            repo: subject.repo,
-            issue: 24,
-            kind: 'plan',
-            pollMs: 50,
-          },
-        },
-        states: {
-          waiting: { on: { REPLY_RECEIVED: 'answering' } },
-          answering: {
-            invoke: {
-              src: 'replier',
-              input: ({ event }) => ({
-                question: String(
-                  (event as { question?: string }).question ?? '',
-                ),
-              }),
-              onDone: 'waiting',
-              onError: 'waiting',
-            },
-          },
-        },
-        on: { GATE_ANSWERED: 'settled' },
-      },
-      settled: { type: 'final' },
-    },
-  })
-
-  provideRunDeps(STALE_RUN, {
+  const stale = await parkOnGate({
     db: sqlite,
-    run: { subject, runId: STALE_RUN },
-    repo: subject.repo,
-  } as never)
-  const actor = createActor(machine).start()
-  await waitFor(
-    actor,
-    () => listGates(sqlite, { runId: STALE_RUN, status: 'open' }).length > 0,
-    { timeout: 5000 },
-  )
+    subject,
+    runId: STALE_RUN,
+    issue: 24,
+  })
+  const asked = stale.asked
+
   await new Promise((resolve) => setTimeout(resolve, 400))
   check(
     'a question from before this gate opened is left alone',
     asked.length === 0,
   )
-  actor.stop()
-  releaseRunDeps(STALE_RUN)
+  stale.stop()
 }
 
 stopServer()

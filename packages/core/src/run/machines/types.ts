@@ -103,7 +103,7 @@ export const WORK_STATES = [
 export type WorkState = (typeof WORK_STATES)[number]
 
 /** What a parked run is doing inside the gate. Never persisted, never queried. */
-export const GATE_ACTIVITIES = ['waiting', 'answering'] as const
+const GATE_ACTIVITIES = ['waiting', 'answering'] as const
 export type GateActivity = (typeof GATE_ACTIVITIES)[number]
 
 /**

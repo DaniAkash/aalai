@@ -11,11 +11,9 @@ import { openDb } from '@/modules/db/db'
 import { openGate } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
 import { appendEntry } from '@/modules/work/conversation'
+import { demoSubject } from './demo-subject'
 
-const repo = process.env.SEED_REPO ?? 'DaniAkash/aalai-demo'
-const issue = Number(process.env.SEED_ISSUE ?? '412')
-const subject = { repo, kind: 'issue' as const, number: issue }
-const runId = `${repo}#${issue}@1790000000412`
+const { subject, runId } = demoSubject()
 
 const { sqlite } = openDb()
 

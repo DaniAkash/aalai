@@ -49,6 +49,8 @@
     "e2e:gates": "bun run scripts/gate-e2e.ts",
     "e2e:api": "bun run scripts/gate-api-e2e.ts",
     "e2e": "bun run e2e:gates && bun run e2e:api && bun run e2e:cli",
+    "demo:seed": "bun run scripts/seed-gate-conversation.ts",
+    "demo:parked": "bun run scripts/parked-run-harness.ts",
     "e2e:cli": "bun run scripts/gate-cli-e2e.ts"
   },
   "dependencies": {

@@ -4,6 +4,7 @@ import { query } from '@/modules/db/query'
 import { machineSnapshots } from '@/modules/db/schema/schema'
 import type { RunRef } from '@/modules/work/paths'
 import { readJson, writeJson } from '@/modules/work/store'
+import { workState } from './types'
 
 const log = logger('snapshot')
 
@@ -47,6 +48,45 @@ export async function persistSnapshot(input: {
       error: error instanceof Error ? error.message : String(error),
     })
   }
+}
+
+/**
+ * Writes a run's state on every transition, in order.
+ *
+ * Chained rather than collected. Each transition overwrites the same row and the
+ * same document, so letting them race means a later state can be overwritten by
+ * an earlier one finishing second, and the snapshot then describes a run that
+ * has already moved on.
+ *
+ * Returns the tail of the chain, so a caller that is about to stop can wait for
+ * the last write rather than losing it.
+ */
+export function persistEveryTransition(input: {
+  db: Database
+  run: RunRef
+  runId: string
+  machine: string
+  actor: {
+    subscribe: (listener: (snapshot: { value: unknown }) => void) => unknown
+    getPersistedSnapshot: () => unknown
+  }
+}): { settled: () => Promise<void> } {
+  let writes: Promise<void> = Promise.resolve()
+  input.actor.subscribe((snapshot) => {
+    const value = workState(snapshot.value)
+    const persisted = input.actor.getPersistedSnapshot()
+    writes = writes.then(() =>
+      persistSnapshot({
+        db: input.db,
+        run: input.run,
+        runId: input.runId,
+        machine: input.machine,
+        value,
+        snapshot: persisted,
+      }),
+    )
+  })
+  return { settled: () => writes }
 }
 
 export interface ResumableRun {
