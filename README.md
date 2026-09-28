@@ -1,6 +1,9 @@
 <div align="center">
 
-# aalai (ஆலை)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DaniAkash/aalai/main/assets/aalai-logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/DaniAkash/aalai/main/assets/aalai-logo.svg" alt="aalai (ஆலை)" width="420">
+</picture>
 
 **A software factory in your menu bar. Issues in, reviewed draft pull requests out, on your own machine.**
 

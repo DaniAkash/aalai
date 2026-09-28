@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/DaniAkash/aalai/main/assets/aalai-logo-block.svg" alt="aalai (ஆலை)" width="320">
+</p>
+
 # aalai
 
 **The factory. It runs without the desktop app, from a terminal.**
