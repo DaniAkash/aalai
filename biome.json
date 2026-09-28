@@ -135,6 +135,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["packages/core/src/run/machines/issueWork.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noExcessiveLinesPerFile": "off"
+          }
+        }
+      }
     }
   ]
 }

@@ -8,6 +8,7 @@ import {
   supersedeOpenGates,
 } from '@/modules/gates'
 import { latestArtifact } from '@/modules/work/artifacts'
+import { readConversation } from '@/modules/work/conversation'
 import { runDeps } from './deps'
 
 const log = logger('gate')
@@ -44,6 +45,32 @@ export const gateKeeper = fromCallback<
   let stopped = false
   let unsubscribe: (() => void) | undefined
   let timer: ReturnType<typeof setInterval> | undefined
+
+  // The last thing said, when a person said it, is a reply nobody has answered.
+  // Derived from the conversation rather than tracked in a row: the answer is an
+  // entry in the same file, so a turn that landed leaves nothing pending and a
+  // restart reconciles itself. Deduped in memory so a two second poll does not
+  // re-raise the same reply while the turn it started is still running.
+  let notified: string | undefined
+  const noticeReply = async (): Promise<void> => {
+    const deps = runDeps(input.runId)
+    const entries = await readConversation(deps.run.subject)
+    const last = entries.at(-1)
+    if (last === undefined || last.role !== 'maintainer') {
+      // An answer landed, so the next reply is a new one.
+      notified = undefined
+      return
+    }
+    if (last.id === notified) {
+      return
+    }
+    notified = last.id
+    log.info('a maintainer replied at the gate', {
+      runId: input.runId,
+      entry: last.id,
+    })
+    sendBack({ type: 'REPLY_RECEIVED', entryId: last.id, question: last.body })
+  }
 
   const settle = (gateId: string, source: string): boolean => {
     const deps = runDeps(input.runId)
@@ -139,9 +166,15 @@ export const gateKeeper = fromCallback<
         settle(gate.id, 'bus')
       }
     })
+    await noticeReply()
     timer = setInterval(() => {
       try {
-        settle(gateId, 'poll')
+        if (settle(gateId, 'poll')) {
+          return
+        }
+        void noticeReply().catch(() => {
+          // Same reasoning as below: the next tick asks again.
+        })
       } catch {
         // The run outlives a transient read failure; the next tick asks again.
       }

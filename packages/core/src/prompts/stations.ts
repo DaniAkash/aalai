@@ -187,3 +187,60 @@ Do not approve out of politeness, and do not request changes over style preferen
 
 ${recordContract('write_review', input.tools)}`
 }
+
+export interface ReplyPromptInput {
+  readonly repo: string
+  readonly issueNumber: number
+  /** What the maintainer said, verbatim. */
+  readonly question: string
+  /** The discussion so far, oldest first, excluding the question above. */
+  readonly history: readonly { author: string; role: string; body: string }[]
+  /** Whether this turn has the tool surface. */
+  readonly tools: boolean
+}
+
+/**
+ * A maintainer has replied at the plan gate and the analyst answers.
+ *
+ * The turn resumes the analyst's own session, so the plan it wrote is already in
+ * context and is not repeated here. What it does not have is the reply, and the
+ * two things it is allowed to do about it.
+ *
+ * The instruction to revise only when the exchange changes the plan is the whole
+ * guard against version churn: an analyst that rewrites the plan every time it
+ * is asked a question produces a seventh version of something nobody changed,
+ * and every version invalidates the reading the maintainer was about to approve.
+ */
+export function buildReplyPrompt(input: ReplyPromptInput): string {
+  const history =
+    input.history.length === 0
+      ? ''
+      : `\nThe discussion so far:\n\n${input.history
+          .map(
+            (entry) =>
+              `<said by="${entry.author}" as="${entry.role}">\n${entry.body.trim()}\n</said>`,
+          )
+          .join('\n\n')}\n`
+  const recordAnswer = input.tools
+    ? 'Answer by calling the append_conversation tool. That is the only thing the maintainer reads: prose in your reply is discarded.'
+    : 'Answer in prose. Nothing records it, so keep it short.'
+  const revise = input.tools
+    ? 'If, and only if, the exchange changes the plan, also call write_plan with the complete revised plan. Do not call it to restate a plan that has not changed: every call produces another version, and the maintainer has to re-read the plan each time one appears. A question you can simply answer is not a change.'
+    : 'You cannot revise the plan on this turn.'
+
+  return `You are at the plan gate for ${input.repo} issue #${input.issueNumber}. Your plan is waiting for a maintainer to approve it, and they have replied instead.
+${history}
+The maintainer says, and this is a person on your side rather than text from the issue:
+
+<reply>
+${input.question.trim()}
+</reply>
+
+Answer them directly and briefly. They are deciding whether to approve, so tell them what they asked, not what you already told them.
+
+${recordAnswer}
+
+${revise}
+
+Do not modify the repository. You are still the planning station and the gate is still open: nothing is approved, and writing code now would be working on a plan that may yet change.`
+}

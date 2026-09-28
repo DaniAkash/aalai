@@ -22,6 +22,15 @@ export interface AttemptInput<T, B = unknown> {
   readonly station: StationId
   /** Which pass through this station: 0 on the first, then the revision index. */
   readonly revision: number
+  /**
+   * Overrides the derived attempt id.
+   *
+   * A reply to a maintainer is not a numbered pass through a station, so a
+   * revision index cannot name it without colliding with the station's own
+   * attempts. It is keyed by the message it answers instead, which also makes
+   * answering the same message twice the same attempt.
+   */
+  readonly attemptId?: string
   /** The expensive thing. Only called when nothing already did it. */
   readonly execute: () => Promise<T>
   /**
@@ -58,7 +67,8 @@ export interface AttemptOutcome<T> {
 export async function runAttempt<T, B = unknown>(
   input: AttemptInput<T, B>,
 ): Promise<AttemptOutcome<T>> {
-  const id = attemptIdFor(input.runId, input.station, input.revision)
+  const id =
+    input.attemptId ?? attemptIdFor(input.runId, input.station, input.revision)
   const existing = readAttempt(input.db, id)
 
   if (existing?.status === 'succeeded') {

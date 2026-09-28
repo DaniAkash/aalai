@@ -34,6 +34,16 @@ export interface IssueWorkContext {
   readonly planGated?: boolean
   /** The gate currently being waited on, if any. */
   readonly gateId?: string
+  /**
+   * The reply being answered, while one is.
+   *
+   * Held in context rather than re-read by the actor so the turn answers the
+   * message that triggered it, even if another arrives while it runs.
+   */
+  readonly pendingReply?: {
+    readonly entryId: string
+    readonly question: string
+  }
   /** How often a parked run rechecks its gate. Lowered by tests. */
   readonly gatePollMs?: number
 }
