@@ -95,19 +95,27 @@ export async function appendEntry(
   const dir = artifactsDir(subject)
   await mkdir(dir, { recursive: true })
   const at = new Date().toISOString()
+  const body = input.body.trim()
   const path = join(dir, CONVERSATION)
   await appendFile(path, formatEntry({ ...input, at }), 'utf8')
-  // Read back rather than construct: the id depends on the entry's position,
-  // and reading is the only thing that knows what the parser will call it.
+
+  // Read back, because the id depends on the entry's position and only a read
+  // knows what the parser will call it. Matched rather than taken from the end:
+  // a station can append between this append and this read, and returning the
+  // last entry then hands back somebody else's words, which the terminal echoes
+  // as what you just said and the event stream announces under the wrong author.
   const entries = parseConversation(await Bun.file(path).text())
-  const written = entries.at(-1)
+  const written = entries.findLast(
+    (entry) =>
+      entry.at === at && entry.author === input.author && entry.body === body,
+  )
   return (
     written ?? {
       id: entryId(input.author, at, entries.length),
       author: input.author,
       role: input.role,
       at,
-      body: input.body.trim(),
+      body,
     }
   )
 }

@@ -1,5 +1,6 @@
 import { fromPromise } from 'xstate'
 import { latestArtifact } from '@/modules/work/artifacts'
+import type { ConversationEntry } from '@/modules/work/conversation'
 import { readConversation } from '@/modules/work/conversation'
 import { readJson } from '@/modules/work/store'
 import { runAnalystReply } from '@/run/stations'
@@ -29,25 +30,39 @@ export const replier = fromPromise(
     signal: AbortSignal
   }): Promise<{ analysis?: Analysis }> => {
     const deps = runDeps(input.runId)
-    const before = await latestArtifact(deps.run.subject, 'plan')
     const history = await readConversation(deps.run.subject)
-    const outcome = await runAttempt<{ analysis?: Analysis }>({
+    const outcome = await runAttempt<{ analysis?: Analysis }, ReplyBaseline>({
       db: deps.db,
       run: deps.run,
       runId: input.runId,
       station: 'analyst',
       revision: 0,
       attemptId: `${input.runId}:analyst-reply:${input.entryId}`,
-      reconcile: async () => {
-        // A plan newer than the one this reply started against means the turn
-        // got as far as revising. Adopt it rather than paying for the turn
-        // again, which would produce a second version of the same revision.
-        const latest = await latestArtifact(deps.run.subject, 'plan')
-        if (latest === undefined || latest.version === (before?.version ?? 0)) {
+      // Persisted, not recomputed. Reading the latest plan again on a restart
+      // reads the version the dead turn wrote, so the comparison found no change
+      // and bought another turn, which wrote a third version. This is what
+      // `captureBefore` is for and not using it was the defect.
+      captureBefore: async () => ({
+        planVersion:
+          (await latestArtifact(deps.run.subject, 'plan'))?.version ?? 0,
+        answers: countAnswersAfter(history, input.entryId),
+      }),
+      reconcile: async (before) => {
+        if (before === undefined) {
           return undefined
         }
-        const analysis = await readJson<Analysis>(deps.run, 'analysis')
-        return analysis === undefined ? undefined : { analysis }
+        // Either side effect means the turn landed. A crash between them leaves
+        // the other to be redone, which is the honest outcome: the work that is
+        // on disk is kept and only what is missing is bought again.
+        const latest = await latestArtifact(deps.run.subject, 'plan')
+        if ((latest?.version ?? 0) > before.planVersion) {
+          const analysis = await readJson<Analysis>(deps.run, 'analysis')
+          return analysis === undefined ? {} : { analysis }
+        }
+        const now = await readConversation(deps.run.subject)
+        return countAnswersAfter(now, input.entryId) > before.answers
+          ? {}
+          : undefined
       },
       execute: async () => {
         const { analysis } = await runAnalystReply({
@@ -67,3 +82,27 @@ export const replier = fromPromise(
     return outcome.value
   },
 )
+
+/** What the run looked like before a reply turn started. */
+interface ReplyBaseline {
+  readonly planVersion: number
+  readonly answers: number
+}
+
+/**
+ * Station entries after the question being answered.
+ *
+ * The count, not a boolean, because an answer to a later question would
+ * otherwise read as an answer to this one on a restart.
+ */
+function countAnswersAfter(
+  entries: readonly ConversationEntry[],
+  entryId: string,
+): number {
+  const at = entries.findIndex((entry) => entry.id === entryId)
+  if (at === -1) {
+    return 0
+  }
+  return entries.slice(at + 1).filter((entry) => entry.role === 'station')
+    .length
+}

@@ -32,6 +32,12 @@ export function openGate(db: Database, input: OpenGateInput): string {
       runId: input.runId,
       kind: input.kind,
       status: 'open',
+      // Written here rather than left to the column default, which SQLite fills
+      // with whole seconds. A gate's open time is compared against conversation
+      // entries that carry milliseconds, and at second precision a question
+      // asked earlier in the same second as a reopened gate read as being after
+      // it. Old rows keep their format and both are still parsed.
+      openedAt: new Date().toISOString(),
       artifactPath: input.artifactPath ?? null,
       artifactVersion: input.artifactVersion ?? null,
       summary: input.summary ?? null,

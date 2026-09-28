@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createActor, fromPromise, setup, waitFor } from 'xstate'
 import { openDb } from '@/modules/db/db'
 import { answerGate, listGates, readGate } from '@/modules/gates'
-import { writeArtifact } from '@/modules/work/artifacts'
+import { latestArtifact, writeArtifact } from '@/modules/work/artifacts'
 import { appendEntry } from '@/modules/work/conversation'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
@@ -43,7 +43,8 @@ const REVISED: Analysis = {
 /** Records what the reply turn was asked, so the test can assert on it. */
 let asked: { entryId: string; question: string }[] = []
 /** What the fake turn does: talk, revise, fail, or hang. */
-let behaviour: 'talk' | 'revise' | 'fail' | 'hang' | 'slow' = 'talk'
+let behaviour: 'talk' | 'revise' | 'fail' | 'hang' | 'slow' | 'reviseSlowly' =
+  'talk'
 
 /**
  * Sleeps, unless the actor is stopped first.
@@ -81,9 +82,14 @@ const fakeReplier = fromPromise(
     if (behaviour === 'fail') {
       throw new Error('the agent gave up')
     }
-    if (behaviour === 'revise') {
+    if (behaviour === 'revise' || behaviour === 'reviseSlowly') {
       // What write_plan does: the next version beside the old one.
       await writeArtifact(SUBJECT, 'plan', '# the revised plan\n')
+    }
+    if (behaviour === 'reviseSlowly') {
+      // The revision is on disk and the turn has not returned yet, which is the
+      // window a person can approve inside.
+      await nap(5_000, signal)
     }
     // A real turn answers by appending, which is also what clears the pending
     // reply: the last entry stops being the maintainer's.
@@ -92,7 +98,9 @@ const fakeReplier = fromPromise(
       role: 'station',
       body: 'because the file does not fit in memory',
     })
-    return behaviour === 'revise' ? { analysis: REVISED } : {}
+    return behaviour === 'revise' || behaviour === 'reviseSlowly'
+      ? { analysis: REVISED }
+      : {}
   },
 )
 
@@ -418,6 +426,41 @@ describe('a person and the analyst acting at once', () => {
     expect(settled.context.decision).toBe('approved')
   })
 
+  test('approving while a revision is in flight builds what was approved', async () => {
+    // Raised in review as building a plan different from the bytes just written.
+    // What it actually does is honour the decision: the gate was pinned to the
+    // version the person read, so that is the version that gets built, and the
+    // revision they never saw is left on disk unapproved. The alternative, a
+    // revision that invalidates a gate before a person can answer it, lets the
+    // agent veto a decision already being made.
+    behaviour = 'reviseSlowly'
+    const actor = await parked()
+    const gateId = openGateId()
+    await reply('add a constraint')
+    await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
+    // The revision is on disk; the turn has not finished.
+    for (let i = 0; i < 50; i += 1) {
+      if (((await latestArtifact(SUBJECT, 'plan'))?.version ?? 0) >= 2) {
+        break
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+
+    answerGate(handle.sqlite, {
+      gateId,
+      decision: 'approved',
+      answeredBy: 'dani',
+      answeredOn: 'app',
+    })
+    const settled = await waitFor(actor, (st) => st.status === 'done', {
+      timeout: 8000,
+    })
+    expect(settled.value).toBe('settled')
+    // Not the revision: the analysis carried forward is the one that was
+    // approved, which is what the gate named.
+    expect(settled.context.analysis?.approach).not.toBe('streamed')
+  })
+
   test('a failed answer leaves the gate open rather than failing the run', async () => {
     behaviour = 'fail'
     const actor = await parked()
@@ -481,14 +524,48 @@ describe('what does not count as a reply', () => {
     void actor
   })
 
+  test('two questions waiting at once are both answered, oldest first', async () => {
+    // Found in review. Announcing the newest outstanding question answers the
+    // second and leaves the first owed forever: the count never reached zero,
+    // the keeper re-announced a question the machine had already answered, and
+    // the guard refused it every time. A stall, not just a lost reply.
+    //
+    // The gate is opened first and both questions asked against it, because that
+    // is the shape a crash leaves behind: the row outlives the process.
+    behaviour = 'hang'
+    const first = await parked()
+    await reply('first question')
+    await waitFor(first, () => asked.length === 1, { timeout: 5000 })
+    await reply('second question')
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    first.stop()
+
+    asked = []
+    behaviour = 'talk'
+    const restarted = await parked()
+    await waitFor(restarted, () => asked.length === 2, { timeout: 10_000 })
+    expect(asked.map((a) => a.question)).toEqual([
+      'first question',
+      'second question',
+    ])
+  })
+
   test('a reply left unanswered when the app died is picked up on restart', async () => {
-    await appendEntry(SUBJECT, {
-      author: 'dani',
-      role: 'maintainer',
-      body: 'asked before the crash',
-    })
-    const actor = await parked()
-    await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
+    // The gate is opened first and outlives the crash, which is what happens:
+    // `openGate` does nothing on conflict, so a restart adopts the row and its
+    // original open time, and the question asked against it is still after it.
+    behaviour = 'hang'
+    const first = await parked()
+    await reply('asked before the crash')
+    await waitFor(first, () => asked.length === 1, { timeout: 5000 })
+    first.stop()
+
+    // The crash: the turn never appended an answer, so the question still owes
+    // one. A fresh actor on the same gate picks it up.
+    asked = []
+    behaviour = 'talk'
+    const restarted = await parked()
+    await waitFor(restarted, () => asked.length === 1, { timeout: 8000 })
     expect(asked[0]?.question).toBe('asked before the crash')
   })
 })

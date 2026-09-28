@@ -223,37 +223,44 @@ function saidAfter(entryAt: string, gateOpenedAt: string): boolean {
     // Unreadable timestamps must not silently swallow a real reply.
     return true
   }
-  // No grace either way. SQLite stores whole seconds, so a gate opened part way
-  // through one reads as having opened at its start, which already biases a
-  // borderline reply towards counting as after it. Widening that further just
-  // lets a question from before the gate back in.
+  // No grace. A gate opened now carries milliseconds, so the comparison is
+  // exact; a row written before that carries whole seconds and reads as having
+  // opened at the start of its second, which can still admit a question from
+  // earlier in that same second. That is the old rows' residue and not worth a
+  // migration: it costs one question being carried into a gate it preceded by
+  // under a second, and being asked again is the harmless direction.
   return said >= opened
 }
 
 /**
- * The question still owed an answer, or nothing.
+ * The oldest question still owed an answer, or nothing.
  *
- * Counted rather than read off the end. "The last entry is a person's" looks
- * right and is not: a reply sent while the analyst is mid answer stops being
- * last the moment that answer is appended after it, and the question was
- * silently buried. Counting also survives a restart, where the machine's own
- * memory of what it has answered does not exist yet.
+ * A queue rather than a count. Counting told us whether anything was owed but
+ * not which, so the newest was announced: with two questions waiting, the
+ * second was answered, the first stayed owed forever, and the keeper then
+ * re-announced a question the machine had already answered while its guard
+ * refused it every time. That is a stall, not a lost reply, and a restart with
+ * two unanswered questions reaches it immediately.
  *
- * Each question raises the debt and each answer pays one down, so the station
- * note that opened the discussion does not cancel a question asked after it.
+ * Oldest first, because that is the order they were asked in and the order the
+ * person expects them back.
+ *
+ * "The last entry is a person's" was the rule before counting, and was wrong a
+ * third way: a question asked while the analyst was mid answer stopped being
+ * last the moment that answer was appended after it.
  */
 function unansweredQuestion(
   entries: readonly ConversationEntry[],
 ): ConversationEntry | undefined {
-  let owed = 0
-  let newest: ConversationEntry | undefined
+  const owed: ConversationEntry[] = []
   for (const entry of entries) {
     if (entry.role === 'maintainer') {
-      owed += 1
-      newest = entry
-    } else if (owed > 0) {
-      owed -= 1
+      owed.push(entry)
+    } else {
+      // A station entry answers the oldest question outstanding, so the note
+      // that opened the discussion cannot cancel a question asked after it.
+      owed.shift()
     }
   }
-  return owed > 0 ? newest : undefined
+  return owed[0]
 }

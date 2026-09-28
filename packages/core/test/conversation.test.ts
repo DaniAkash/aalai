@@ -233,3 +233,32 @@ describe('telling two entries apart', () => {
     expect(entries[0]?.id).not.toBe(entries[1]?.id as string)
   })
 })
+
+describe('two writers at once', () => {
+  test('an append returns its own entry, not whichever landed last', async () => {
+    // Found in review. The station and a person can append concurrently, and
+    // taking the last entry handed back the other writer's words: the terminal
+    // echoed them as what you had just said and the event stream announced them
+    // under the wrong author.
+    const mine = appendEntry(subject, {
+      author: 'dani',
+      role: 'maintainer',
+      body: 'what I said',
+    })
+    const theirs = appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'what the analyst said',
+    })
+    const [got, alsoGot] = await Promise.all([mine, theirs])
+
+    expect(got.body).toBe('what I said')
+    expect(got.author).toBe('dani')
+    expect(alsoGot.body).toBe('what the analyst said')
+    expect(got.id).not.toBe(alsoGot.id)
+
+    const all = parseConversation(await read())
+    expect(all).toHaveLength(2)
+    expect(all.map((e) => e.id).sort()).toEqual([got.id, alsoGot.id].sort())
+  })
+})

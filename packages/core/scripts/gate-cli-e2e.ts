@@ -79,5 +79,30 @@ check('a reply after the answer is refused', late.includes('no longer open'))
 const stillThere = await cli('thread', gateId)
 check('and the late reply was not appended', !stillThere.includes('too late'))
 
+scenario('Two questions asked before either is answered keep their order')
+{
+  const { openGate } = await import('@/modules/gates')
+  const { openDb: open2 } = await import('@/modules/db/db')
+  const { sqlite: db2 } = open2()
+  const s2 = { repo: 'acme/widgets', kind: 'issue' as const, number: 45 }
+  const run2 = 'acme/widgets#45@1790000000045'
+  const a2 = await writeArtifact(s2, 'plan', '# Plan\n\n1. One\n')
+  const g2 = openGate(db2, {
+    runId: run2,
+    kind: 'plan',
+    artifactPath: a2.id,
+    artifactVersion: String(a2.version),
+  })
+  db2.close()
+
+  await cli('reply', g2, 'the first thing I asked')
+  await cli('reply', g2, 'the second thing I asked')
+  const thread = await cli('thread', g2)
+  const first = thread.indexOf('the first thing I asked')
+  const second = thread.indexOf('the second thing I asked')
+  check('both questions are in the record', first !== -1 && second !== -1)
+  check('and in the order they were asked', first < second)
+}
+
 rmSync(dir, { recursive: true, force: true })
 finish()
