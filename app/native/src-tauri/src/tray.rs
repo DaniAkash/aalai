@@ -15,7 +15,10 @@ pub fn build(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let menu = Menu::with_items(app, &[&open, &PredefinedMenuItem::separator(app)?, &quit])?;
 
     TrayIconBuilder::with_id("aalai")
-        .icon(app.default_window_icon().expect("no default icon").clone())
+        // Template mode keeps only the alpha channel, so the window icon, an
+        // opaque squircle, would flatten to a solid black rectangle here. This
+        // asset carries the factory outline in its alpha instead.
+        .icon(tauri::include_image!("icons/tray-template.png"))
         .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(true)
