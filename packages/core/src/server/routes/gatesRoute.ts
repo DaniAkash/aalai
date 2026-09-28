@@ -8,6 +8,7 @@ import {
   listGates,
   readGate,
   readThread,
+  replyToGate,
 } from '@/modules/gates'
 import { readArtifact } from '@/modules/work/artifacts'
 import { openState } from '@/watch/state'
@@ -17,6 +18,11 @@ const answerSchema = z.object({
   reason: z.string().max(4000).optional(),
   answeredBy: z.string().min(1).max(200),
   answeredOn: z.enum(ANSWER_SOURCES).default('app'),
+})
+
+const replySchema = z.object({
+  body: z.string().min(1).max(8000),
+  author: z.string().min(1).max(200),
 })
 
 const listSchema = z.object({
@@ -65,6 +71,22 @@ export const gatesRoute = new Hono()
       return c.json({ error: 'no such gate' }, 404)
     }
     return c.json(thread)
+  })
+  .post('/gates/:id/reply', zValidator('json', replySchema), async (c) => {
+    const body = c.req.valid('json')
+    const db = openState()
+    const result = await replyToGate(db, {
+      gateId: c.req.param('id'),
+      body: body.body,
+      author: body.author,
+    })
+    db.close()
+    if (result.ok) {
+      return c.json(result)
+    }
+    // Same reasoning as answering: a refusal is an outcome. 409 for a gate that
+    // moved under the reply, so a client can put the text back in the box.
+    return c.json(result, result.refusal.kind === 'not_found' ? 404 : 409)
   })
   .post('/gates/:id/answer', zValidator('json', answerSchema), async (c) => {
     const body = c.req.valid('json')

@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite'
+import { emit } from '@/events/bus'
 import type { ConversationEntry } from '@/modules/work/conversation'
-import { readConversation } from '@/modules/work/conversation'
+import { appendEntry, readConversation } from '@/modules/work/conversation'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { readSnapshot } from '@/run/machines/snapshots'
 import { gateActivity } from '@/run/machines/types'
@@ -57,4 +58,57 @@ export async function readThread(
     entries,
     state: gateActivity(value) === 'answering' ? 'answering' : 'idle',
   }
+}
+
+/** Why a reply did not take. */
+export type ReplyRefusal =
+  | { readonly kind: 'not_found' }
+  | { readonly kind: 'not_open'; readonly status: string }
+  | { readonly kind: 'wrong_kind'; readonly kind_was: string }
+
+export type ReplyResult =
+  | { readonly ok: true; readonly entry: ConversationEntry }
+  | { readonly ok: false; readonly refusal: ReplyRefusal }
+
+/**
+ * Says something at a gate without answering it.
+ *
+ * Refuses rather than throws, the same way answering does: a person can be
+ * mid reply while someone else approves, and that race is expected.
+ *
+ * Only a plan gate takes a reply. A permission ask holds an agent turn open and
+ * dies with the process, so a conversation cannot fit inside one.
+ */
+export async function replyToGate(
+  db: Database,
+  input: { gateId: string; body: string; author: string },
+): Promise<ReplyResult> {
+  const gate = readGate(db, input.gateId)
+  if (gate === undefined) {
+    return { ok: false, refusal: { kind: 'not_found' } }
+  }
+  if (gate.kind !== 'plan') {
+    return { ok: false, refusal: { kind: 'wrong_kind', kind_was: gate.kind } }
+  }
+  if (gate.status !== 'open') {
+    return { ok: false, refusal: { kind: 'not_open', status: gate.status } }
+  }
+  const subject = gateSubject(gate.runId)
+  if (subject === undefined) {
+    return { ok: false, refusal: { kind: 'not_found' } }
+  }
+  const entry = await appendEntry(subject, {
+    author: input.author,
+    role: 'maintainer',
+    body: input.body,
+  })
+  emit({
+    type: 'conversation.appended',
+    runId: gate.runId,
+    gateId: gate.id,
+    author: entry.author,
+    role: entry.role,
+    at: Date.now(),
+  })
+  return { ok: true, entry }
 }

@@ -10,7 +10,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createActor, setup, waitFor } from 'xstate'
+import { createActor, fromPromise, setup, waitFor } from 'xstate'
 import { openDb } from '@/modules/db/db'
 import { listGates, openGate, readGate } from '@/modules/gates'
 import { writeArtifact } from '@/modules/work/artifacts'
@@ -351,6 +351,136 @@ scenario('7. The discussion behind a gate is readable over HTTP')
 
   const missing = await call('/api/gates/nope/thread')
   check('an unknown gate is a 404, not an empty thread', missing.status === 404)
+}
+
+scenario(
+  '8. A reply over HTTP reaches a parked machine and leaves the gate open',
+)
+{
+  const REPLY_RUN = 'acme/widgets#22@1790000000022'
+  const subject = { repo: 'acme/widgets', kind: 'issue' as const, number: 22 }
+  await writeArtifact(subject, 'plan', '# Plan\n\n1. Buffer it\n')
+
+  const asked: string[] = []
+  const machine = setup({
+    actors: {
+      gateKeeper,
+      replier: fromPromise(
+        async ({ input }: { input: { question: string } }) => {
+          asked.push(input.question)
+          // What a real turn does to answer: append, which is also what stops
+          // the reply being pending.
+          await appendEntry(subject, {
+            author: 'analyst',
+            role: 'station',
+            body: 'because a 2GB dump does not fit in memory',
+          })
+          return {}
+        },
+      ),
+    },
+  }).createMachine({
+    id: 'replying',
+    initial: 'gatingPlan',
+    states: {
+      gatingPlan: {
+        initial: 'waiting',
+        invoke: {
+          src: 'gateKeeper',
+          input: {
+            runId: REPLY_RUN,
+            repo: subject.repo,
+            issue: 22,
+            kind: 'plan',
+            pollMs: 50,
+          },
+        },
+        states: {
+          waiting: { on: { REPLY_RECEIVED: 'answering' } },
+          answering: {
+            invoke: {
+              src: 'replier',
+              input: ({ event }) => ({
+                question: String(
+                  (event as { question?: string }).question ?? '',
+                ),
+              }),
+              onDone: 'waiting',
+              onError: 'waiting',
+            },
+          },
+        },
+        on: { GATE_ANSWERED: 'settled' },
+      },
+      settled: { type: 'final' },
+    },
+  })
+
+  provideRunDeps(REPLY_RUN, {
+    db: sqlite,
+    run: { subject, runId: REPLY_RUN },
+    repo: subject.repo,
+  } as never)
+  const actor = createActor(machine).start()
+  await waitFor(
+    actor,
+    () => listGates(sqlite, { runId: REPLY_RUN, status: 'open' }).length > 0,
+    { timeout: 5000 },
+  )
+  const [parked] = listGates(sqlite, { runId: REPLY_RUN, status: 'open' })
+  const gateId = parked?.id ?? ''
+  check('the run parked on a plan gate', gateId !== '')
+
+  const posted = await call(`/api/gates/${encodeURIComponent(gateId)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({
+      body: 'Why buffer rather than stream?',
+      author: 'dani',
+    }),
+  })
+  check('the reply was accepted', posted.status === 200)
+
+  await waitFor(actor, () => asked.length === 1, { timeout: 8000 })
+  check('it woke a turn in the parked machine', asked.length === 1)
+  check('and the turn was given the question', asked[0]?.includes('Why buffer'))
+
+  const still = readGate(sqlite, gateId)
+  check('the gate is still open', still?.status === 'open')
+  check('nothing was decided', still?.decision === null)
+
+  const thread = await call(`/api/gates/${encodeURIComponent(gateId)}/thread`)
+  const entries = (thread.body as { entries: { role: string }[] }).entries
+  check('the thread holds the question and the answer', entries.length === 2)
+  check('the maintainer asked first', entries[0]?.role === 'maintainer')
+  check('and a station answered', entries[1]?.role === 'station')
+
+  // The maintainer can still decide, which is the point of the gate staying open.
+  const approved = await call(
+    `/api/gates/${encodeURIComponent(gateId)}/answer`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ decision: 'approved', answeredBy: 'dani' }),
+    },
+  )
+  check(
+    'the gate can still be approved after a discussion',
+    approved.status === 200,
+  )
+  const settled = await waitFor(actor, (state) => state.status === 'done', {
+    timeout: 8000,
+  })
+  check('and the run moved on', settled.value === 'settled')
+  actor.stop()
+  releaseRunDeps(REPLY_RUN)
+
+  const refused = await call(`/api/gates/${encodeURIComponent(gateId)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify({ body: 'too late', author: 'dani' }),
+  })
+  check(
+    'a reply to an answered gate is refused, not appended',
+    refused.status === 409,
+  )
 }
 
 stopServer()
