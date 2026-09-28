@@ -4,6 +4,7 @@ import { type StreamState, subscribeToRunEvents } from '@/modules/api/events'
 import { useGate, useOpenGates } from '@/modules/api/gates.hooks'
 import { queryClient } from '@/modules/api/queryClient'
 import { useActiveRuns, usePastRuns } from '@/modules/api/runs.hooks'
+import { useThread } from '@/modules/api/thread.hooks'
 
 /**
  * Keeps the cache honest while the factory works.
@@ -33,6 +34,14 @@ export function useLiveEvents(): StreamState {
 
 /** What each event means for the cache, and nothing else. */
 function invalidateFor(event: RunEvent): void {
+  if (event.type === 'conversation.appended') {
+    // The event says who spoke, never what they said, so the thread is refetched
+    // rather than patched. One source of truth, which is the file.
+    void queryClient.invalidateQueries({
+      queryKey: useThread.getKey({ id: event.gateId }),
+    })
+    return
+  }
   if (event.type === 'gate.opened' || event.type === 'gate.answered') {
     void queryClient.invalidateQueries({ queryKey: useOpenGates.getKey() })
     void queryClient.invalidateQueries({

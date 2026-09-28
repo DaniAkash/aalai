@@ -11,7 +11,7 @@ import {
   readGate,
 } from '@/modules/gates'
 import { readArtifact } from '@/modules/work/artifacts'
-import { subjectOf, waitedFor } from '@/shared/format'
+import { revisedNote, subjectOf, waitedFor } from '@/shared/format'
 import { openState } from '@/watch/state'
 
 const log = logger('gates')
@@ -26,9 +26,7 @@ function asking(gate: GateRow): string {
   if (gate.summary !== null && gate.summary !== '') {
     return gate.summary
   }
-  return gate.kind === 'plan'
-    ? `approve the plan (v${gate.artifactVersion ?? '?'})`
-    : gate.kind
+  return gate.kind === 'plan' ? 'approve the plan' : gate.kind
 }
 
 export function showGates(args: readonly string[]): void {
@@ -75,7 +73,10 @@ export async function showGate(args: readonly string[]): Promise<void> {
   note('subject', subjectOf(gate.runId))
   note('status', gate.status)
   note('asking', asking(gate))
-  note('version', gate.artifactVersion ?? 'none')
+  const revised = revisedNote(gate.artifactVersion)
+  if (revised !== '') {
+    note('plan', revised)
+  }
   if (gate.decision !== null) {
     note('decision', `${gate.decision} by ${gate.answeredBy ?? 'someone'}`)
   }
