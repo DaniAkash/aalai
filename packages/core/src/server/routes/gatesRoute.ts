@@ -21,8 +21,24 @@ const answerSchema = z.object({
 })
 
 const replySchema = z.object({
-  body: z.string().min(1).max(8000),
-  author: z.string().min(1).max(200),
+  // Trimmed before the length check, because the writer trims too: a body of
+  // spaces passed `min(1)` and then became an empty question nobody could read
+  // and the analyst still had to spend a turn on.
+  body: z
+    .string()
+    .max(8000)
+    .transform((value) => value.trim())
+    .refine((value) => value.length > 0, 'a reply cannot be empty'),
+  // One line. The author is written into a line oriented sentinel, so a newline
+  // in it splits the entry and makes the whole conversation unparsable.
+  author: z
+    .string()
+    .max(200)
+    .transform((value) => value.trim())
+    .refine(
+      (value) => value.length > 0 && !/[\r\n]/.test(value),
+      'an author must be one line',
+    ),
 })
 
 const listSchema = z.object({

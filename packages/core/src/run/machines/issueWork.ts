@@ -136,6 +136,7 @@ export const issueWorkMachine = setup({
          * a sentence is ordinary, not exceptional.
          */
         gatingPlan: {
+          id: 'gatingPlan',
           initial: 'waiting',
           invoke: {
             src: 'gateKeeper',
@@ -179,15 +180,39 @@ export const issueWorkMachine = setup({
                   entryId: context.pendingReply?.entryId ?? '',
                   question: context.pendingReply?.question ?? '',
                 }),
-                onDone: {
-                  target: 'waiting',
-                  actions: assign({
-                    analysis: ({ context, event }) =>
-                      event.output.analysis ?? context.analysis,
-                    repliedTo: ({ context }) => context.pendingReply?.entryId,
-                    pendingReply: () => undefined,
-                  }),
-                },
+                onDone: [
+                  {
+                    /*
+                     * A reply that revised the plan re-enters the gate rather
+                     * than returning to waiting beside it.
+                     *
+                     * Re-entering is what runs the keeper's start again, and
+                     * that is the only thing that retires the question asked
+                     * about the version which no longer stands and opens one
+                     * pinned to the bytes that do. Returning to `waiting` left
+                     * the run on the old gate while the context held the new
+                     * plan, so approving it approved one plan and built
+                     * another.
+                     */
+                    target: '#gatingPlan',
+                    reenter: true,
+                    guard: 'replyRevisedThePlan',
+                    actions: assign({
+                      analysis: ({ context, event }) =>
+                        event.output.analysis ?? context.analysis,
+                      repliedTo: ({ context }) => context.pendingReply?.entryId,
+                      pendingReply: () => undefined,
+                      gateId: () => undefined,
+                    }),
+                  },
+                  {
+                    target: 'waiting',
+                    actions: assign({
+                      repliedTo: ({ context }) => context.pendingReply?.entryId,
+                      pendingReply: () => undefined,
+                    }),
+                  },
+                ],
                 // A failed answer leaves the gate open rather than failing the
                 // run: the maintainer can still decide without one.
                 onError: {

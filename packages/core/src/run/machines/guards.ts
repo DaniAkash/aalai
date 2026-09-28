@@ -25,6 +25,18 @@ export const guards = {
   /** Whether this repository's policy asks a person before any code is written. */
   planNeedsApproval: ({ context }: Args) => context.planGated === true,
   /**
+   * Whether the turn that just finished rewrote the plan.
+   *
+   * A revision has to re-enter the gate so the old question is retired and a new
+   * one is pinned to the bytes that now stand. A reply that only answered leaves
+   * the gate exactly as it was.
+   */
+  replyRevisedThePlan: ({ event }: Args) =>
+    'output' in event &&
+    typeof event.output === 'object' &&
+    event.output !== null &&
+    (event.output as { analysis?: unknown }).analysis !== undefined,
+  /**
    * Whether this reply is one a turn has not already been spent on.
    *
    * The keeper re-announces a pending reply on every tick, because only the

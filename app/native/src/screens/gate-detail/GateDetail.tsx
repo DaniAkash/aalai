@@ -138,6 +138,7 @@ export function GateDetail() {
               reply.mutate({ id: gateId, body, author: 'maintainer' })
             }
             pending={reply.isPending}
+            sentAt={reply.isSuccess ? reply.submittedAt : 0}
           />
         </section>
       </div>

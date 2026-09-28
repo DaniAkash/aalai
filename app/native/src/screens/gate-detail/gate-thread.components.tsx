@@ -102,15 +102,27 @@ export function Composer({
   gateOpen,
   pending,
   error,
+  sentAt,
   onSend,
 }: {
   answering: boolean
   gateOpen: boolean
   pending: boolean
   error: string | undefined
+  /** Changes when a reply is confirmed, which is the only thing that clears the box. */
+  sentAt: number
   onSend: (body: string) => void
 }) {
   const [body, setBody] = useState('')
+  const [clearedAt, setClearedAt] = useState(0)
+
+  // Derived during render rather than in an effect: a confirmed send is the one
+  // thing that empties the box, and reacting to it here avoids a frame where the
+  // old text is still on screen.
+  if (sentAt !== clearedAt) {
+    setClearedAt(sentAt)
+    setBody('')
+  }
   const blocked = answering || pending || !gateOpen
   const empty = body.trim() === ''
 
@@ -130,8 +142,11 @@ export function Composer({
         if (blocked || empty) {
           return
         }
+        // Not cleared here. The reply can still be refused, by a gate somebody
+        // answered while this was being typed, and clearing on submit threw away
+        // the text at exactly the moment the person needed it back. The screen
+        // clears it once the append is confirmed.
         onSend(body.trim())
-        setBody('')
       }}
     >
       <label className="sr-only" htmlFor="gate-reply">

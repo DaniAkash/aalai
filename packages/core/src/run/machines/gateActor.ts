@@ -8,6 +8,7 @@ import {
   supersedeOpenGates,
 } from '@/modules/gates'
 import { latestArtifact } from '@/modules/work/artifacts'
+import type { ConversationEntry } from '@/modules/work/conversation'
 import { readConversation } from '@/modules/work/conversation'
 import { runDeps } from './deps'
 
@@ -56,11 +57,21 @@ export const gateKeeper = fromCallback<
   // already mid answer: a reply that arrived during a turn would otherwise be
   // dropped by a state with no handler for it and never mentioned again.
   let announced: string | undefined
-  const noticeReply = async (): Promise<void> => {
+  const noticeReply = async (gateId: string): Promise<void> => {
     const deps = runDeps(input.runId)
+    const gate = readGate(deps.db, gateId)
+    if (gate === undefined || gate.status !== 'open') {
+      return
+    }
     const entries = await readConversation(deps.run.subject)
-    const last = entries.at(-1)
-    if (last === undefined || last.role !== 'maintainer') {
+    // Only what was said after this gate opened. The conversation belongs to the
+    // subject and outlives any one gate, so a question left unanswered when an
+    // earlier gate was approved is still sitting there; without this the next
+    // run on the same subject would adopt it and spend a turn on something
+    // somebody already moved past.
+    const since = entries.filter((entry) => saidAfter(entry.at, gate.openedAt))
+    const last = unansweredQuestion(since)
+    if (last === undefined) {
       announced = undefined
       return
     }
@@ -168,13 +179,13 @@ export const gateKeeper = fromCallback<
         settle(gate.id, 'bus')
       }
     })
-    await noticeReply()
+    await noticeReply(gateId)
     timer = setInterval(() => {
       try {
         if (settle(gateId, 'poll')) {
           return
         }
-        void noticeReply().catch(() => {
+        void noticeReply(gateId).catch(() => {
           // Same reasoning as below: the next tick asks again.
         })
       } catch {
@@ -193,3 +204,56 @@ export const gateKeeper = fromCallback<
     }
   }
 })
+
+/**
+ * Whether an entry was written after a gate opened.
+ *
+ * The gate's timestamp comes from SQLite as `YYYY-MM-DD HH:MM:SS` in UTC and an
+ * entry's is an ISO string, so the two need putting on the same footing before
+ * they can be compared at all.
+ */
+function saidAfter(entryAt: string, gateOpenedAt: string): boolean {
+  const said = Date.parse(entryAt)
+  const opened = Date.parse(
+    gateOpenedAt.includes('T')
+      ? gateOpenedAt
+      : `${gateOpenedAt.replace(' ', 'T')}Z`,
+  )
+  if (Number.isNaN(said) || Number.isNaN(opened)) {
+    // Unreadable timestamps must not silently swallow a real reply.
+    return true
+  }
+  // No grace either way. SQLite stores whole seconds, so a gate opened part way
+  // through one reads as having opened at its start, which already biases a
+  // borderline reply towards counting as after it. Widening that further just
+  // lets a question from before the gate back in.
+  return said >= opened
+}
+
+/**
+ * The question still owed an answer, or nothing.
+ *
+ * Counted rather than read off the end. "The last entry is a person's" looks
+ * right and is not: a reply sent while the analyst is mid answer stops being
+ * last the moment that answer is appended after it, and the question was
+ * silently buried. Counting also survives a restart, where the machine's own
+ * memory of what it has answered does not exist yet.
+ *
+ * Each question raises the debt and each answer pays one down, so the station
+ * note that opened the discussion does not cancel a question asked after it.
+ */
+function unansweredQuestion(
+  entries: readonly ConversationEntry[],
+): ConversationEntry | undefined {
+  let owed = 0
+  let newest: ConversationEntry | undefined
+  for (const entry of entries) {
+    if (entry.role === 'maintainer') {
+      owed += 1
+      newest = entry
+    } else if (owed > 0) {
+      owed -= 1
+    }
+  }
+  return owed > 0 ? newest : undefined
+}

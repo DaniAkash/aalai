@@ -229,7 +229,15 @@ scenario('7. A terminal in another process answers a parked run')
       stderr: 'pipe',
     },
   )
-  check('the terminal exits cleanly', (await answering.exited) === 0)
+  const code = await answering.exited
+  if (code !== 0) {
+    // What it said, because "exited 1" alone sends the next person hunting
+    // through the CLI rather than reading the one line that explains it.
+    process.stdout.write(
+      `        out: ${(await new Response(answering.stdout).text()).trim()}\n`,
+    )
+  }
+  check('the terminal exits cleanly', code === 0)
   check(
     'the answer is visible here',
     readGate(sqlite, parked)?.decision === 'approved',
@@ -484,6 +492,132 @@ scenario(
     'a reply to an answered gate is refused, not appended',
     refused.status === 409,
   )
+}
+
+scenario('9. A reply that cannot be stored is refused rather than half written')
+{
+  const GUARD_RUN = 'acme/widgets#23@1790000000023'
+  const subject = { repo: 'acme/widgets', kind: 'issue' as const, number: 23 }
+  const artifact = await writeArtifact(
+    subject,
+    'plan',
+    '# Plan\n\n1. Guard it\n',
+  )
+  const gid = openGate(sqlite, {
+    runId: GUARD_RUN,
+    kind: 'plan',
+    artifactPath: artifact.id,
+    artifactVersion: String(artifact.version),
+  })
+  const path = `/api/gates/${encodeURIComponent(gid)}/reply`
+
+  const blank = await call(path, {
+    method: 'POST',
+    body: JSON.stringify({ body: '   \n  ', author: 'dani' }),
+  })
+  check('a body of whitespace is refused', blank.status === 400)
+
+  const multiline = await call(path, {
+    method: 'POST',
+    body: JSON.stringify({ body: 'fine', author: 'da\nni' }),
+  })
+  check('an author spanning two lines is refused', multiline.status === 400)
+
+  const after = await call(`/api/gates/${encodeURIComponent(gid)}/thread`)
+  const entries = (after.body as { entries: unknown[] }).entries
+  check('and neither reached the record', entries.length === 0)
+
+  // A body that is only padded is kept, trimmed, because the person did say it.
+  const padded = await call(path, {
+    method: 'POST',
+    body: JSON.stringify({ body: '  a real question  ', author: '  dani  ' }),
+  })
+  check('a padded body is accepted', padded.status === 200)
+  const thread = await call(`/api/gates/${encodeURIComponent(gid)}/thread`)
+  const kept = (thread.body as { entries: { body: string; author: string }[] })
+    .entries
+  check('trimmed on the way in', kept[0]?.body === 'a real question')
+  check('and so is the author', kept[0]?.author === 'dani')
+}
+
+scenario('10. A stale question is not adopted by a later gate')
+{
+  const STALE_RUN = 'acme/widgets#24@1790000000024'
+  const subject = { repo: 'acme/widgets', kind: 'issue' as const, number: 24 }
+  await writeArtifact(subject, 'plan', '# Plan\n\n1. One\n')
+  await appendEntry(subject, {
+    author: 'dani',
+    role: 'maintainer',
+    body: 'asked while an earlier gate was open',
+  })
+  await new Promise((resolve) => setTimeout(resolve, 1100))
+
+  const asked: string[] = []
+  const machine = setup({
+    actors: {
+      gateKeeper,
+      replier: fromPromise(
+        async ({ input }: { input: { question: string } }) => {
+          asked.push(input.question)
+          return {}
+        },
+      ),
+    },
+  }).createMachine({
+    id: 'stale',
+    initial: 'gatingPlan',
+    states: {
+      gatingPlan: {
+        initial: 'waiting',
+        invoke: {
+          src: 'gateKeeper',
+          input: {
+            runId: STALE_RUN,
+            repo: subject.repo,
+            issue: 24,
+            kind: 'plan',
+            pollMs: 50,
+          },
+        },
+        states: {
+          waiting: { on: { REPLY_RECEIVED: 'answering' } },
+          answering: {
+            invoke: {
+              src: 'replier',
+              input: ({ event }) => ({
+                question: String(
+                  (event as { question?: string }).question ?? '',
+                ),
+              }),
+              onDone: 'waiting',
+              onError: 'waiting',
+            },
+          },
+        },
+        on: { GATE_ANSWERED: 'settled' },
+      },
+      settled: { type: 'final' },
+    },
+  })
+
+  provideRunDeps(STALE_RUN, {
+    db: sqlite,
+    run: { subject, runId: STALE_RUN },
+    repo: subject.repo,
+  } as never)
+  const actor = createActor(machine).start()
+  await waitFor(
+    actor,
+    () => listGates(sqlite, { runId: STALE_RUN, status: 'open' }).length > 0,
+    { timeout: 5000 },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  check(
+    'a question from before this gate opened is left alone',
+    asked.length === 0,
+  )
+  actor.stop()
+  releaseRunDeps(STALE_RUN)
 }
 
 stopServer()

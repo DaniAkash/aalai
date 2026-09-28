@@ -31,22 +31,44 @@ export interface ConversationEntry {
 
 const OPEN = '<!-- aalai:entry'
 const ESCAPED_OPEN = '<!-- aalai-quoted:entry'
+/** Marks a line that already began with the escape marker before it was written. */
+const QUOTE = '\u0021'
 const SENTINEL_LINE =
   /^<!-- aalai:entry author="(?<author>[^"]*)" role="(?<role>maintainer|station)" at="(?<at>[^"]*)" -->$/
 const HEADING_LINE = /^## (?<author>.+?) · (?<at>\d{4}-\d{2}-\d{2}T\S+)$/
 
-/** Neutralises a sentinel a body contains, so it cannot open an entry. */
+/**
+ * Neutralises a sentinel a body contains, so it cannot open an entry.
+ *
+ * The escape marker is escaped first, and unescaping reverses that order.
+ * Rewriting only the open marker is not reversible: a body that already
+ * contained the escaped form was left alone on the way in and promoted to the
+ * open form on the way out, so a person's text came back changed.
+ */
 function escapeBody(body: string): string {
   return body
     .split('\n')
-    .map((line) =>
-      line.startsWith(OPEN) ? line.replace(OPEN, ESCAPED_OPEN) : line,
-    )
+    .map((line) => {
+      if (line.startsWith(ESCAPED_OPEN)) {
+        return `${QUOTE}${line}`
+      }
+      return line.startsWith(OPEN) ? line.replace(OPEN, ESCAPED_OPEN) : line
+    })
     .join('\n')
 }
 
 function unescapeBody(body: string): string {
-  return body.split(ESCAPED_OPEN).join(OPEN)
+  return body
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith(`${QUOTE}${ESCAPED_OPEN}`)) {
+        return line.slice(QUOTE.length)
+      }
+      return line.startsWith(ESCAPED_OPEN)
+        ? line.replace(ESCAPED_OPEN, OPEN)
+        : line
+    })
+    .join('\n')
 }
 
 export function formatEntry(input: {
@@ -73,18 +95,21 @@ export async function appendEntry(
   const dir = artifactsDir(subject)
   await mkdir(dir, { recursive: true })
   const at = new Date().toISOString()
-  await appendFile(
-    join(dir, CONVERSATION),
-    formatEntry({ ...input, at }),
-    'utf8',
+  const path = join(dir, CONVERSATION)
+  await appendFile(path, formatEntry({ ...input, at }), 'utf8')
+  // Read back rather than construct: the id depends on the entry's position,
+  // and reading is the only thing that knows what the parser will call it.
+  const entries = parseConversation(await Bun.file(path).text())
+  const written = entries.at(-1)
+  return (
+    written ?? {
+      id: entryId(input.author, at, entries.length),
+      author: input.author,
+      role: input.role,
+      at,
+      body: input.body.trim(),
+    }
   )
-  return {
-    id: entryId(input.author, at),
-    author: input.author,
-    role: input.role,
-    at,
-    body: input.body.trim(),
-  }
 }
 
 /**
@@ -102,7 +127,7 @@ export function parseConversation(text: string): ConversationEntry[] {
   const flush = (): void => {
     if (current !== undefined) {
       entries.push({
-        id: entryId(current.author, current.at),
+        id: entryId(current.author, current.at, entries.length),
         author: current.author,
         role: current.role,
         at: current.at,
@@ -193,12 +218,13 @@ function matchHead(
 /**
  * Stable without being stored.
  *
- * Author and timestamp identify an entry: one author cannot append twice in the
- * same millisecond, and the body is excluded so an id does not change if the
- * body is ever normalised.
+ * Position is in the id because author and timestamp are not enough: a station
+ * appending twice inside one millisecond produced one id for two entries, which
+ * dropped the second as already seen and made React reuse a key. The file is
+ * append only, so an entry's position never changes once written.
  */
-function entryId(author: string, at: string): string {
-  return Bun.hash(`${author}|${at}`).toString(36)
+function entryId(author: string, at: string, index: number): string {
+  return Bun.hash(`${index}|${author}|${at}`).toString(36)
 }
 
 /** The subject's discussion as entries, or none if nothing has been said. */

@@ -43,20 +43,47 @@ const REVISED: Analysis = {
 /** Records what the reply turn was asked, so the test can assert on it. */
 let asked: { entryId: string; question: string }[] = []
 /** What the fake turn does: talk, revise, fail, or hang. */
-let behaviour: 'talk' | 'revise' | 'fail' | 'hang' = 'talk'
+let behaviour: 'talk' | 'revise' | 'fail' | 'hang' | 'slow' = 'talk'
+
+/**
+ * Sleeps, unless the actor is stopped first.
+ *
+ * A turn that keeps running after its actor is stopped appends into whatever
+ * state directory the next test has set up, which changes that test's
+ * conversation and fails it for reasons that have nothing to do with it.
+ */
+function nap(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer)
+      reject(new Error('stopped'))
+    })
+  })
+}
 
 const fakeReplier = fromPromise(
   async ({
     input,
+    signal,
   }: {
     input: { runId: string; entryId: string; question: string }
+    signal: AbortSignal
   }): Promise<{ analysis?: Analysis }> => {
     asked.push({ entryId: input.entryId, question: input.question })
     if (behaviour === 'hang') {
-      await new Promise((resolve) => setTimeout(resolve, 10_000))
+      await nap(10_000, signal)
+    }
+    if (behaviour === 'slow') {
+      // Long enough that the next reply lands before this answer does.
+      await nap(400, signal)
     }
     if (behaviour === 'fail') {
       throw new Error('the agent gave up')
+    }
+    if (behaviour === 'revise') {
+      // What write_plan does: the next version beside the old one.
+      await writeArtifact(SUBJECT, 'plan', '# the revised plan\n')
     }
     // A real turn answers by appending, which is also what clears the pending
     // reply: the last entry stops being the maintainer's.
@@ -75,9 +102,14 @@ function machine() {
   }).createMachine({
     id: 'gatingWithReply',
     initial: 'gatingPlan',
-    context: { decision: '', analysis: undefined as Analysis | undefined },
+    context: {
+      decision: '',
+      analysis: undefined as Analysis | undefined,
+      repliedTo: undefined as string | undefined,
+    },
     states: {
       gatingPlan: {
+        id: 'gate',
         initial: 'waiting',
         invoke: {
           src: 'gateKeeper',
@@ -92,10 +124,20 @@ function machine() {
         states: {
           waiting: {
             on: {
-              // The real machine assigns the reply into context here; this
-              // shape only needs the transition, since the event is read by the
-              // invoke input below.
-              REPLY_RECEIVED: { target: 'answering' },
+              // Mirrors the real machine: the keeper re-announces an
+              // outstanding question every tick, and this guard is what stops
+              // that buying a second turn on one already answered.
+              REPLY_RECEIVED: {
+                target: 'answering',
+                guard: ({ context, event }) =>
+                  String((event as { entryId?: string }).entryId ?? '') !==
+                  context.repliedTo,
+                actions: ({ context, event }) => {
+                  context.repliedTo = String(
+                    (event as { entryId?: string }).entryId ?? '',
+                  )
+                },
+              },
             },
           },
           answering: {
@@ -108,13 +150,22 @@ function machine() {
                   (event as { question?: string }).question ?? '',
                 ),
               }),
-              onDone: {
-                target: 'waiting',
-                actions: ({ context, event }) => {
-                  const output = event.output as { analysis?: Analysis }
-                  context.analysis = output.analysis ?? context.analysis
+              // Mirrors the real machine: a revision re-enters the gate, which
+              // is what retires the old question and opens one on the new bytes.
+              onDone: [
+                {
+                  target: '#gate',
+                  reenter: true,
+                  guard: ({ event }) =>
+                    (event.output as { analysis?: Analysis }).analysis !==
+                    undefined,
+                  actions: ({ context, event }) => {
+                    const output = event.output as { analysis?: Analysis }
+                    context.analysis = output.analysis ?? context.analysis
+                  },
                 },
-              },
+                { target: 'waiting' },
+              ],
               onError: { target: 'waiting' },
             },
           },
@@ -232,6 +283,21 @@ describe('a reply reaches the analyst without answering the gate', () => {
     expect(asked.map((a) => a.question)).toEqual(['first', 'second'])
   })
 
+  test('a reply sent while the analyst is answering is not buried by the answer', async () => {
+    // The keeper used to look at the last entry only. A question asked mid turn
+    // stopped being last as soon as the answer to the previous one was appended
+    // after it, so it was never announced and the person waited forever.
+    behaviour = 'slow'
+    const actor = await parked()
+    await reply('first')
+    await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
+    // Sent while the first turn is still running, so the answer to it lands
+    // after this one.
+    await reply('second, asked while it was still thinking')
+    await waitFor(actor, () => asked.length === 2, { timeout: 8000 })
+    expect(asked[1]?.question).toBe('second, asked while it was still thinking')
+  })
+
   test('one reply buys exactly one turn, however often the poll runs', async () => {
     const actor = await parked()
     await reply('only once please')
@@ -253,22 +319,77 @@ describe('a reply that revises the plan', () => {
     expect(actor.getSnapshot().context.analysis?.approach).toBe('streamed')
   })
 
-  test('a plan written during a reply supersedes the gate it was asked about', async () => {
+  test('the gate asked about the old plan is retired, without being told to', async () => {
+    // Found in review. `supersedeOpenGates` runs only when the gate state is
+    // entered, and returning from a reply is a transition between substates, so
+    // nothing retired the old question: the run stayed on the v1 gate while the
+    // context held v2, and approving it would have built a plan nobody approved.
+    // The previous version of this test called supersedeOpenGates by hand, so it
+    // proved the mechanism and never touched the path.
+    behaviour = 'revise'
     const actor = await parked()
-    await reply('a question')
+    const firstGate = openGateId()
+    await reply('keep the existing signature')
     await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
-    // What write_plan does: a new version beside the old one.
-    await writeArtifact(SUBJECT, 'plan', '# the revised plan\n')
-    const gateId = openGateId()
-    // The keeper retires the question asked about the version that no longer
-    // stands, which is the path that already existed for a rewritten issue.
-    const { supersedeOpenGates } = await import('@/modules/gates')
-    supersedeOpenGates(handle.sqlite, RUN_ID, 'plan', { except: 'nothing' })
-    const settled = await waitFor(actor, (s) => s.status === 'done', {
-      timeout: 5000,
+
+    await waitFor(
+      actor,
+      () => readGate(handle.sqlite, firstGate)?.status === 'superseded',
+      { timeout: 8000 },
+    )
+    expect(readGate(handle.sqlite, firstGate)?.status).toBe('superseded')
+  })
+
+  test('and a new gate opens on the revised plan', async () => {
+    behaviour = 'revise'
+    const actor = await parked()
+    const firstGate = openGateId()
+    await reply('keep the existing signature')
+    await waitFor(actor, () => asked.length === 1, { timeout: 5000 })
+
+    const reopened = await waitFor(
+      actor,
+      () => {
+        const open = listGates(handle.sqlite, {
+          runId: RUN_ID,
+          status: 'open',
+        })
+        return open.length === 1 && open[0]?.id !== firstGate
+      },
+      { timeout: 8000 },
+    )
+    expect(reopened).toBeDefined()
+    const [open] = listGates(handle.sqlite, { runId: RUN_ID, status: 'open' })
+    // Pinned to the bytes that now stand, which is what makes approving it mean
+    // approving what the person just negotiated.
+    expect(open?.artifactVersion).toBe('2')
+  })
+
+  test('approving the reopened gate approves the revised analysis', async () => {
+    behaviour = 'revise'
+    const actor = await parked()
+    const firstGate = openGateId()
+    await reply('keep the existing signature')
+    await waitFor(
+      actor,
+      () =>
+        listGates(handle.sqlite, { runId: RUN_ID, status: 'open' })[0]?.id !==
+        firstGate,
+      { timeout: 8000 },
+    )
+    const [open] = listGates(handle.sqlite, { runId: RUN_ID, status: 'open' })
+    answerGate(handle.sqlite, {
+      gateId: open?.id ?? '',
+      decision: 'approved',
+      answeredBy: 'dani',
+      answeredOn: 'app',
     })
-    expect(settled.value).toBe('reasking')
-    expect(readGate(handle.sqlite, gateId)?.status).toBe('superseded')
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 8000,
+    })
+    expect(settled.value).toBe('settled')
+    // The context carries what was approved, not what was superseded.
+    expect(settled.context.analysis?.approach).toBe('streamed')
   })
 })
 
@@ -340,6 +461,24 @@ describe('what does not count as a reply', () => {
     const _actor = await parked()
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(asked).toHaveLength(0)
+  })
+
+  test('a question left over from an earlier gate is not re-answered', async () => {
+    // Found in review. The conversation belongs to the subject and outlives any
+    // one gate, so a question nobody answered before a gate was approved is
+    // still the last thing said. A later run on the same subject used to treat
+    // it as its own and spend a turn on it.
+    await appendEntry(SUBJECT, {
+      author: 'dani',
+      role: 'maintainer',
+      body: 'asked during a gate that was then approved',
+    })
+    // A second apart, so the entry is unambiguously older than the gate.
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+    const actor = await parked()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(asked).toHaveLength(0)
+    void actor
   })
 
   test('a reply left unanswered when the app died is picked up on restart', async () => {

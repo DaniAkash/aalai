@@ -194,3 +194,42 @@ describe('an empty discussion', () => {
     expect(parseConversation('just some text\nover two lines')).toEqual([])
   })
 })
+
+describe('round tripping text that looks like the format itself', () => {
+  test('a body containing the escaped marker survives unchanged', async () => {
+    // Found in review. escapeBody rewrote the open marker but left an already
+    // escaped one alone, and unescapeBody then promoted it, so a body that
+    // happened to contain the escaped form came back as the open form.
+    const body = '<!-- aalai-quoted:entry author="x" role="station" at="y" -->'
+    await appendEntry(subject, { author: 'you', role: 'maintainer', body })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.body).toBe(body)
+  })
+
+  test('both markers in one body survive together', async () => {
+    const body = [
+      '<!-- aalai:entry author="a" role="station" at="1" -->',
+      '<!-- aalai-quoted:entry author="b" role="station" at="2" -->',
+    ].join('\n')
+    await appendEntry(subject, { author: 'you', role: 'maintainer', body })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.body).toBe(body)
+  })
+})
+
+describe('telling two entries apart', () => {
+  test('the same author in the same millisecond is still two entries', () => {
+    // Ids were author plus timestamp only, so a station appending twice inside
+    // one millisecond produced one id for two entries: the second reply was
+    // dropped as already seen and React reused a key.
+    const at = '2026-01-01T00:00:00.000Z'
+    const text =
+      formatEntry({ author: 'analyst', role: 'station', at, body: 'first' }) +
+      formatEntry({ author: 'analyst', role: 'station', at, body: 'second' })
+    const entries = parseConversation(text)
+    expect(entries).toHaveLength(2)
+    expect(entries[0]?.id).not.toBe(entries[1]?.id as string)
+  })
+})

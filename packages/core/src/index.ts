@@ -280,7 +280,14 @@ async function main(): Promise<void> {
   }
   // None of these need a factory running or a window open, which is the
   // property that makes a gate belong to the run rather than to an app.
-  const gateCommand = command === undefined ? undefined : GATE_COMMANDS[command]
+  // Own keys only. A plain object inherits `toString`, `constructor` and the
+  // rest, so `aalai toString` would have called Object.prototype.toString with
+  // the CLI's arguments and `aalai __proto__` would have thrown, instead of
+  // either falling through to the usage text.
+  const gateCommand =
+    command !== undefined && Object.hasOwn(GATE_COMMANDS, command)
+      ? GATE_COMMANDS[command]
+      : undefined
   if (gateCommand !== undefined) {
     await gateCommand(rest)
     return

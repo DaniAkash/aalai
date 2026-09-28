@@ -102,6 +102,20 @@ export async function replyToGate(
     role: 'maintainer',
     body: input.body,
   })
+
+  // Checked again, because the status check above and this append are not one
+  // operation: an answer can commit in between. The entry stays, since it was
+  // genuinely said and the record is append only, but the caller is told it
+  // reached nobody so it can keep the text. Nothing acts on it either: a gate
+  // opened later has a later timestamp, so the keeper reads this as belonging
+  // to the gate that closed rather than to the new one.
+  const settledMeanwhile = readGate(db, input.gateId)
+  if (settledMeanwhile !== undefined && settledMeanwhile.status !== 'open') {
+    return {
+      ok: false,
+      refusal: { kind: 'not_open', status: settledMeanwhile.status },
+    }
+  }
   emit({
     type: 'conversation.appended',
     runId: gate.runId,
