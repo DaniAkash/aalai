@@ -428,6 +428,25 @@ describe('what counts as already said, and what a withdrawal spares', () => {
     expect(report.delivered[0]?.url).toBe('https://example.invalid/1')
   })
 
+  test('noise that still has a question in it is not closed either', async () => {
+    // Found on a real run: a vague report came back as noise with four missing
+    // details and a close queued behind it. Every classification can ask, so
+    // the rule follows the question rather than the label.
+    await queueDraftedReply(RUN, {
+      classification: 'noise',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: ['the input', 'the output that was expected'],
+      reply: 'What did you pass in, and what did you expect back?',
+    } as never)
+
+    expect((await readQueued(RUN)).map((q) => q.intent.kind)).toEqual([
+      'comment_on_issue',
+    ])
+  })
+
   test('a question still missing its detail is not closed as it is asked', async () => {
     // It is about to wait weeks on the reporter. Queueing a close beside the
     // request would post the question and shut the issue in one go.

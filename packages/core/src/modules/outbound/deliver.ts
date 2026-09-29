@@ -114,13 +114,22 @@ export async function queueDraftedReply(
 function closingReason(
   triage: Triage,
 ): 'completed' | 'not_planned' | undefined {
+  // Nothing that is still waiting on an answer gets closed, whatever it was
+  // classified as. `missing` is what sends the machine off to wait weeks on the
+  // reporter, so queueing a close beside the question would post the question
+  // and shut the issue in the same breath, and then sit there waiting for a
+  // reply to a thread nobody can reply to.
+  //
+  // Found by running a vague report through the real repository: it came back
+  // as noise with four missing details and a close queued behind it. Keying
+  // this on the classification rather than on the question being asked was the
+  // mistake, because every classification can ask.
+  if (triage.missing.length > 0) {
+    return undefined
+  }
   switch (triage.classification) {
     case 'question':
-      // Only once it has actually been answered. A question that had to ask the
-      // reporter for something is about to wait weeks for them, and queueing a
-      // close alongside the request would post the question and shut the issue
-      // in the same breath.
-      return triage.missing.length > 0 ? undefined : 'completed'
+      return 'completed'
     case 'duplicate':
     case 'noise':
       return 'not_planned'
