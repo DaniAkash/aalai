@@ -1,4 +1,3 @@
-import type { PostedComment } from '@/lib/gh'
 import { gh } from '@/lib/ghExec'
 
 /**
@@ -25,8 +24,6 @@ export interface CheckRun {
  * a commit and a pull request's head moves. Asking by pull request would let a
  * failure from a commit that has since been replaced look current.
  */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function listCheckRuns(
   repo: string,
   sha: string,
@@ -44,43 +41,6 @@ export async function listCheckRuns(
     .map((line) => JSON.parse(line) as CheckRun)
 }
 
-export interface CheckAnnotation {
-  readonly path: string
-  readonly start_line: number
-  readonly annotation_level: string
-  readonly message: string
-  readonly title: string | null
-}
-
-/**
- * What a failing check said, as structured lines when there are any.
- *
- * Enrichment rather than the source. Annotations carry the file and line and
- * are pleasant to read, but they are not dependable: the same failing job
- * produced three on one run and none on a rerun of the same commit, and the
- * check run's own `annotations_count` agreed it had none. Anything that needs
- * to know why a check failed reads the log; this makes the answer nicer when
- * GitHub happens to have kept them.
- */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
-export async function checkAnnotations(
-  repo: string,
-  checkRunId: number,
-): Promise<CheckAnnotation[]> {
-  const stdout = await gh([
-    'api',
-    '--paginate',
-    `repos/${repo}/check-runs/${checkRunId}/annotations`,
-    '--jq',
-    '.[] | {path, start_line, annotation_level, message, title}',
-  ])
-  return stdout
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as CheckAnnotation)
-}
-
 export interface PullRequestState {
   readonly number: number
   readonly state: string
@@ -93,8 +53,6 @@ export interface PullRequestState {
 }
 
 /** Where a pull request currently stands, including the head its checks belong to. */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function pullRequestState(
   repo: string,
   number: number,
@@ -137,8 +95,6 @@ export interface ReviewComment {
  * The threading id is carried because replying in the thread is the point: a
  * comment answered by a new top level comment reads as ignoring it.
  */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function listReviewComments(
   repo: string,
   number: number,
@@ -156,31 +112,7 @@ export async function listReviewComments(
     .map((line) => JSON.parse(line) as ReviewComment)
 }
 
-/** Replies inside a review thread, so the person who asked sees the answer where they asked. */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
-export async function replyToReviewComment(
-  repo: string,
-  number: number,
-  commentId: number,
-  body: string,
-): Promise<PostedComment> {
-  const stdout = await gh([
-    'api',
-    '--method',
-    'POST',
-    `repos/${repo}/pulls/${number}/comments/${commentId}/replies`,
-    '-f',
-    `body=${body}`,
-    '--jq',
-    '{id, html_url}',
-  ])
-  return JSON.parse(stdout) as PostedComment
-}
-
 /** The head commit of a branch, and who wrote it. */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function branchHead(
   repo: string,
   branch: string,
@@ -201,8 +133,6 @@ export async function branchHead(
  * the newest run the factory itself started, and the two are different things
  * that would otherwise be one import away from each other.
  */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function latestWorkflowRunId(
   repo: string,
   branch: string,
@@ -265,8 +195,6 @@ export function windowAroundFailure(text: string, maxLines: number): string {
  * Capped because an unbounded log becomes an unbounded prompt, and this one is
  * written by somebody else's test runner.
  */
-// TEMPORARY: consumed by the watch, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function failedLog(
   repo: string,
   runId: number,

@@ -6,7 +6,7 @@ import { cursor, runs } from '@/modules/db/schema/schema'
 
 export type { RunStatus } from '@/modules/db/schema/schema'
 
-import type { RunStatus } from '@/modules/db/schema/schema'
+import type { RunStatus, SubjectKind } from '@/modules/db/schema/schema'
 
 /**
  * The shape the interface and the API already render.
@@ -64,6 +64,8 @@ export function claimRun(
   repo: string,
   issue: number,
   staleAfterMs = 30 * 60 * 1000,
+  /** Which kind of subject is being claimed. A pull request claims like an issue. */
+  kind: SubjectKind = ISSUE,
 ): string | null {
   const now = new Date()
   const lease = crypto.randomUUID()
@@ -72,7 +74,7 @@ export function claimRun(
     .insert(runs)
     .values({
       repo,
-      subjectKind: ISSUE,
+      subjectKind: kind,
       subjectNumber: issue,
       status: 'claimed',
       lease,
@@ -111,11 +113,13 @@ export function completeRun(
     readonly prUrl?: string
     readonly error?: string
     readonly lease?: string
+    /** Which subject is being completed. A pull request completes like an issue. */
+    readonly kind?: SubjectKind
   },
 ): boolean {
   const subject = and(
     eq(runs.repo, repo),
-    eq(runs.subjectKind, ISSUE),
+    eq(runs.subjectKind, outcome.kind ?? ISSUE),
     eq(runs.subjectNumber, issue),
   )
   const result = query(db)
@@ -201,4 +205,62 @@ export function forgetRun(db: Database, repo: string, issue: number): boolean {
     .returning({ repo: runs.repo })
     .all()
   return result.length > 0
+}
+
+/**
+ * Pull requests the factory delivered that nothing is watching yet.
+ *
+ * A delivered issue run carries the pull request's URL and the branch it was
+ * built on. A pull request already being watched has a run of its own on a `pr`
+ * subject, so the ones worth starting are the delivered issues whose pull
+ * request has no such row.
+ */
+export function deliveredPullRequests(db: Database): {
+  repo: string
+  issueNumber: number
+  prNumber: number
+  branch: string
+}[] {
+  const delivered = query(db)
+    .select({
+      repo: runs.repo,
+      issueNumber: runs.subjectNumber,
+      prUrl: runs.prUrl,
+      branch: runs.branch,
+    })
+    .from(runs)
+    .where(and(eq(runs.subjectKind, ISSUE), eq(runs.status, 'delivered')))
+    .all()
+
+  const watched = new Set(
+    query(db)
+      .select({ repo: runs.repo, number: runs.subjectNumber })
+      .from(runs)
+      .where(eq(runs.subjectKind, 'pr'))
+      .all()
+      .map((row) => `${row.repo}#${row.number}`),
+  )
+
+  const open: {
+    repo: string
+    issueNumber: number
+    prNumber: number
+    branch: string
+  }[] = []
+  for (const row of delivered) {
+    const prNumber = Number((row.prUrl ?? '').split('/').pop())
+    if (!Number.isFinite(prNumber) || prNumber <= 0) {
+      continue
+    }
+    if (watched.has(`${row.repo}#${prNumber}`)) {
+      continue
+    }
+    open.push({
+      repo: row.repo,
+      issueNumber: row.issueNumber,
+      prNumber,
+      branch: row.branch ?? '',
+    })
+  }
+  return open
 }

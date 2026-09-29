@@ -148,9 +148,6 @@ export function mayBeAnsweredPublicly(triage: Triage): boolean {
 }
 
 export const FAULTS = ['ours', 'theirs', 'unclear'] as const
-// TEMPORARY: read by the machine that acts on a verdict, in a later commit.
-// fallow-ignore-next-line unused-type
-export type Fault = (typeof FAULTS)[number]
 
 /**
  * Whether a failing check is this change's fault.

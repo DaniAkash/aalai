@@ -6,6 +6,7 @@ import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
+import { watchDeliveredPullRequests } from '@/watch/pullRequests'
 import { resumeUnfinished } from '@/watch/resume'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
@@ -37,6 +38,9 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
   // restart looking like an abandoned issue.
   const resumed = await resumeUnfinished(db, config)
   let handled = resumed
+  // Before new work, like resuming is. A pull request already delivered is
+  // closer to done than an issue nobody has looked at.
+  handled += await watchDeliveredPullRequests(db, config)
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
   }

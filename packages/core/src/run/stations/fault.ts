@@ -1,5 +1,3 @@
-// TEMPORARY: reachable once the pull request machine invokes it, in a later commit.
-// fallow-ignore-file unused-file
 import type { Config } from '@/config'
 import { buildFaultPrompt, buildStationRules } from '@/prompts/stations'
 import type { StationResult } from '@/run/station'
@@ -19,8 +17,6 @@ export interface FaultInput {
 }
 
 /** Decides whether a failing check is this change's fault. Modifies nothing. */
-// TEMPORARY: invoked by the pull request machine, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function runFaultClassifier(
   input: FaultInput,
 ): Promise<{ verdict: FaultVerdict; result: StationResult }> {

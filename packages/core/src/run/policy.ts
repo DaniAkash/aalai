@@ -42,8 +42,6 @@ export function triageFirst(policy: RunPolicy): boolean {
  * the repository rather than what they prefer in general: a repository nobody
  * looks at daily is one where background revisions accumulate unseen.
  */
-// TEMPORARY: read by the delivery hand off, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export function keepsPullRequestsAlive(config: Config, repo: string): boolean {
   const watched = config.watch.find((w) => w.repo === repo)
   return watched?.keepPullRequestsAlive ?? config.keepPullRequestsAlive
