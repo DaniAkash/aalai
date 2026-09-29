@@ -32,6 +32,7 @@ function start(
           }),
         ),
         failureReporter: fromPromise(async () => {}),
+        ciFixer: fromPromise(async () => ({ pushedSha: 'fixed-sha' })),
         ...overrides,
       },
     }),
@@ -50,6 +51,15 @@ function start(
   actors.push(actor)
   return actor
 }
+
+const ourFault = fromPromise(
+  async (): Promise<FaultVerdict> => ({
+    fault: 'ours',
+    summary: 'the teens case is not handled',
+    reasoning: 'the failing assertion names the function this diff edits',
+    evidence: ['(fail) uses th for the teens'],
+  }),
+)
 
 const failing: Signal = { kind: 'checks_failed', names: ['test'] }
 const touched: Signal = { kind: 'branch_touched', author: 'a-maintainer' }
@@ -114,24 +124,46 @@ describe('whose fault a failing check is', () => {
     expect(back.context.ciFixes).toBe(0)
   })
 
-  test('ours stops rather than quietly carrying on', async () => {
-    // Until fixing is built, a failure decided to be ours must not loop back
-    // to watching a failure it has already taken responsibility for.
+  test('ours is fixed, and the fix is what gets pushed', async () => {
+    const actor = start({ faultClassifier: ourFault })
+    actor.send({ type: 'SIGNALS', signals: [failing] })
+    const back = await waitFor(
+      actor,
+      (s) => s.matches('watching') && s.context.pushedSha !== '',
+      { timeout: 5000 },
+    )
+    expect(back.context.pushedSha).toBe('fixed-sha')
+    expect(back.context.ciFixes).toBe(1)
+  })
+
+  test('a fix that changed nothing stops rather than trying the same thing again', async () => {
+    // The attempt is already spent. Going back to watch the same check fail
+    // for the same reason is how a budget is burned without a person learning
+    // anything.
     const actor = start({
-      faultClassifier: fromPromise(
-        async (): Promise<FaultVerdict> => ({
-          fault: 'ours',
-          summary: 'the new branch drops the separator',
-          reasoning: 'the failing assertion names the function this diff edits',
-          evidence: ['expected "a-b"'],
-        }),
-      ),
+      faultClassifier: ourFault,
+      ciFixer: fromPromise(async () => {
+        throw new Error('the fix changed nothing (no-changes)')
+      }),
     })
     actor.send({ type: 'SIGNALS', signals: [failing] })
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
-    expect(settled.context.outcome?.kind).toBe('exhausted')
+    expect(settled.context.outcome?.kind).toBe('failed')
+  })
+
+  test('a fix is spent only when the failure was ours', async () => {
+    // A classification deciding somebody else broke it costs nothing, which is
+    // the entire reason the classification happens before the fix.
+    const actor = start()
+    actor.send({ type: 'SIGNALS', signals: [failing] })
+    const back = await waitFor(
+      actor,
+      (s) => s.matches('watching') && s.context.pending.length === 0,
+      { timeout: 5000 },
+    )
+    expect(back.context.ciFixes).toBe(0)
   })
 
   test('a classifier that cannot answer fails the run rather than guessing', async () => {

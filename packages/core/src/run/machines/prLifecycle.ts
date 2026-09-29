@@ -1,8 +1,9 @@
 import { assign, setup } from 'xstate'
-import { exhaustedBecause, mayFixCi, mayRevise } from '@/run/budgets'
-import { ready, type Upshot, upshotOf } from '@/run/prCollect'
+import { exhaustedBecause } from '@/run/budgets'
+import { ready } from '@/run/prCollect'
 import { isOurFault } from '@/run/stations/schemas'
-import { failureReporter, faultClassifier } from './prActors'
+import { ciFixer, failureReporter, faultClassifier } from './prActors'
+import { affordable, upshot, watchInput } from './prRules'
 import type { PrContext, PrEvent, PrInput } from './prTypes'
 import { prWatch } from './prWatchActor'
 
@@ -17,57 +18,13 @@ import { prWatch } from './prWatchActor'
  * world, is driven entirely from outside, and may run for days.
  */
 
-/** What this batch amounts to, asked in one place so every guard agrees. */
-function upshot(context: PrContext): Upshot {
-  return upshotOf({
-    openedAt: context.openedAt ?? '',
-    signals: context.pending,
-  })
-}
-
-/**
- * Whether there is budget for what this batch asks.
- *
- * Asked of the two allowances separately. A batch carrying a failing check and
- * a review comment needs both, and running out of one must not quietly spend
- * the other.
- */
-function affordable(context: PrContext): boolean {
-  const asked = upshot(context)
-  if (asked.kind !== 'revise') {
-    return true
-  }
-  const spent = { ciFixes: context.ciFixes, revisions: context.revisions }
-  const allowance = {
-    maxCiFixes: context.maxCiFixes,
-    maxRevisions: context.maxRevisions,
-  }
-  return (
-    (asked.failing.length === 0 || mayFixCi(spent, allowance)) &&
-    (asked.asked.length === 0 || mayRevise(spent, allowance))
-  )
-}
-
-const watchInput = ({ context }: { context: PrContext }) => ({
-  repo: context.repo,
-  prNumber: context.prNumber,
-  seen: {
-    headSha: context.headSha,
-    baseSha: context.baseSha,
-    lastCommentId: context.lastCommentId,
-    failedChecks: context.failedChecks,
-    pushedSha: context.pushedSha,
-  },
-  ...(context.pollMs === undefined ? {} : { pollMs: context.pollMs }),
-})
-
 export const prLifecycle = setup({
   types: {
     context: {} as PrContext,
     input: {} as PrInput,
     events: {} as PrEvent,
   },
-  actors: { prWatch, faultClassifier, failureReporter },
+  actors: { prWatch, faultClassifier, failureReporter, ciFixer },
   guards: {
     windowClosed: ({ context }: { context: PrContext }) =>
       context.openedAt !== undefined &&
@@ -268,16 +225,9 @@ export const prLifecycle = setup({
             actions: assign({ verdict: ({ event }) => event.output }),
           },
           {
-            // Ours. Fixing it is the next piece of work, and until it exists
-            // this stops and says so rather than looping back to watch a
-            // failure it has decided is its own.
-            target: 'done',
-            actions: assign({
-              outcome: ({ event }) => ({
-                kind: 'exhausted' as const,
-                why: `the checks fail because of this change (${event.output.summary}) and fixing that automatically is not built yet`,
-              }),
-            }),
+            // Ours, and there is budget, so fix it.
+            target: 'fixing',
+            actions: assign({ verdict: ({ event }) => event.output }),
           },
         ],
         onError: {
@@ -286,6 +236,52 @@ export const prLifecycle = setup({
             outcome: () => ({
               kind: 'failed' as const,
               error: 'could not work out why the checks failed',
+            }),
+          }),
+        },
+      },
+    },
+
+    /**
+     * Making the failing check pass, then watching what that did.
+     *
+     * A fix is spent here rather than when the failure was noticed, so a
+     * classification that decided the failure was somebody else's costs
+     * nothing. The commit it pushes is remembered, which is what lets the next
+     * look tell this run's own push from a person's.
+     */
+    fixing: {
+      entry: assign({ ciFixes: ({ context }) => context.ciFixes + 1 }),
+      invoke: {
+        src: 'ciFixer',
+        input: ({ context }) => {
+          const asked = upshot(context)
+          return {
+            runId: context.runId,
+            prNumber: context.prNumber,
+            failing: asked.kind === 'revise' ? asked.failing : [],
+            why: context.verdict?.summary ?? 'the checks fail on this change',
+            attempt: context.ciFixes,
+          }
+        },
+        onDone: {
+          target: 'watching',
+          actions: assign({
+            pushedSha: ({ event }) => event.output.pushedSha,
+            pending: () => [],
+            openedAt: () => undefined,
+            verdict: () => undefined,
+          }),
+        },
+        // A turn that changed nothing, or could not push, is not a fix. The
+        // attempt is already spent, and saying so is better than going back to
+        // watch a check fail for the same reason a third time.
+        onError: {
+          target: 'done',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'tried to fix the failing checks and changed nothing',
             }),
           }),
         },
