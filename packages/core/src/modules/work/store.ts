@@ -110,6 +110,38 @@ export async function queueOutbound(
   return path
 }
 
+/**
+ * Binds every unreleased intent to the gate that now asks about it.
+ *
+ * A station queues an intent before the gate exists, because the gate is opened
+ * on the artifact the station just wrote. This is the machine saying "these
+ * belong to the question I am about to ask", which is what makes delivery able
+ * to refuse anything a person has not answered.
+ *
+ * Only unbound intents are stamped: one already released by an earlier gate
+ * keeps that gate, so re-asking a question cannot retroactively release what
+ * the previous answer did not.
+ */
+// TEMPORARY: consumed by the triage machine, which lands next. Removed there.
+// fallow-ignore-next-line unused-export
+export async function bindIntentsToGate(
+  ref: RunRef,
+  gateId: string,
+): Promise<number> {
+  let bound = 0
+  for (const queued of await readQueued(ref)) {
+    if (queued.intent.gateId !== undefined) {
+      continue
+    }
+    await writeAtomic(
+      join(runDir(ref), 'outbox', `${queued.id}.json`),
+      `${JSON.stringify({ ...queued.intent, gateId }, null, 2)}\n`,
+    )
+    bound += 1
+  }
+  return bound
+}
+
 /** Everything queued for this run, oldest first, with what it is filed under. */
 export async function readQueued(ref: RunRef): Promise<QueuedIntent[]> {
   const dir = join(runDir(ref), 'outbox')

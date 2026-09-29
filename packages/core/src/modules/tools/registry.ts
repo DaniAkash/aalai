@@ -9,8 +9,14 @@ import {
 } from '@/modules/work/artifacts'
 import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { queueOutbound } from '@/modules/work/store'
-import { recordAnalysis, recordReview } from '@/run/artifacts'
-import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
+import { recordAnalysis, recordReview, recordTriage } from '@/run/artifacts'
+import {
+  analysisSchema,
+  CLASSIFICATIONS,
+  CONFIDENCES,
+  reviewSchema,
+  triageSchema,
+} from '@/run/stations/schemas'
 import type { ToolContext } from './context'
 
 /**
@@ -224,8 +230,49 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
   )
 }
 
+function registerWriteTriage(server: McpServer, ctx: ToolContext): void {
+  server.registerTool(
+    'write_triage',
+    {
+      title: 'Record what this issue is',
+      description:
+        'Record your classification of this issue and why. Call this instead of writing the verdict as prose. A new call records a new version; it never overwrites an earlier one.',
+      inputSchema: {
+        classification: z.enum(CLASSIFICATIONS),
+        confidence: z.enum(CONFIDENCES),
+        summary: z.string().min(1),
+        reasoning: z.string().min(1),
+        affected_surface: z.array(z.string()),
+        duplicate_of: z.number().int().positive().optional(),
+        reply: z.string().optional(),
+        missing: z.array(z.string()),
+      },
+    },
+    async (input) => {
+      const triage = triageSchema.parse(input)
+      const recorded = await recordTriage(
+        ctx.subject,
+        ctx.run,
+        { number: ctx.subject.number, title: ctx.title },
+        triage,
+      )
+      ctx.written.push(recorded)
+      ctx.recorded.triage = triage
+      return text(
+        `recorded ${recorded.id} (version ${recorded.version}) as ${triage.classification} at ${triage.confidence} confidence`,
+      )
+    },
+  )
+}
+
 /** Tool names a station is given, which is the whole access control. */
 export const STATION_TOOLS: Record<StationId, readonly string[]> = {
+  classifier: [
+    'write_triage',
+    'find_artifacts',
+    'read_artifact',
+    'append_conversation',
+  ],
   analyst: [
     'write_plan',
     'find_artifacts',
@@ -246,6 +293,7 @@ export function registerStationTools(
   ctx: ToolContext,
 ): void {
   const allowed = new Set(STATION_TOOLS[ctx.station] ?? [])
+  if (allowed.has('write_triage')) registerWriteTriage(server, ctx)
   if (allowed.has('write_plan')) registerWritePlan(server, ctx)
   if (allowed.has('write_review')) registerWriteReview(server, ctx)
   if (allowed.has('find_artifacts')) registerRecall(server, ctx)

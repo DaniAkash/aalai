@@ -91,3 +91,75 @@ export const reviewSchema = z.object({
 })
 
 export type Review = z.infer<typeof reviewSchema>
+
+export const CLASSIFICATIONS = [
+  'bug',
+  'feature',
+  'question',
+  'duplicate',
+  'security',
+  'noise',
+] as const
+// TEMPORARY: consumed by the triage machine and the interface, which land
+// next. Removed there.
+// fallow-ignore-next-line unused-type
+export type Classification = (typeof CLASSIFICATIONS)[number]
+
+export const CONFIDENCES = ['low', 'medium', 'high'] as const
+// TEMPORARY: consumed by the triage machine and the interface, which land
+// next. Removed there.
+// fallow-ignore-next-line unused-type
+export type Confidence = (typeof CONFIDENCES)[number]
+
+/**
+ * What the classifier decided about an issue, before any code is considered.
+ *
+ * `confidence` is a field rather than a sentence inside the reasoning because
+ * the interface has to render it: being wrong about a duplicate is expensive
+ * and rude, so a low confidence duplicate is presented as a question rather
+ * than as a proposal, and that is a decision driven by this value.
+ *
+ * `duplicate_of` is only meaningful for a duplicate and is deliberately not
+ * required for one: a classifier that suspects a duplicate without being able
+ * to name it has said something useful, and forcing it to invent a number
+ * would be worse than letting it say so.
+ */
+export const triageSchema = z.object({
+  classification: z.enum(CLASSIFICATIONS),
+  confidence: z.enum(CONFIDENCES),
+  /** One line a person can read in the inbox without opening anything. */
+  summary: looseText,
+  reasoning: looseText,
+  /** What a fix would touch, when it is actionable. Empty otherwise. */
+  affected_surface: looseList,
+  /** The issue this duplicates, when it is one. */
+  duplicate_of: z.coerce.number().int().positive().optional(),
+  /**
+   * What aalai would say to the reporter, when it has something to say.
+   *
+   * Drafted here and posted by nobody: it becomes an intent that a person
+   * releases, and the station never learns whether it went out.
+   */
+  reply: looseText.optional(),
+  /** What is missing, when the issue cannot be acted on without more. */
+  missing: looseList,
+})
+
+export type Triage = z.infer<typeof triageSchema>
+
+/** Whether this classification means a person is being asked to allow a run. */
+export function isActionable(triage: Triage): boolean {
+  return triage.classification === 'bug' || triage.classification === 'feature'
+}
+
+/**
+ * Whether anything at all may be said in public about this.
+ *
+ * A security report is the one class where the ordinary courtesy is the leak:
+ * a public "thanks, we are looking at it" tells the world where to look. The
+ * answer is silence plus a private escalation, and this is the function that
+ * says so everywhere rather than each caller remembering.
+ */
+export function mayBeAnsweredPublicly(triage: Triage): boolean {
+  return triage.classification !== 'security'
+}

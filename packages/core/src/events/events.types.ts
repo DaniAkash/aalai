@@ -7,12 +7,16 @@
  */
 export type Stage =
   | 'workspace'
+  | 'classifier'
   | 'analyst'
   | 'implementer'
   | 'reviewer'
   | 'deliver'
 
-export type StationId = Extract<Stage, 'analyst' | 'implementer' | 'reviewer'>
+export type StationId = Extract<
+  Stage,
+  'classifier' | 'analyst' | 'implementer' | 'reviewer'
+>
 
 export interface CriterionResultEvent {
   readonly criterion: string

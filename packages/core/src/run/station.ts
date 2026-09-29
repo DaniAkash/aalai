@@ -16,7 +16,7 @@ import type { ArtifactRef } from '@/modules/work/artifacts'
 import type { Subject } from '@/modules/work/paths'
 import type { OutboundIntent } from '@/modules/work/store'
 import { permissionGate } from '@/run/permissionGate'
-import type { Analysis, Review } from '@/run/stations/schemas'
+import type { Analysis, Review, Triage } from '@/run/stations/schemas'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
 // documented compatibility path. Its warning fires on every turn with a full
@@ -65,7 +65,7 @@ export interface StationResult {
   /** Outbound intents this turn queued. Queued, never sent. */
   readonly queued: readonly OutboundIntent[]
   /** Structured values a tool validated, when the station had tools. */
-  readonly recorded: { analysis?: Analysis; review?: Review }
+  readonly recorded: { analysis?: Analysis; review?: Review; triage?: Triage }
 }
 
 /**
