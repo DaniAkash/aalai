@@ -104,5 +104,58 @@ scenario('Two questions asked before either is answered keep their order')
   check('and in the order they were asked', first < second)
 }
 
+scenario('A triage gate is answerable and discussable from a terminal')
+{
+  const { openGate, readGate } = await import('@/modules/gates')
+  const { openDb: openAgain } = await import('@/modules/db/db')
+  const { sqlite: db3 } = openAgain()
+  const s3 = { repo: 'acme/widgets', kind: 'issue' as const, number: 77 }
+  const run3 = 'acme/widgets#77@1790000000077'
+  const report = await writeArtifact(
+    s3,
+    'triage',
+    '# Triage of #77\n\n**Classification:** duplicate\n**Confidence:** low\n',
+  )
+  const g3 = openGate(db3, {
+    runId: run3,
+    kind: 'triage',
+    artifactPath: report.id,
+    artifactVersion: String(report.version),
+  })
+
+  const listed = await cli('gates')
+  check('a triage gate appears in the inbox', listed.includes(g3))
+  check(
+    'and says what it is asking, in words',
+    listed.includes('is this worth doing'),
+  )
+
+  const shown = await cli('show', g3)
+  check('the report is rendered', shown.includes('duplicate'))
+
+  const said = await cli('reply', g3, 'are you sure? #12 looks different')
+  check('a triage gate takes a reply', said.includes('said'))
+  const thread = await cli('thread', g3)
+  check('and the thread shows it back', thread.includes('#12 looks different'))
+
+  const corrected = await cli(
+    'reclassify',
+    g3,
+    '--reason',
+    'this is a question, not a duplicate',
+  )
+  check('it can be reclassified', corrected.includes('reclassify'))
+  const after = readGate(db3, g3)
+  check(
+    'which is recorded as its own decision',
+    after?.decision === 'reclassify',
+  )
+  check(
+    'carrying the correction',
+    (after?.reason ?? '').includes('not a duplicate'),
+  )
+  db3.close()
+}
+
 rmSync(dir, { recursive: true, force: true })
 finish()

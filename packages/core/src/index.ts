@@ -259,6 +259,7 @@ const GATE_COMMANDS: Record<
   approve: (args) => answerGateCommand('approved', args),
   reject: (args) => answerGateCommand('rejected', args),
   changes: (args) => answerGateCommand('changes', args),
+  reclassify: (args) => answerGateCommand('reclassify', args),
 }
 
 async function main(): Promise<void> {

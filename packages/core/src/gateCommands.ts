@@ -26,7 +26,14 @@ function asking(gate: GateRow): string {
   if (gate.summary !== null && gate.summary !== '') {
     return gate.summary
   }
-  return gate.kind === 'plan' ? 'approve the plan' : gate.kind
+  switch (gate.kind) {
+    case 'plan':
+      return 'approve the plan'
+    case 'triage':
+      return 'is this worth doing'
+    default:
+      return gate.kind
+  }
 }
 
 export function showGates(args: readonly string[]): void {
@@ -190,7 +197,7 @@ function report(result: AnswerResult, decision: GateDecision): void {
     )
   } else if (result.refusal.kind === 'superseded') {
     bad(
-      'the plan changed under this gate',
+      'what this gate asked about has changed',
       'run `aalai gates` for the version that now stands',
     )
   } else {
@@ -203,11 +210,16 @@ function report(result: AnswerResult, decision: GateDecision): void {
 }
 
 function verb(decision: GateDecision): string {
-  return decision === 'approved'
-    ? 'approve'
-    : decision === 'rejected'
-      ? 'reject'
-      : 'changes'
+  switch (decision) {
+    case 'approved':
+      return 'approve'
+    case 'rejected':
+      return 'reject'
+    case 'reclassify':
+      return 'reclassify'
+    default:
+      return 'changes'
+  }
 }
 
 function flagValue(args: readonly string[], flag: string): string | undefined {
