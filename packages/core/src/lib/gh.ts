@@ -1,5 +1,4 @@
-import { githubEnv } from '@/lib/credentials'
-import { execOrThrow } from '@/lib/proc'
+import { gh, ghJson } from '@/lib/ghExec'
 
 /**
  * An issue as returned by the REST issues endpoint.
@@ -21,20 +20,6 @@ export interface GhIssue {
   readonly user: { readonly login: string } | null
   readonly labels: ReadonlyArray<{ readonly name: string }>
   readonly pull_request?: unknown
-}
-
-/**
- * Runs a gh command with the tokens aalai captured at startup.
- *
- * They are removed from the ambient environment so the agent cannot inherit
- * them, so every command that needs one has to ask for it explicitly.
- */
-async function gh(args: readonly string[]): Promise<string> {
-  return execOrThrow(['gh', ...args], { env: githubEnv() })
-}
-
-async function ghJson<T>(args: readonly string[]): Promise<T> {
-  return JSON.parse(await gh(args)) as T
 }
 
 export async function authenticatedLogin(): Promise<string> {
@@ -218,18 +203,14 @@ export interface OwnedRepo {
  * real choices rather than a text field the user has to spell correctly.
  */
 export async function ownedRepos(limit = 200): Promise<OwnedRepo[]> {
-  const out = await execOrThrow(
-    [
-      'gh',
-      'repo',
-      'list',
-      '--limit',
-      String(limit),
-      '--json',
-      'nameWithOwner,isPrivate',
-    ],
-    { env: githubEnv() },
-  )
+  const out = await gh([
+    'repo',
+    'list',
+    '--limit',
+    String(limit),
+    '--json',
+    'nameWithOwner,isPrivate',
+  ])
   const parsed = JSON.parse(out) as {
     nameWithOwner: string
     isPrivate: boolean

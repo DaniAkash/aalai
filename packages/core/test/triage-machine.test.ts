@@ -324,7 +324,7 @@ describe('failures that used to look like success', () => {
         }),
       ),
     })
-    await waitFor(actor, (s) => openGateId() !== '', { timeout: 5000 })
+    await waitFor(actor, (_s) => openGateId() !== '', { timeout: 5000 })
     answerGate(handle.sqlite, {
       gateId: openGateId(),
       decision: 'approved',
@@ -343,7 +343,7 @@ describe('failures that used to look like success', () => {
         throw new Error('could not record')
       }),
     })
-    await waitFor(actor, (s) => openGateId() !== '', { timeout: 5000 })
+    await waitFor(actor, (_s) => openGateId() !== '', { timeout: 5000 })
     answerGate(handle.sqlite, {
       gateId: openGateId(),
       decision: 'reclassify',
