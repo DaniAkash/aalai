@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import { closeIssue, commentOnIssue, listIssueCommentBodies } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { readGate } from '@/modules/gates'
+import { listGates, readGate } from '@/modules/gates'
 import type { RunRef } from '@/modules/work/paths'
 import type { OutboundIntent, QueuedIntent } from '@/modules/work/store'
 import { readDelivery, readQueued, recordDelivery } from '@/modules/work/store'
@@ -161,4 +161,16 @@ async function alreadyPosted(
     // alternative is never delivering anything when the read fails.
     return undefined
   }
+}
+
+/**
+ * The gate whose answer released this run's outbound, if one has been answered.
+ *
+ * Anything queued after the fact rides on it: a follow-up question and the
+ * close that eventually gives up both belong to the decision a person already
+ * made, and neither should ask them again.
+ */
+export function releasingGate(db: Database, runId: string): string | undefined {
+  const [answered] = listGates(db, { runId, status: 'answered' })
+  return answered?.id
 }

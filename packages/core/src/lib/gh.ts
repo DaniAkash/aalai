@@ -116,25 +116,36 @@ export async function commentOnIssue(
   ])
 }
 
-/** Bodies of the comments on an issue, for recognising one aalai already posted. */
+export interface IssueComment {
+  readonly id: number
+  readonly html_url: string
+  readonly body: string
+  readonly author: string
+  readonly created_at: string
+}
+
+/**
+ * Comments on an issue, oldest first.
+ *
+ * Carries the author and the time because two different questions are asked of
+ * this: whether aalai already posted something, and whether the reporter has
+ * answered. The second needs to know who spoke and when.
+ */
 export async function listIssueCommentBodies(
   repo: string,
   issueNumber: number,
-): Promise<{ id: number; html_url: string; body: string }[]> {
+): Promise<IssueComment[]> {
   const lines = await gh([
     'api',
     '--paginate',
     `repos/${repo}/issues/${issueNumber}/comments`,
     '--jq',
-    '.[] | {id, html_url, body}',
+    '.[] | {id, html_url, body, author: .user.login, created_at}',
   ])
   return lines
     .split('\n')
     .filter((line) => line.trim() !== '')
-    .map(
-      (line) =>
-        JSON.parse(line) as { id: number; html_url: string; body: string },
-    )
+    .map((line) => JSON.parse(line) as IssueComment)
 }
 
 /**

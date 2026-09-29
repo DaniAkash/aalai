@@ -1,9 +1,17 @@
 import { fromPromise } from 'xstate'
 import { getIssue } from '@/lib/gh'
-import { type DeliveryReport, deliverOutbox } from '@/modules/outbound/deliver'
+import {
+  type DeliveryReport,
+  deliverOutbox,
+  releasingGate,
+} from '@/modules/outbound/deliver'
 import { latestArtifact } from '@/modules/work/artifacts'
 import { appendEntry, readConversation } from '@/modules/work/conversation'
-import { bindIntentsToGate, readJson } from '@/modules/work/store'
+import {
+  bindIntentsToGate,
+  queueOutbound,
+  readJson,
+} from '@/modules/work/store'
 import { recordTriage } from '@/run/artifacts'
 import { runClassifier } from '@/run/stations'
 import type { Triage } from '@/run/stations/schemas'
@@ -137,6 +145,36 @@ export const corrector = fromPromise(
       author: 'maintainer',
       role: 'maintainer',
       body: said,
+    })
+  },
+)
+
+/**
+ * Queues the close for an issue nobody came back to.
+ *
+ * Queued rather than closed, like everything else that reaches the outside:
+ * the maintainer released this run's outbound when they approved the question,
+ * and the close travels the same path so it can still be seen before it lands.
+ */
+export const staleCloser = fromPromise(
+  async ({ input }: { input: { runId: string } }): Promise<void> => {
+    const deps = runDeps(input.runId)
+    const released = releasingGate(deps.db, input.runId)
+    const at = new Date().toISOString()
+    await queueOutbound(deps.run, {
+      kind: 'comment_on_issue',
+      body: 'Closing this for now, since the detail it needs never arrived. Comment here with it and it will be looked at again.',
+      station: 'classifier',
+      queuedAt: at,
+      ...(released === undefined ? {} : { gateId: released }),
+    })
+    await queueOutbound(deps.run, {
+      kind: 'close_issue',
+      body: '',
+      station: 'classifier',
+      queuedAt: at,
+      closeReason: 'not_planned',
+      ...(released === undefined ? {} : { gateId: released }),
     })
   },
 )

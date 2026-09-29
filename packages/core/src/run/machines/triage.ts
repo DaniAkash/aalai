@@ -2,7 +2,14 @@ import { assign, setup } from 'xstate'
 import { isActionable, mayBeAnsweredPublicly } from '@/run/stations/schemas'
 import { gateKeeper } from './gateActor'
 import { replier } from './replyActor'
-import { binder, classifier, corrector, deliverer } from './triageActors'
+import { reporterWatch } from './reporterActor'
+import {
+  binder,
+  classifier,
+  corrector,
+  deliverer,
+  staleCloser,
+} from './triageActors'
 import type { TriageContext, TriageEvent, TriageInput } from './triageTypes'
 
 /**
@@ -26,7 +33,16 @@ export const triageMachine = setup({
     input: {} as TriageInput,
     events: {} as TriageEvent,
   },
-  actors: { classifier, gateKeeper, replier, deliverer, binder, corrector },
+  actors: {
+    classifier,
+    gateKeeper,
+    replier,
+    deliverer,
+    binder,
+    corrector,
+    reporterWatch,
+    staleCloser,
+  },
   guards: {
     /**
      * Whether anything may be said about this at all.
@@ -62,6 +78,9 @@ export const triageMachine = setup({
       isActionable(context.triage),
     answeredReclassify: ({ event }: { event: TriageEvent }) =>
       event.type === 'GATE_ANSWERED' && event.decision === 'reclassify',
+    /** Whether what just went out was a question rather than an answer. */
+    askedForMore: ({ context }: { context: TriageContext }) =>
+      context.triage !== undefined && context.triage.missing.length > 0,
     replyIsNew: ({
       context,
       event,
@@ -87,6 +106,15 @@ export const triageMachine = setup({
     issueNumber: input.issueNumber,
     generation: 0,
     ...(input.gatePollMs === undefined ? {} : { gatePollMs: input.gatePollMs }),
+    ...(input.reporterPollMs === undefined
+      ? {}
+      : { reporterPollMs: input.reporterPollMs }),
+    ...(input.nudgeAfterMs === undefined
+      ? {}
+      : { nudgeAfterMs: input.nudgeAfterMs }),
+    ...(input.staleAfterMs === undefined
+      ? {}
+      : { staleAfterMs: input.staleAfterMs }),
   }),
   states: {
     classifying: {
@@ -300,7 +328,79 @@ export const triageMachine = setup({
       invoke: {
         src: 'deliverer',
         input: ({ context }) => ({ runId: context.runId }),
-        onDone: 'finished',
+        onDone: [
+          {
+            /*
+             * The question went out, so now someone has to answer it.
+             *
+             * This is the only outcome that does not end the run: aalai has
+             * asked a stranger for something and has no idea whether they will
+             * ever reply.
+             */
+            target: 'awaitingReporter',
+            guard: 'askedForMore',
+            actions: assign({ askedAt: () => new Date().toISOString() }),
+          },
+          { target: 'finished' },
+        ],
+        onError: 'finished',
+      },
+    },
+
+    /**
+     * Waiting on the reporter, for as long as that takes.
+     *
+     * Not a gate: nothing is being asked of the maintainer, and presenting it
+     * as answerable would be a row that looks actionable and is not.
+     */
+    awaitingReporter: {
+      invoke: {
+        src: 'reporterWatch',
+        input: ({ context }) => ({
+          runId: context.runId,
+          repo: context.repo,
+          issue: context.issueNumber,
+          askedAt: context.askedAt ?? new Date().toISOString(),
+          ...(context.reporterPollMs === undefined
+            ? {}
+            : { pollMs: context.reporterPollMs }),
+          ...(context.nudgeAfterMs === undefined
+            ? {}
+            : { nudgeAfterMs: context.nudgeAfterMs }),
+          ...(context.staleAfterMs === undefined
+            ? {}
+            : { staleAfterMs: context.staleAfterMs }),
+        }),
+      },
+      on: {
+        // Waking is not proceeding. What they said may make the issue less
+        // actionable rather than more, so it is classified again rather than
+        // carried forward.
+        REPORTER_REPLIED: {
+          target: 'classifying',
+          actions: assign({
+            generation: ({ context }) => context.generation + 1,
+            gateId: () => undefined,
+            askedAt: () => undefined,
+          }),
+        },
+        // The nudge is queued rather than posted, like everything else, and
+        // rides on the gate that already released the original question.
+        REPORTER_NUDGED: { target: 'delivering', reenter: true },
+        REPORTER_SILENT: {
+          target: 'closing',
+          actions: assign({ outcome: () => ({ kind: 'stale' as const }) }),
+        },
+      },
+    },
+
+    /** Closes an issue nobody came back to, with a comment saying why. */
+    closing: {
+      entry: assign({ outcome: () => ({ kind: 'stale' as const }) }),
+      invoke: {
+        src: 'staleCloser',
+        input: ({ context }) => ({ runId: context.runId }),
+        onDone: 'delivering',
         onError: 'finished',
       },
     },

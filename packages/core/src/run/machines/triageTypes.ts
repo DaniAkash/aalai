@@ -8,6 +8,10 @@ export interface TriageInput {
   readonly issueNumber: number
   /** How often a parked run rechecks its gate. Lowered by tests. */
   readonly gatePollMs?: number
+  /** The wait on a reporter, lowered by tests which cannot wait a fortnight. */
+  readonly reporterPollMs?: number
+  readonly nudgeAfterMs?: number
+  readonly staleAfterMs?: number
 }
 
 export interface TriageContext {
@@ -39,6 +43,12 @@ export interface TriageContext {
     readonly question: string
   }
   readonly repliedTo?: string
+  /** When the reporter was asked, which the wait measures everything against. */
+  readonly askedAt?: string
+  /** Lowered by tests, which cannot wait a fortnight. */
+  readonly nudgeAfterMs?: number
+  readonly staleAfterMs?: number
+  readonly reporterPollMs?: number
   readonly outcome?: TriageOutcome
 }
 
@@ -52,6 +62,7 @@ export type TriageOutcome =
   | { readonly kind: 'handOff'; readonly triage: Triage }
   | { readonly kind: 'answered'; readonly decision: GateDecision }
   | { readonly kind: 'escalated' }
+  | { readonly kind: 'stale' }
   | { readonly kind: 'failed'; readonly error: string }
 
 /** What the classifier is asked for, and what a reclassification carries back. */
@@ -65,3 +76,6 @@ export type TriageEvent =
     }
   | { type: 'GATE_SUPERSEDED'; gateId: string }
   | { type: 'REPLY_RECEIVED'; entryId: string; question: string }
+  | { type: 'REPORTER_REPLIED'; body: string }
+  | { type: 'REPORTER_NUDGED' }
+  | { type: 'REPORTER_SILENT' }
