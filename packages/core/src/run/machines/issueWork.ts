@@ -12,6 +12,7 @@ import { gateKeeper } from './gateActor'
 import { guards } from './guards'
 import { messageOf, stopReason } from './outcome'
 import { startAFreshPlan } from './replan'
+import { replier } from './replyActor'
 import type { IssueWorkContext, IssueWorkInput } from './types'
 
 export const issueWorkMachine = setup({
@@ -20,7 +21,7 @@ export const issueWorkMachine = setup({
     input: {} as IssueWorkInput,
     events: {} as IssueWorkEvent,
   },
-  actors: { analyst, implementer, reviewer, premise, gateKeeper },
+  actors: { analyst, implementer, reviewer, premise, gateKeeper, replier },
   guards,
 }).createMachine({
   id: 'issueWork',
@@ -127,13 +128,16 @@ export const issueWorkMachine = setup({
         },
 
         /**
-         * Parked, waiting for a person, with nothing in flight.
+         * Parked, waiting for a person, who may talk before deciding.
          *
-         * The one state a restart costs nothing: restoring re-runs invocations,
-         * and this invocation only listens. Re-entering it re-reads the row,
-         * which is the source of truth anyway.
+         * The gate keeper is invoked here rather than on a child, so it survives
+         * both substates and an answer arriving mid conversation is still
+         * handled by this state: approving while the analyst is halfway through
+         * a sentence is ordinary, not exceptional.
          */
         gatingPlan: {
+          id: 'gatingPlan',
+          initial: 'waiting',
           invoke: {
             src: 'gateKeeper',
             input: ({ context }) => ({
@@ -145,6 +149,81 @@ export const issueWorkMachine = setup({
                 ? {}
                 : { pollMs: context.gatePollMs }),
             }),
+          },
+          states: {
+            waiting: {
+              on: {
+                REPLY_RECEIVED: {
+                  target: 'answering',
+                  guard: 'replyIsNew',
+                  actions: assign({
+                    pendingReply: ({ event }) => ({
+                      entryId: event.entryId,
+                      question: event.question,
+                    }),
+                  }),
+                },
+              },
+            },
+            /**
+             * The analyst answers, and the gate stays open at the same version.
+             *
+             * Nothing here distinguishes talking from revising: a reply that
+             * revises writes a new plan version, which the gate keeper reports as
+             * a supersede and the parent already handles.
+             */
+            answering: {
+              invoke: {
+                src: 'replier',
+                input: ({ context }) => ({
+                  runId: context.runId,
+                  entryId: context.pendingReply?.entryId ?? '',
+                  question: context.pendingReply?.question ?? '',
+                }),
+                onDone: [
+                  {
+                    /*
+                     * A reply that revised the plan re-enters the gate rather
+                     * than returning to waiting beside it.
+                     *
+                     * Re-entering is what runs the keeper's start again, and
+                     * that is the only thing that retires the question asked
+                     * about the version which no longer stands and opens one
+                     * pinned to the bytes that do. Returning to `waiting` left
+                     * the run on the old gate while the context held the new
+                     * plan, so approving it approved one plan and built
+                     * another.
+                     */
+                    target: '#gatingPlan',
+                    reenter: true,
+                    guard: 'replyRevisedThePlan',
+                    actions: assign({
+                      analysis: ({ context, event }) =>
+                        event.output.analysis ?? context.analysis,
+                      repliedTo: ({ context }) => context.pendingReply?.entryId,
+                      pendingReply: () => undefined,
+                      gateId: () => undefined,
+                    }),
+                  },
+                  {
+                    target: 'waiting',
+                    actions: assign({
+                      repliedTo: ({ context }) => context.pendingReply?.entryId,
+                      pendingReply: () => undefined,
+                    }),
+                  },
+                ],
+                // A failed answer leaves the gate open rather than failing the
+                // run: the maintainer can still decide without one.
+                onError: {
+                  target: 'waiting',
+                  actions: assign({
+                    repliedTo: ({ context }) => context.pendingReply?.entryId,
+                    pendingReply: () => undefined,
+                  }),
+                },
+              },
+            },
           },
           on: {
             GATE_OPENED: {
@@ -163,6 +242,7 @@ export const issueWorkMachine = setup({
                 actions: assign({
                   ...startAFreshPlan,
                   gateId: () => undefined,
+                  pendingReply: () => undefined,
                 }),
               },
               {
@@ -181,7 +261,10 @@ export const issueWorkMachine = setup({
             // that now stands rather than stalling on one nobody can answer.
             GATE_SUPERSEDED: {
               target: 'gatingPlan',
-              actions: assign({ gateId: () => undefined }),
+              actions: assign({
+                gateId: () => undefined,
+                pendingReply: () => undefined,
+              }),
               reenter: true,
             },
           },

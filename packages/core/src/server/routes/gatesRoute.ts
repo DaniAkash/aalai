@@ -7,6 +7,8 @@ import {
   answerGate,
   listGates,
   readGate,
+  readThread,
+  replyToGate,
 } from '@/modules/gates'
 import { readArtifact } from '@/modules/work/artifacts'
 import { openState } from '@/watch/state'
@@ -16,6 +18,27 @@ const answerSchema = z.object({
   reason: z.string().max(4000).optional(),
   answeredBy: z.string().min(1).max(200),
   answeredOn: z.enum(ANSWER_SOURCES).default('app'),
+})
+
+const replySchema = z.object({
+  // Trimmed before the length check, because the writer trims too: a body of
+  // spaces passed `min(1)` and then became an empty question nobody could read
+  // and the analyst still had to spend a turn on.
+  body: z
+    .string()
+    .max(8000)
+    .transform((value) => value.trim())
+    .refine((value) => value.length > 0, 'a reply cannot be empty'),
+  // One line. The author is written into a line oriented sentinel, so a newline
+  // in it splits the entry and makes the whole conversation unparsable.
+  author: z
+    .string()
+    .max(200)
+    .transform((value) => value.trim())
+    .refine(
+      (value) => value.length > 0 && !/[\r\n]/.test(value),
+      'an author must be one line',
+    ),
 })
 
 const listSchema = z.object({
@@ -55,6 +78,31 @@ export const gatesRoute = new Hono()
         ? undefined
         : await readArtifact(gate.artifactPath)
     return c.json({ gate, artifact: artifact ?? null })
+  })
+  .get('/gates/:id/thread', async (c) => {
+    const db = openState()
+    const thread = await readThread(db, c.req.param('id'))
+    db.close()
+    if (thread === undefined) {
+      return c.json({ error: 'no such gate' }, 404)
+    }
+    return c.json(thread)
+  })
+  .post('/gates/:id/reply', zValidator('json', replySchema), async (c) => {
+    const body = c.req.valid('json')
+    const db = openState()
+    const result = await replyToGate(db, {
+      gateId: c.req.param('id'),
+      body: body.body,
+      author: body.author,
+    })
+    db.close()
+    if (result.ok) {
+      return c.json(result)
+    }
+    // Same reasoning as answering: a refusal is an outcome. 409 for a gate that
+    // moved under the reply, so a client can put the text back in the box.
+    return c.json(result, result.refusal.kind === 'not_found' ? 404 : 409)
   })
   .post('/gates/:id/answer', zValidator('json', answerSchema), async (c) => {
     const body = c.req.valid('json')

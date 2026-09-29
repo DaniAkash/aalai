@@ -1,13 +1,15 @@
 import { Link, useParams } from '@tanstack/react-router'
-import { subjectOf, waitedFor } from 'aalai/shared'
+import { revisedNote, subjectOf, waitedFor } from 'aalai/shared'
 import { Screen } from '@/components/layout/Screen'
 import { ErrorNote, Loading } from '@/components/state'
 import { useAnswerGate, useGate } from '@/modules/api/gates.hooks'
+import { useReply, useThread } from '@/modules/api/thread.hooks'
 import {
   Answered,
   type Decision,
   DecisionPanel,
 } from './gate-detail.components'
+import { Composer, Thread } from './gate-thread.components'
 
 /**
  * One gate: what is being asked, and the decision.
@@ -25,7 +27,9 @@ function openedAgo(openedAt: string): string {
 export function GateDetail() {
   const { gateId } = useParams({ from: '/gates/$gateId' })
   const gate = useGate({ variables: { id: gateId } })
+  const thread = useThread({ variables: { id: gateId } })
   const answer = useAnswerGate()
+  const reply = useReply()
 
   if (gate.isPending) {
     return (
@@ -60,7 +64,13 @@ export function GateDetail() {
   return (
     <Screen
       title={row.kind === 'plan' ? 'Plan approval' : 'Permission'}
-      sub={`${subjectOf(row.runId)} · opened ${openedAgo(row.openedAt)}`}
+      sub={[
+        subjectOf(row.runId),
+        `opened ${openedAgo(row.openedAt)}`,
+        revisedNote(row.artifactVersion),
+      ]
+        .filter((part) => part !== '')
+        .join(' · ')}
       actions={
         <Link
           to="/"
@@ -71,23 +81,67 @@ export function GateDetail() {
       }
     >
       {/*
-        The artifact is sized by what is left rather than by a share of the
-        viewport. The old 46vh cap could not see the header, textarea and
-        decision card below it, so at 1024 it hid six pixels behind a scrollbar
-        while 120px sat empty, and at 768 it hid a fifth of the plan.
+        Side by side once there is room for both to be readable, stacked below
+        that. The plan stays first in the document either way: approving without
+        reading it is the failure this gate exists to prevent, and a discussion
+        above it would invite exactly that.
+
+        Each column scrolls itself rather than the page, so the decision stays
+        reachable without scrolling past a long conversation to find it.
       */}
-      {artifact === null ? null : (
-        <article className="mb-4 min-h-32 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4">
+      <div className="mb-4 flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+        {artifact === null ? null : (
+          <article className="min-h-32 flex-1 overflow-y-auto rounded-xl border border-border bg-card p-4 lg:basis-1/2">
+            {/*
+              Capped by measure rather than pixels, so it holds at every width.
+              Uncapped this rendered 122 characters per line at 1280 and 143 at
+              1440, against a readable maximum of about 75.
+            */}
+            <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[13.5px] leading-relaxed">
+              {artifact}
+            </pre>
+          </article>
+        )}
+
+        <section
+          aria-label="Discussion"
+          className="flex min-h-0 flex-col gap-3 lg:basis-1/2"
+        >
+          <h2 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
+            Discussion
+          </h2>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {thread.isPending ? (
+              <Loading rows={2} />
+            ) : thread.isError ? (
+              <ErrorNote
+                message={thread.error.message}
+                onRetry={() => thread.refetch()}
+              />
+            ) : (
+              <Thread
+                answering={thread.data.state === 'answering'}
+                entries={thread.data.entries}
+              />
+            )}
+          </div>
           {/*
-            Capped by measure rather than pixels, so it holds at every width.
-            Uncapped this rendered 122 characters per line at 1280 and 143 at
-            1440, against a readable maximum of about 75.
+            Rendered whatever the gate's status, because the composer keeps the
+            draft when the gate is answered from somewhere else. It returns null
+            itself once there is nothing left to keep.
           */}
-          <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[13.5px] leading-relaxed">
-            {artifact}
-          </pre>
-        </article>
-      )}
+          <Composer
+            answering={thread.data?.state === 'answering'}
+            error={reply.error?.message}
+            gateOpen={row.status === 'open'}
+            onSend={(body) =>
+              reply.mutate({ id: gateId, body, author: 'maintainer' })
+            }
+            pending={reply.isPending}
+            sentAt={reply.isSuccess ? reply.submittedAt : 0}
+          />
+        </section>
+      </div>
 
       {row.status === 'open' ? (
         <DecisionPanel

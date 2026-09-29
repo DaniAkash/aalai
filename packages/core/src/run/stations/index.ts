@@ -6,6 +6,7 @@ import { toolSurfaceIsUp } from '@/modules/tools/endpoint'
 import {
   buildAnalystPrompt,
   buildImplementerPrompt,
+  buildReplyPrompt,
   buildReviewerPrompt,
   buildStationRules,
 } from '@/prompts/stations'
@@ -206,4 +207,67 @@ export async function runReviewer(
     (result) => result.recorded.review,
   )
   return { review: value, result }
+}
+
+export interface AnalystReplyInput {
+  readonly runId: string
+  readonly repo: string
+  readonly issueNumber: number
+  readonly worktree: string
+  readonly question: string
+  readonly history: readonly { author: string; role: string; body: string }[]
+  readonly config: Config
+  readonly signal?: AbortSignal
+}
+
+export interface AnalystReplyOutcome {
+  /** Present only when the exchange changed the plan. */
+  readonly analysis?: Analysis
+  readonly result: StationResult
+}
+
+/**
+ * The analyst answers a maintainer without leaving the gate.
+ *
+ * Runs as the analyst so it resumes that station's persistent session and still
+ * has the plan it wrote in context. The turn has no structured output to
+ * validate: what it did is what it recorded, so a revision is detected from the
+ * tool call rather than parsed out of prose. A turn that only talks is a
+ * complete, correct turn.
+ */
+export async function runAnalystReply(
+  input: AnalystReplyInput,
+): Promise<AnalystReplyOutcome> {
+  const result = await runStation({
+    agent: input.config.agents.analyst,
+    runId: input.runId,
+    station: 'analyst',
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    subject: {
+      repo: input.repo,
+      kind: 'issue',
+      number: input.issueNumber,
+    },
+    title: `reply at the plan gate for #${input.issueNumber}`,
+    label: 'analyst',
+    worktree: input.worktree,
+    systemRules: buildStationRules('analyst'),
+    task: buildReplyPrompt({
+      repo: input.repo,
+      issueNumber: input.issueNumber,
+      question: input.question,
+      history: input.history,
+      tools: toolSurfaceIsUp(),
+    }),
+    // Still reads only. The gate is open, so nothing has been approved and the
+    // planning station has no business touching the repository.
+    permission: 'approve-reads',
+    config: input.config,
+  })
+  return {
+    ...(result.recorded.analysis === undefined
+      ? {}
+      : { analysis: result.recorded.analysis }),
+    result,
+  }
 }

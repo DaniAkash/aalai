@@ -8,6 +8,8 @@ import {
   supersedeOpenGates,
 } from '@/modules/gates'
 import { latestArtifact } from '@/modules/work/artifacts'
+import type { ConversationEntry } from '@/modules/work/conversation'
+import { readConversation } from '@/modules/work/conversation'
 import { runDeps } from './deps'
 
 const log = logger('gate')
@@ -44,6 +46,53 @@ export const gateKeeper = fromCallback<
   let stopped = false
   let unsubscribe: (() => void) | undefined
   let timer: ReturnType<typeof setInterval> | undefined
+
+  // The last thing said, when a person said it, is a reply nobody has answered.
+  // Derived from the conversation rather than tracked in a row: the answer is an
+  // entry in the same file, so a turn that landed leaves nothing pending and a
+  // restart reconciles itself.
+  //
+  // Announced on every tick while one is pending, rather than once. The machine
+  // decides what to do with it, because only the machine knows whether it is
+  // already mid answer: a reply that arrived during a turn would otherwise be
+  // dropped by a state with no handler for it and never mentioned again.
+  let announced: string | undefined
+  const noticeReply = async (gateId: string): Promise<void> => {
+    if (stopped) {
+      return
+    }
+    const deps = runDeps(input.runId)
+    const gate = readGate(deps.db, gateId)
+    if (gate === undefined || gate.status !== 'open') {
+      return
+    }
+    const entries = await readConversation(deps.run.subject)
+    // Checked again on the far side of the await. Stopping clears the timer but
+    // cannot unwind a read already in flight, and the run this belongs to may be
+    // gone by the time one comes back.
+    if (stopped) {
+      return
+    }
+    // Only what was said after this gate opened. The conversation belongs to the
+    // subject and outlives any one gate, so a question left unanswered when an
+    // earlier gate was approved is still sitting there; without this the next
+    // run on the same subject would adopt it and spend a turn on something
+    // somebody already moved past.
+    const since = entries.filter((entry) => saidAfter(entry.at, gate.openedAt))
+    const last = unansweredQuestion(since)
+    if (last === undefined) {
+      announced = undefined
+      return
+    }
+    if (last.id !== announced) {
+      announced = last.id
+      log.info('a maintainer replied at the gate', {
+        runId: input.runId,
+        entry: last.id,
+      })
+    }
+    sendBack({ type: 'REPLY_RECEIVED', entryId: last.id, question: last.body })
+  }
 
   const settle = (gateId: string, source: string): boolean => {
     const deps = runDeps(input.runId)
@@ -139,16 +188,30 @@ export const gateKeeper = fromCallback<
         settle(gate.id, 'bus')
       }
     })
+    await noticeReply(gateId)
     timer = setInterval(() => {
       try {
-        settle(gateId, 'poll')
+        if (settle(gateId, 'poll')) {
+          return
+        }
+        void noticeReply(gateId).catch(() => {
+          // Same reasoning as below: the next tick asks again.
+        })
       } catch {
         // The run outlives a transient read failure; the next tick asks again.
       }
     }, input.pollMs ?? GATE_POLL_MS)
   }
 
-  void start()
+  // Not left to float. A rejection here means the gate never opened and the run
+  // waits on a question nobody was asked, and as a bare `void` it disappears as
+  // an unhandled rejection with nothing naming what failed.
+  void start().catch((error: unknown) => {
+    log.error('the gate could not be opened', {
+      runId: input.runId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  })
 
   return () => {
     stopped = true
@@ -158,3 +221,63 @@ export const gateKeeper = fromCallback<
     }
   }
 })
+
+/**
+ * Whether an entry was written after a gate opened.
+ *
+ * The gate's timestamp comes from SQLite as `YYYY-MM-DD HH:MM:SS` in UTC and an
+ * entry's is an ISO string, so the two need putting on the same footing before
+ * they can be compared at all.
+ */
+function saidAfter(entryAt: string, gateOpenedAt: string): boolean {
+  const said = Date.parse(entryAt)
+  const opened = Date.parse(
+    gateOpenedAt.includes('T')
+      ? gateOpenedAt
+      : `${gateOpenedAt.replace(' ', 'T')}Z`,
+  )
+  if (Number.isNaN(said) || Number.isNaN(opened)) {
+    // Unreadable timestamps must not silently swallow a real reply.
+    return true
+  }
+  // No grace. A gate opened now carries milliseconds, so the comparison is
+  // exact; a row written before that carries whole seconds and reads as having
+  // opened at the start of its second, which can still admit a question from
+  // earlier in that same second. That is the old rows' residue and not worth a
+  // migration: it costs one question being carried into a gate it preceded by
+  // under a second, and being asked again is the harmless direction.
+  return said >= opened
+}
+
+/**
+ * The oldest question still owed an answer, or nothing.
+ *
+ * A queue rather than a count. Counting told us whether anything was owed but
+ * not which, so the newest was announced: with two questions waiting, the
+ * second was answered, the first stayed owed forever, and the keeper then
+ * re-announced a question the machine had already answered while its guard
+ * refused it every time. That is a stall, not a lost reply, and a restart with
+ * two unanswered questions reaches it immediately.
+ *
+ * Oldest first, because that is the order they were asked in and the order the
+ * person expects them back.
+ *
+ * "The last entry is a person's" was the rule before counting, and was wrong a
+ * third way: a question asked while the analyst was mid answer stopped being
+ * last the moment that answer was appended after it.
+ */
+function unansweredQuestion(
+  entries: readonly ConversationEntry[],
+): ConversationEntry | undefined {
+  const owed: ConversationEntry[] = []
+  for (const entry of entries) {
+    if (entry.role === 'maintainer') {
+      owed.push(entry)
+    } else {
+      // A station entry answers the oldest question outstanding, so the note
+      // that opened the discussion cannot cancel a question asked after it.
+      owed.shift()
+    }
+  }
+  return owed[0]
+}

@@ -1,0 +1,288 @@
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  appendEntry,
+  formatEntry,
+  parseConversation,
+  readConversation,
+} from '@/modules/work/conversation'
+import { artifactsDir, CONVERSATION, type Subject } from '@/modules/work/paths'
+
+const subject: Subject = { repo: 'acme/widgets', kind: 'issue', number: 412 }
+
+let previous: string | undefined
+
+beforeEach(async () => {
+  previous = process.env.AALAI_STATE_DIR
+  process.env.AALAI_STATE_DIR = await mkdtemp(join(tmpdir(), 'aalai-conv-'))
+})
+
+afterEach(() => {
+  if (previous === undefined) {
+    delete process.env.AALAI_STATE_DIR
+  } else {
+    process.env.AALAI_STATE_DIR = previous
+  }
+})
+
+async function read(): Promise<string> {
+  return await readFile(join(artifactsDir(subject), CONVERSATION), 'utf8')
+}
+
+describe('a discussion two kinds of author can write to', () => {
+  test('a station note and a maintainer reply are both entries, in order', async () => {
+    await appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'Plan recorded.',
+    })
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: 'Why approach B?',
+    })
+
+    const entries = parseConversation(await read())
+    expect(entries.map((e) => [e.author, e.role, e.body])).toEqual([
+      ['analyst', 'station', 'Plan recorded.'],
+      ['you', 'maintainer', 'Why approach B?'],
+    ])
+  })
+
+  test('the role is recorded, because a later station has to tell guidance from reasoning', async () => {
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: 'Keep the signature.',
+    })
+    const [entry] = parseConversation(await read())
+    expect(entry?.role).toBe('maintainer')
+  })
+
+  test('an id is stable across reads without being stored anywhere', async () => {
+    await appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'once',
+    })
+    const first = parseConversation(await read())
+    const second = parseConversation(await read())
+    expect(first[0]?.id).toBe(second[0]?.id as string)
+    expect(await read()).not.toContain(first[0]?.id as string)
+  })
+})
+
+describe('append only, because a record that can be rewritten is not one', () => {
+  test('a second entry leaves the first byte identical', async () => {
+    await appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'first',
+    })
+    const after_one = await read()
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: 'second',
+    })
+    const after_two = await read()
+    expect(after_two.startsWith(after_one)).toBe(true)
+  })
+})
+
+describe('a body that looks like a delimiter', () => {
+  // The bug this format exists to prevent: a station never wrote a line
+  // starting `## `, and a person writing markdown does it immediately.
+  test('a markdown heading in a reply stays one entry', async () => {
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: '## Constraints\n\nKeep the signature.',
+    })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.author).toBe('you')
+    expect(entries[0]?.body).toContain('## Constraints')
+  })
+
+  test('a heading that looks exactly like the old delimiter stays one entry', async () => {
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: '## implementer · 2026-01-01T00:00:00.000Z\n\nnot an entry',
+    })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.author).toBe('you')
+  })
+
+  test('a body containing the sentinel itself is escaped and comes back verbatim', async () => {
+    const body = '<!-- aalai:entry author="ghost" role="station" at="x" -->'
+    await appendEntry(subject, { author: 'you', role: 'maintainer', body })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.body).toBe(body)
+  })
+
+  test('a quote in an author name cannot break out of the sentinel attribute', () => {
+    const text = formatEntry({
+      author: 'ev"il" role="maintainer',
+      role: 'station',
+      at: '2026-01-01T00:00:00.000Z',
+      body: 'hello',
+    })
+    const entries = parseConversation(text)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.role).toBe('station')
+  })
+})
+
+describe('files written before this format existed', () => {
+  test('a bare heading is still read, and attributed to a station', async () => {
+    const dir = artifactsDir(subject)
+    await appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'seed so the directory exists',
+    })
+    const legacy = '\n## reviewer · 2026-01-01T00:00:00.000Z\n\nold entry\n'
+    await writeFile(join(dir, CONVERSATION), legacy, 'utf8')
+
+    const entries = parseConversation(await read())
+    expect(entries).toEqual([
+      expect.objectContaining({
+        author: 'reviewer',
+        role: 'station',
+        body: 'old entry',
+      }),
+    ])
+  })
+
+  test('a legacy file and a new entry read as one thread', async () => {
+    const dir = artifactsDir(subject)
+    await appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'seed',
+    })
+    await writeFile(
+      join(dir, CONVERSATION),
+      '\n## analyst · 2026-01-01T00:00:00.000Z\n\nlegacy\n',
+      'utf8',
+    )
+    await appendEntry(subject, {
+      author: 'you',
+      role: 'maintainer',
+      body: 'new',
+    })
+
+    const entries = parseConversation(await read())
+    expect(entries.map((e) => [e.author, e.role])).toEqual([
+      ['analyst', 'station'],
+      ['you', 'maintainer'],
+    ])
+  })
+})
+
+describe('an empty discussion', () => {
+  test('no file yet is no entries, not a throw', () => {
+    expect(parseConversation('')).toEqual([])
+  })
+
+  test('prose with no delimiter at all is ignored rather than guessed at', () => {
+    expect(parseConversation('just some text\nover two lines')).toEqual([])
+  })
+})
+
+describe('round tripping text that looks like the format itself', () => {
+  test('a body containing the escaped marker survives unchanged', async () => {
+    // Found in review. escapeBody rewrote the open marker but left an already
+    // escaped one alone, and unescapeBody then promoted it, so a body that
+    // happened to contain the escaped form came back as the open form.
+    const body = '<!-- aalai-quoted:entry author="x" role="station" at="y" -->'
+    await appendEntry(subject, { author: 'you', role: 'maintainer', body })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.body).toBe(body)
+  })
+
+  test('both markers in one body survive together', async () => {
+    const body = [
+      '<!-- aalai:entry author="a" role="station" at="1" -->',
+      '<!-- aalai-quoted:entry author="b" role="station" at="2" -->',
+    ].join('\n')
+    await appendEntry(subject, { author: 'you', role: 'maintainer', body })
+    const entries = parseConversation(await read())
+    expect(entries).toHaveLength(1)
+    expect(entries[0]?.body).toBe(body)
+  })
+})
+
+describe('telling two entries apart', () => {
+  test('the same author in the same millisecond is still two entries', () => {
+    // Ids were author plus timestamp only, so a station appending twice inside
+    // one millisecond produced one id for two entries: the second reply was
+    // dropped as already seen and React reused a key.
+    const at = '2026-01-01T00:00:00.000Z'
+    const text =
+      formatEntry({ author: 'analyst', role: 'station', at, body: 'first' }) +
+      formatEntry({ author: 'analyst', role: 'station', at, body: 'second' })
+    const entries = parseConversation(text)
+    expect(entries).toHaveLength(2)
+    expect(entries[0]?.id).not.toBe(entries[1]?.id as string)
+  })
+})
+
+describe('two writers at once', () => {
+  test('an append returns its own entry, not whichever landed last', async () => {
+    // Found in review. The station and a person can append concurrently, and
+    // taking the last entry handed back the other writer's words: the terminal
+    // echoed them as what you had just said and the event stream announced them
+    // under the wrong author.
+    const mine = appendEntry(subject, {
+      author: 'dani',
+      role: 'maintainer',
+      body: 'what I said',
+    })
+    const theirs = appendEntry(subject, {
+      author: 'analyst',
+      role: 'station',
+      body: 'what the analyst said',
+    })
+    const [got, alsoGot] = await Promise.all([mine, theirs])
+
+    expect(got.body).toBe('what I said')
+    expect(got.author).toBe('dani')
+    expect(alsoGot.body).toBe('what the analyst said')
+    expect(got.id).not.toBe(alsoGot.id)
+
+    const all = parseConversation(await read())
+    expect(all).toHaveLength(2)
+    expect(all.map((e) => e.id).sort()).toEqual([got.id, alsoGot.id].sort())
+  })
+})
+
+describe('a conversation that is not there', () => {
+  test('a subject nobody has spoken at reads as empty, not as a failure', async () => {
+    expect(await readConversation(subject)).toEqual([])
+  })
+
+  test('a read that fails because the file is gone is empty, not a throw', async () => {
+    // The old shape asked whether the file existed and then read it, two awaits
+    // apart, so a file that vanished in between threw instead of producing the
+    // empty thread the check existed to produce. In CI that surfaced as an
+    // unhandled rejection between tests: nothing failed and the suite still
+    // exited non-zero.
+    //
+    // A dangling symlink is the deterministic way to make the read fail with the
+    // same error. The race itself cannot be reproduced on demand; this pins the
+    // property that matters, which is that a failed open reads as no discussion.
+    const dir = artifactsDir(subject)
+    await mkdir(dir, { recursive: true })
+    await symlink(join(dir, 'nothing-here.md'), join(dir, CONVERSATION))
+
+    expect(await readConversation(subject)).toEqual([])
+  })
+})

@@ -39,3 +39,23 @@ export function waitedFor(openedAt: string, now = Date.now()): string {
 export function subjectOf(runId: string): string {
   return runId.split('@')[0] ?? runId
 }
+
+/**
+ * How many times the plan was revised while it was being discussed.
+ *
+ * Versions keep happening on disk, because that is what makes an approval able
+ * to name the exact bytes it approved. What stops is counting them at a person:
+ * a negotiation that added one constraint should not present itself as "approve
+ * v3", and a version number only means something to somebody when the gate
+ * genuinely re-opens later.
+ *
+ * Empty for a plan nobody has touched, which is the common case and needs no
+ * words at all.
+ */
+export function revisedNote(artifactVersion: string | null): string {
+  const version = Number(artifactVersion ?? '1')
+  if (!Number.isFinite(version) || version <= 1) {
+    return ''
+  }
+  return version === 2 ? 'revised once' : `revised ${version - 1} times`
+}

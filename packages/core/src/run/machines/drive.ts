@@ -4,7 +4,7 @@ import { planIsGated, policyForRepo } from '@/run/policy'
 import type { RunDeps } from './deps'
 import { provideRunDeps, releaseRunDeps } from './deps'
 import { issueWorkMachine } from './issueWork'
-import { persistSnapshot } from './snapshots'
+import { persistEveryTransition } from './snapshots'
 import { type IssueWorkContext, workState } from './types'
 
 /**
@@ -60,24 +60,12 @@ export async function driveIssueWork(input: {
       : { snapshot: input.snapshot as Snapshot<unknown> }),
   })
 
-  // Chained rather than collected. Each transition overwrites the same row and
-  // the same document, so letting them race means a later state can be
-  // overwritten by an earlier one finishing second, and the snapshot then
-  // describes a run that has already moved on.
-  let writes: Promise<void> = Promise.resolve()
-  actor.subscribe((snapshot) => {
-    const value = workState(snapshot.value)
-    const persisted = actor.getPersistedSnapshot()
-    writes = writes.then(() =>
-      persistSnapshot({
-        db: input.deps.db,
-        run: input.run,
-        runId: input.runId,
-        machine: 'issueWork',
-        value,
-        snapshot: persisted,
-      }),
-    )
+  const persisting = persistEveryTransition({
+    db: input.deps.db,
+    run: input.run,
+    runId: input.runId,
+    machine: 'issueWork',
+    actor,
   })
 
   try {
@@ -85,7 +73,7 @@ export async function driveIssueWork(input: {
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: Number.POSITIVE_INFINITY,
     })
-    await writes
+    await persisting.settled()
 
     // `approved` carries the plan, the verdict and the report delivery needs;
     // `finished` carries why it stopped. The caller tells them apart by state

@@ -7,7 +7,5 @@ export function asking(gate: {
   if (gate.summary !== null && gate.summary !== '') {
     return gate.summary
   }
-  return gate.kind === 'plan'
-    ? `approve the plan (v${gate.artifactVersion ?? '?'})`
-    : gate.kind
+  return gate.kind === 'plan' ? 'approve the plan' : gate.kind
 }

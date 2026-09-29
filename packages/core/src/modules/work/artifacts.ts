@@ -1,6 +1,7 @@
-import { appendFile, link, mkdir, rm } from 'node:fs/promises'
+import { link, mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SubjectKind } from '@/modules/db/schema/schema'
+import { appendEntry } from './conversation'
 import {
   artifactFilename,
   artifactId,
@@ -221,22 +222,19 @@ export async function findArtifacts(
 }
 
 /**
- * Appends to the subject's conversation.
+ * Appends a station's note to the subject's conversation.
  *
- * Unversioned because a discussion has no versions, and append only because
- * rewriting what was said is how a record stops being one.
+ * Delegates to the conversation module so stations and people write through one
+ * writer: two writers would drift on format, and the thread is parsed from what
+ * they produce.
  */
 export async function appendConversation(
   subject: Subject,
   author: string,
   body: string,
 ): Promise<string> {
-  const dir = artifactsDir(subject)
-  await mkdir(dir, { recursive: true })
-  const path = join(dir, CONVERSATION)
-  const entry = `\n## ${author} · ${new Date().toISOString()}\n\n${body.trim()}\n`
-  await appendFile(path, entry, 'utf8')
-  return path
+  await appendEntry(subject, { author, role: 'station', body })
+  return join(artifactsDir(subject), CONVERSATION)
 }
 
 /** Every subject with artifacts under one repository. */

@@ -39,10 +39,7 @@ export function DecisionPanel({
         component the shadcn CLI will overwrite.
       */}
       <ApprovalCard
-        title={
-          gate.summary ??
-          `Approve this plan${gate.artifactVersion === null ? '' : ` (v${gate.artifactVersion})`}?`
-        }
+        title={gate.summary ?? 'Approve this plan?'}
         description="Approving lets the run carry on. Asking for changes sends it back to the analyst at a new version."
         status={pending ? 'submitting' : 'pending'}
         approveLabel="Approve"

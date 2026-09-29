@@ -18,3 +18,11 @@ export type IssueWorkEvent =
       reason: string
     }
   | { type: 'GATE_SUPERSEDED'; gateId: string }
+  /**
+   * A maintainer said something at the gate without answering it.
+   *
+   * Carries the message rather than a pointer to it, because the actor that
+   * answers needs the text and reading the file twice to get it would let the
+   * two reads disagree.
+   */
+  | { type: 'REPLY_RECEIVED'; entryId: string; question: string }

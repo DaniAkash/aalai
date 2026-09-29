@@ -109,6 +109,20 @@ export type RunEvent = Base &
         /** Which surface answered: the app, a terminal, a comment. */
         readonly answeredOn: string
       }
+    | {
+        /**
+         * Something was said in a subject's discussion.
+         *
+         * Carries who said it and not what they said, for the same reason the
+         * database stores paths rather than prose: a client refetches the thread,
+         * and an event stream that replayed bodies would be a second copy of the
+         * record that could disagree with it.
+         */
+        readonly type: 'conversation.appended'
+        readonly gateId: string
+        readonly author: string
+        readonly role: 'maintainer' | 'station'
+      }
     | { readonly type: 'run.stopped'; readonly reason: string }
     | { readonly type: 'run.failed'; readonly error: string }
   )
