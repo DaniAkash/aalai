@@ -163,15 +163,48 @@ export async function latestWorkflowRunId(
  * is somewhere in the middle: taking the end of a real one gave forty lines of
  * housekeeping and no mention of the test that failed.
  *
- * The window is anchored on the last line that reads like a failure, with more
- * context before it than after, because a runner prints the expectation before
- * the verdict. Pure, and separate from fetching, because this is the part with
- * a decision in it.
+ * Windowed per job rather than once over the whole thing. `--log-failed`
+ * concatenates every failed job, and anchoring on the last failure in that
+ * meant a run with two red checks handed over evidence for one of them: a real
+ * pull request failing both its tests and an unrelated infrastructure job
+ * produced a window mentioning the test and nothing at all about the other,
+ * while the question being asked named both. A verdict on evidence that
+ * silently omits half the failure is worse than no verdict.
  */
 export function windowAroundFailure(text: string, maxLines: number): string {
   const lines = text.split('\n')
   if (lines.length <= maxLines) {
     return text
+  }
+  const jobs = groupByJob(lines)
+  const share = Math.max(20, Math.floor(maxLines / jobs.length))
+  return jobs.map((job) => windowOne(job, share)).join('\n')
+}
+
+/**
+ * `gh` prefixes every line with its job name, which is what separates them.
+ *
+ * A line with no prefix belongs to one unnamed job rather than to a job of its
+ * own, or a log that is not in this shape becomes one job per line and the
+ * windowing stops windowing anything.
+ */
+function groupByJob(lines: readonly string[]): string[][] {
+  const jobs = new Map<string, string[]>()
+  for (const line of lines) {
+    const name = line.includes('\t') ? (line.split('\t')[0] ?? '') : ''
+    const bucket = jobs.get(name)
+    if (bucket === undefined) {
+      jobs.set(name, [line])
+    } else {
+      bucket.push(line)
+    }
+  }
+  return [...jobs.values()]
+}
+
+function windowOne(lines: readonly string[], maxLines: number): string {
+  if (lines.length <= maxLines) {
+    return lines.join('\n')
   }
   const marker = /error:|expect\(|Expected|Received|\(fail\)|##\[error\]|FAIL/i
   let anchor = -1

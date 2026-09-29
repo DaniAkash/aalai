@@ -59,3 +59,32 @@ describe('the window around a failure', () => {
     expect(kept).toContain('line 199')
   })
 })
+
+describe('a run with more than one failing job', () => {
+  /** How gh prints a failed run: every line prefixed with its job. */
+  function twoJobs(): string {
+    const env = Array.from(
+      { length: 150 },
+      (_, i) => `environment\tRun\tsetup ${i}`,
+    )
+    env.push('environment\tRun\t##[error]artifact registry unreachable')
+    const test = Array.from({ length: 150 }, (_, i) => `test\tRun\tsetup ${i}`)
+    test.push('test\tRun\terror: expect(received).toEqual(expected)')
+    test.push('test\tRun\t(fail) uses th for the teens')
+    return [...env, ...test].join('\n')
+  }
+
+  test('evidence is kept for every job, not only the last', () => {
+    // Found on a real pull request failing both its tests and an unrelated
+    // infrastructure job: the window covered the test and said nothing about
+    // the other, while the question being asked named both.
+    const kept = windowAroundFailure(twoJobs(), 80)
+    expect(kept).toContain('registry unreachable')
+    expect(kept).toContain('uses th for the teens')
+  })
+
+  test('and each job still gets enough room to be legible', () => {
+    const kept = windowAroundFailure(twoJobs(), 80)
+    expect(kept.split('\n').length).toBeGreaterThan(20)
+  })
+})
