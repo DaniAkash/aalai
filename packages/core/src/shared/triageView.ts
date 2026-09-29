@@ -165,3 +165,61 @@ function field(report: string | null, name: string): string | undefined {
   const bold = new RegExp(`\\*\\*${label}:\\*\\*\\s*#?(.+)`, 'i').exec(report)
   return bold?.[1]?.trim()
 }
+
+export interface WatchedPullRequest {
+  readonly repo: string
+  readonly number: number
+  readonly state: string
+  readonly ciFixes: number
+  readonly revisions: number
+}
+
+/**
+ * What a pull request being kept alive is doing, in one line.
+ *
+ * Deliberately not phrased as a question. Nothing is being asked of anybody
+ * while this is running, and a row in the inbox that reads like a request is a
+ * row somebody tries to answer and cannot. It says what is happening so the
+ * absence of a decision is obvious.
+ */
+export function watchingLine(pr: WatchedPullRequest): string {
+  switch (pr.state) {
+    case 'fixing':
+      return pr.ciFixes > 1
+        ? `fixing the checks, attempt ${pr.ciFixes}`
+        : 'fixing the checks'
+    case 'classifyingFailure':
+      return 'working out why the checks failed'
+    case 'collecting':
+      return 'gathering what came in'
+    case 'saying':
+      return 'saying the failure was not ours'
+    default:
+      return 'watching for checks and comments'
+  }
+}
+
+/**
+ * Why a watch stopped, for somebody reading a pull request that has gone quiet.
+ *
+ * The work is on the branch either way, so what matters is whether anybody is
+ * expected to do something and what was already tried.
+ */
+export function stoppedBecause(outcome: {
+  kind: string
+  why?: string
+  author?: string
+}): string {
+  switch (outcome.kind) {
+    case 'handedBack':
+      return `${outcome.author ?? 'somebody'} pushed to the branch, so this stopped touching it`
+    case 'exhausted':
+      return outcome.why ?? 'there was nothing left to try'
+    case 'settled':
+      return 'the checks are green and nobody is asking for anything'
+    case 'stale':
+      return 'nobody came back to it'
+    default:
+      return 'it stopped for a reason it did not record'
+  }
+}
