@@ -25,9 +25,12 @@ function said(at: string): string {
 export function Thread({
   entries,
   answering,
+  subject = 'the plan',
 }: {
   entries: readonly ThreadEntry[]
   answering: boolean
+  /** What this gate is about, so the empty state names the right thing. */
+  subject?: string
 }) {
   if (entries.length === 0 && !answering) {
     return (
@@ -35,7 +38,7 @@ export function Thread({
         className="rounded-xl border border-border border-dashed bg-card/40 p-4 text-[13px] text-muted-foreground"
         data-testid="thread-empty"
       >
-        No discussion yet. Ask a question, or approve if the plan looks right.
+        No discussion yet. Ask a question, or answer if {subject} looks right.
       </p>
     )
   }
@@ -103,6 +106,7 @@ export function Composer({
   pending,
   error,
   sentAt,
+  station = 'the analyst',
   onSend,
 }: {
   answering: boolean
@@ -111,6 +115,8 @@ export function Composer({
   error: string | undefined
   /** Changes when a reply is confirmed, which is the only thing that clears the box. */
   sentAt: number
+  /** Who is being talked to, which differs by what the gate is about. */
+  station?: string
   onSend: (body: string) => void
 }) {
   const [body, setBody] = useState('')
@@ -150,7 +156,7 @@ export function Composer({
       }}
     >
       <label className="sr-only" htmlFor="gate-reply">
-        Reply to the analyst
+        Reply to {station}
       </label>
       <textarea
         className="h-20 w-full resize-none bg-transparent p-3 text-[14px] outline-none disabled:opacity-60"
@@ -158,7 +164,7 @@ export function Composer({
         id="gate-reply"
         onChange={(event) => setBody(event.target.value)}
         placeholder={
-          answering ? 'Waiting for the analyst' : 'Ask, or add a constraint'
+          answering ? `Waiting for ${station}` : 'Ask, or add a constraint'
         }
         value={body}
       />
@@ -190,5 +196,5 @@ function hint({
   if (!gateOpen) {
     return 'This gate was answered. Your reply was not sent, and is kept here.'
   }
-  return answering ? 'The analyst is answering' : 'Leaves the gate open'
+  return answering ? 'Answering' : 'Leaves the gate open'
 }

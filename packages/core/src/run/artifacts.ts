@@ -15,7 +15,7 @@ import { type ArtifactRef, writeArtifact } from '@/modules/work/artifacts'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { writeJson } from '@/modules/work/store'
 import type { PipelineResult } from '@/run/pipeline'
-import type { Analysis, Review } from '@/run/stations/schemas'
+import type { Analysis, Review, Triage } from '@/run/stations/schemas'
 
 /**
  * Turning what a station decided into the files the brain later reads.
@@ -227,4 +227,69 @@ export async function recordRun(
   snapshot: RunSnapshot,
 ): Promise<void> {
   await writeJson(run, 'run', snapshot)
+}
+
+function triageMarkdown(
+  issue: SubjectHeading,
+  triage: Triage,
+  runId: string,
+): string {
+  const surface =
+    triage.affected_surface.length === 0
+      ? '_Not established._'
+      : bullets(triage.affected_surface)
+  const missing =
+    triage.missing.length === 0 ? '_Nothing._' : bullets(triage.missing)
+  const duplicate =
+    triage.duplicate_of === undefined
+      ? ''
+      : `\n**Duplicates:** #${triage.duplicate_of}\n`
+  const reply =
+    triage.reply === undefined
+      ? ''
+      : `\n## Drafted reply\n\nNot posted. A person releases this.\n\n${triage.reply}\n`
+
+  return `${frontmatter({
+    kind: 'triage',
+    run: runId,
+    issue: String(issue.number),
+    classification: triage.classification,
+    confidence: triage.confidence,
+    created: new Date().toISOString(),
+  })}
+# Triage of #${issue.number}
+
+**Classification:** ${triage.classification}
+**Confidence:** ${triage.confidence}
+${duplicate}
+${triage.summary}
+
+## Reasoning
+
+${triage.reasoning}
+
+## Would touch
+
+${surface}
+
+## Missing
+
+${missing}
+${reply}`
+}
+
+/** The triage report, versioned, plus the classifier's structured output. */
+export async function recordTriage(
+  subject: Subject,
+  run: RunRef,
+  issue: SubjectHeading,
+  triage: Triage,
+): Promise<ArtifactRef> {
+  const report = await writeArtifact(
+    subject,
+    'triage',
+    triageMarkdown(issue, triage, run.runId),
+  )
+  await writeJson(run, 'triage', triage)
+  return report
 }

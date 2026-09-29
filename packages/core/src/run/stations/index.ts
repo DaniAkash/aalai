@@ -9,6 +9,7 @@ import {
   buildReplyPrompt,
   buildReviewerPrompt,
   buildStationRules,
+  buildTriagePrompt,
 } from '@/prompts/stations'
 import { runStation, type StationResult } from '@/run/station'
 import {
@@ -16,6 +17,8 @@ import {
   analysisSchema,
   type Review,
   reviewSchema,
+  type Triage,
+  triageSchema,
 } from '@/run/stations/schemas'
 
 const log = logger('stations')
@@ -270,4 +273,46 @@ export async function runAnalystReply(
       : { analysis: result.recorded.analysis }),
     result,
   }
+}
+
+export interface ClassifierInput {
+  readonly runId: string
+  readonly repo: string
+  readonly issue: GhIssue
+  readonly worktree: string
+  readonly history?: readonly { author: string; role: string; body: string }[]
+  readonly config: Config
+  readonly signal?: AbortSignal
+}
+
+/** Decides what an issue is, before any code is considered. Modifies nothing. */
+export async function runClassifier(
+  input: ClassifierInput,
+): Promise<{ triage: Triage; result: StationResult }> {
+  const { value, result } = await structuredStation(
+    'classifier',
+    {
+      agent: input.config.agents.analyst,
+      runId: input.runId,
+      station: 'classifier',
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
+      subject: { repo: input.repo, kind: 'issue', number: input.issue.number },
+      title: input.issue.title,
+      label: 'classifier',
+      worktree: input.worktree,
+      systemRules: buildStationRules('classifier'),
+      task: buildTriagePrompt({
+        repo: input.repo,
+        issue: input.issue,
+        ...(input.history === undefined ? {} : { history: input.history }),
+        tools: toolSurfaceIsUp(),
+      }),
+      // Reads only. Triage decides whether work should happen; it is not work.
+      permission: 'approve-reads',
+      config: input.config,
+    },
+    triageSchema,
+    (result) => result.recorded.triage,
+  )
+  return { triage: value, result }
 }

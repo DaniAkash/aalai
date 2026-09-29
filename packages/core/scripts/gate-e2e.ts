@@ -146,7 +146,9 @@ scenario('5. A plan rewritten under a gate retires the old question')
   check('the current one still stands', readGate(sqlite, v2)?.status === 'open')
   const { out, code } = await cli(['approve', v1])
   check('answering the retired one is refused', code === 1)
-  check('and says why', out.includes('the plan changed'))
+  // Worded for any gate rather than for a plan, since a triage report is
+  // superseded the same way when it is classified again.
+  check('and says why', out.includes('has changed'))
   check('no decision landed on it', readGate(sqlite, v1)?.decision === null)
 }
 

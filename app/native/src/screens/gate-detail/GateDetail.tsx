@@ -4,12 +4,8 @@ import { Screen } from '@/components/layout/Screen'
 import { ErrorNote, Loading } from '@/components/state'
 import { useAnswerGate, useGate } from '@/modules/api/gates.hooks'
 import { useReply, useThread } from '@/modules/api/thread.hooks'
-import {
-  Answered,
-  type Decision,
-  DecisionPanel,
-} from './gate-detail.components'
-import { Composer, Thread } from './gate-thread.components'
+import type { Decision } from './gate-detail.components'
+import { Decide, Discussion } from './gate-sections.components'
 
 /**
  * One gate: what is being asked, and the decision.
@@ -18,6 +14,18 @@ import { Composer, Thread } from './gate-thread.components'
  * is the failure this gate exists to prevent, so the plan is the body of the
  * page and the decision sits under it rather than above.
  */
+/** What this gate is called on screen. */
+function titleFor(kind: string): string {
+  switch (kind) {
+    case 'plan':
+      return 'Plan approval'
+    case 'triage':
+      return 'Worth doing?'
+    default:
+      return 'Permission'
+  }
+}
+
 /** "just now" already reads as a time; everything else needs the "ago". */
 function openedAgo(openedAt: string): string {
   const waited = waitedFor(openedAt)
@@ -63,7 +71,7 @@ export function GateDetail() {
 
   return (
     <Screen
-      title={row.kind === 'plan' ? 'Plan approval' : 'Permission'}
+      title={titleFor(row.kind)}
       sub={[
         subjectOf(row.runId),
         `opened ${openedAgo(row.openedAt)}`,
@@ -103,56 +111,24 @@ export function GateDetail() {
           </article>
         )}
 
-        <section
-          aria-label="Discussion"
-          className="flex min-h-0 flex-col gap-3 lg:basis-1/2"
-        >
-          <h2 className="font-semibold text-[11px] text-muted-foreground uppercase tracking-wide">
-            Discussion
-          </h2>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {thread.isPending ? (
-              <Loading rows={2} />
-            ) : thread.isError ? (
-              <ErrorNote
-                message={thread.error.message}
-                onRetry={() => thread.refetch()}
-              />
-            ) : (
-              <Thread
-                answering={thread.data.state === 'answering'}
-                entries={thread.data.entries}
-              />
-            )}
-          </div>
-          {/*
-            Rendered whatever the gate's status, because the composer keeps the
-            draft when the gate is answered from somewhere else. It returns null
-            itself once there is nothing left to keep.
-          */}
-          <Composer
-            answering={thread.data?.state === 'answering'}
-            error={reply.error?.message}
-            gateOpen={row.status === 'open'}
-            onSend={(body) =>
-              reply.mutate({ id: gateId, body, author: 'maintainer' })
-            }
-            pending={reply.isPending}
-            sentAt={reply.isSuccess ? reply.submittedAt : 0}
-          />
-        </section>
+        <Discussion
+          gateOpen={row.status === 'open'}
+          kind={row.kind}
+          onSend={(body) =>
+            reply.mutate({ id: gateId, body, author: 'maintainer' })
+          }
+          reply={reply}
+          thread={thread}
+        />
       </div>
 
-      {row.status === 'open' ? (
-        <DecisionPanel
-          gate={row}
-          pending={answer.isPending}
-          error={answer.error?.message}
-          onDecide={decide}
-        />
-      ) : (
-        <Answered gate={row} />
-      )}
+      <Decide
+        artifact={artifact}
+        error={answer.error?.message}
+        onDecide={decide}
+        pending={answer.isPending}
+        row={row}
+      />
     </Screen>
   )
 }

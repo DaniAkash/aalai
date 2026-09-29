@@ -1,10 +1,20 @@
 import { sql } from 'drizzle-orm'
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
-export const GATE_DECISIONS = ['approved', 'rejected', 'changes'] as const
+/**
+ * `reclassify` is not `changes` under another name. `changes` means "plan this
+ * again", and reclassify means "your classification is wrong", which carries a
+ * value the machine reads rather than a instruction it follows.
+ */
+export const GATE_DECISIONS = [
+  'approved',
+  'rejected',
+  'changes',
+  'reclassify',
+] as const
 export type GateDecision = (typeof GATE_DECISIONS)[number]
 
-export const GATE_KINDS = ['plan', 'permission'] as const
+export const GATE_KINDS = ['triage', 'plan', 'permission'] as const
 export type GateKind = (typeof GATE_KINDS)[number]
 
 /**

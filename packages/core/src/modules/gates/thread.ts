@@ -73,11 +73,8 @@ export type ReplyResult =
 /**
  * Says something at a gate without answering it.
  *
- * Refuses rather than throws, the same way answering does: a person can be
- * mid reply while someone else approves, and that race is expected.
- *
- * Only a plan gate takes a reply. A permission ask holds an agent turn open and
- * dies with the process, so a conversation cannot fit inside one.
+ * Refuses rather than throws, the same way answering does: a person can be mid
+ * reply while someone else approves, and that race is expected.
  */
 export async function replyToGate(
   db: Database,
@@ -87,7 +84,10 @@ export async function replyToGate(
   if (gate === undefined) {
     return { ok: false, refusal: { kind: 'not_found' } }
   }
-  if (gate.kind !== 'plan') {
+  // A permission ask is the only kind that cannot hold one: it holds an agent
+  // turn open with a fifteen minute ceiling, so a conversation cannot fit
+  // inside it. A plan and a triage report are both things to talk about.
+  if (gate.kind === 'permission') {
     return { ok: false, refusal: { kind: 'wrong_kind', kind_was: gate.kind } }
   }
   if (gate.status !== 'open') {

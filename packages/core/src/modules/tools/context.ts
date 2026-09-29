@@ -2,7 +2,7 @@ import type { StationId } from '@/events/events.types'
 import type { ArtifactRef } from '@/modules/work/artifacts'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import type { OutboundIntent } from '@/modules/work/store'
-import type { Analysis, Review } from '@/run/stations/schemas'
+import type { Analysis, Review, Triage } from '@/run/stations/schemas'
 
 /**
  * What a tool call is allowed to touch.
@@ -29,7 +29,7 @@ export interface ToolContext {
    * The structured values a tool validated, kept so the caller does not have
    * to read back what it just wrote or parse the same thing out of prose.
    */
-  readonly recorded: { analysis?: Analysis; review?: Review }
+  readonly recorded: { analysis?: Analysis; review?: Review; triage?: Triage }
 }
 
 /** A turn's authority to call tools, and the record of what it did with it. */

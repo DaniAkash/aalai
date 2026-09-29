@@ -1,10 +1,9 @@
-import { createActor, type Snapshot, waitFor } from 'xstate'
 import type { RunRef } from '@/modules/work/paths'
 import { planIsGated, policyForRepo } from '@/run/policy'
 import type { RunDeps } from './deps'
-import { provideRunDeps, releaseRunDeps } from './deps'
+import { provideRunDeps } from './deps'
 import { issueWorkMachine } from './issueWork'
-import { persistEveryTransition } from './snapshots'
+import { runMachine } from './snapshots'
 import { type IssueWorkContext, workState } from './types'
 
 /**
@@ -40,8 +39,13 @@ export async function driveIssueWork(input: {
 
   // Input is required either way. When a snapshot is given it wins, and the
   // input is only what the machine would have used had there been none.
-  const actor = createActor(issueWorkMachine, {
-    input: {
+  const settled = await runMachine({
+    db: input.deps.db,
+    run: input.run,
+    runId: input.runId,
+    machine: 'issueWork',
+    logic: issueWorkMachine,
+    machineInput: {
       runId: input.runId,
       repo: input.repo,
       issueNumber: input.issueNumber,
@@ -55,33 +59,12 @@ export async function driveIssueWork(input: {
         ? {}
         : { gatePollMs: input.gatePollMs }),
     },
-    ...(input.snapshot === undefined
-      ? {}
-      : { snapshot: input.snapshot as Snapshot<unknown> }),
+    ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+    onSettled: () => stopping.abort(),
   })
 
-  const persisting = persistEveryTransition({
-    db: input.deps.db,
-    run: input.run,
-    runId: input.runId,
-    machine: 'issueWork',
-    actor,
-  })
-
-  try {
-    actor.start()
-    const settled = await waitFor(actor, (s) => s.status === 'done', {
-      timeout: Number.POSITIVE_INFINITY,
-    })
-    await persisting.settled()
-
-    // `approved` carries the plan, the verdict and the report delivery needs;
-    // `finished` carries why it stopped. The caller tells them apart by state
-    // rather than by guessing from which fields are populated.
-    return { state: workState(settled.value), context: settled.context }
-  } finally {
-    stopping.abort()
-    actor.stop()
-    releaseRunDeps(input.runId)
-  }
+  // `approved` carries the plan, the verdict and the report delivery needs;
+  // `finished` carries why it stopped. The caller tells them apart by state
+  // rather than by guessing from which fields are populated.
+  return { state: workState(settled.value), context: settled.context }
 }

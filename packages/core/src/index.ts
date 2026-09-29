@@ -3,15 +3,12 @@ import { type Config, loadConfig } from '@/config'
 import { answerGateCommand, showGate, showGates } from '@/gateCommands'
 import { captureInheritedTokens } from '@/lib/credentials'
 import { serverDisabled } from '@/lib/env'
-import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { exitWithParent } from '@/lib/parent'
-import { runIssue } from '@/run/pipeline'
-import { announceReady, startServer, stopServer } from '@/server/serve'
+import { runOne } from '@/runCommand'
+import { startApi, startServer, stopServer } from '@/server/serve'
 import { replyCommand, showThread } from '@/threadCommands'
-import { screenIssue } from '@/watch/intake'
 import { pollOnce } from '@/watch/poll'
-import { claimRun, completeRun, forgetRun, openState } from '@/watch/state'
+import { forgetRun, openState } from '@/watch/state'
 
 const log = logger('aalai')
 
@@ -41,24 +38,15 @@ function flag(name: string): string | undefined {
   return at === -1 ? undefined : process.argv[at + 1]
 }
 
-/** Starts the API and, when a shell is listening, tells it where to connect. */
-function startApi(config: Config): void {
-  // Spawned by the desktop shell rather than run by hand.
-  if (flag('port') !== undefined) exitWithParent()
-
-  const requested = flag('port')
-  const handle = startServer(
-    requested === undefined ? config.uiPort : Number(requested),
-    flag('token'),
-  )
-  if (handle) announceReady(handle)
-}
-
 async function serve(config: Config): Promise<void> {
   const db = openState()
   const controller = new AbortController()
 
-  startApi(config)
+  startApi({
+    defaultPort: config.uiPort,
+    port: flag('port'),
+    token: flag('token'),
+  })
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.on(signal, () => {
@@ -134,61 +122,6 @@ async function once(config: Config): Promise<void> {
   })
 }
 
-/** Manual trigger. Bypasses the cursor but still claims, so a demo cannot double-run. */
-async function runOne(
-  config: Config,
-  repo: string,
-  issueNumber: number,
-): Promise<void> {
-  const db = openState()
-  if (!serverDisabled()) {
-    startApi(config)
-  }
-  const issue = await getIssue(repo, issueNumber)
-  const screening = screenIssue(issue, {
-    trustedAuthorsOnly: config.trustedAuthorsOnly,
-    requireLabel: config.requireLabel,
-  })
-  if (!screening.accepted) {
-    log.error('issue rejected by intake policy', { reason: screening.reason })
-    process.exitCode = 1
-    db.close()
-    return
-  }
-  const lease = claimRun(
-    db,
-    repo,
-    issueNumber,
-    config.staleClaimMinutes * 60_000,
-  )
-  if (lease === null) {
-    log.error('already run; use `aalai forget <repo> <issue>` to retry', {
-      repo,
-      issue: issueNumber,
-    })
-    process.exitCode = 1
-    db.close()
-    return
-  }
-  const result = await runIssue(repo, issue, config)
-  completeRun(db, repo, issueNumber, {
-    status: result.status,
-    branch: result.branch,
-    prUrl: result.prUrl,
-    error: result.error,
-    lease,
-  })
-  log.info('done', {
-    status: result.status,
-    pr: result.prUrl,
-    error: result.error,
-  })
-  if (result.status === 'failed') {
-    process.exitCode = 1
-  }
-  db.close()
-}
-
 function parseRepoIssue(
   args: readonly string[],
   usage: string,
@@ -233,7 +166,10 @@ async function run(config: Config, args: readonly string[]): Promise<void> {
   if (parsed === null) {
     return
   }
-  await runOne(config, parsed.repo, parsed.issueNumber)
+  await runOne(config, parsed.repo, parsed.issueNumber, {
+    port: flag('port'),
+    token: flag('token'),
+  })
 }
 
 function holdInheritedTokens(): void {
@@ -259,6 +195,7 @@ const GATE_COMMANDS: Record<
   approve: (args) => answerGateCommand('approved', args),
   reject: (args) => answerGateCommand('rejected', args),
   changes: (args) => answerGateCommand('changes', args),
+  reclassify: (args) => answerGateCommand('reclassify', args),
 }
 
 async function main(): Promise<void> {

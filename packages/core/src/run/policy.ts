@@ -22,3 +22,14 @@ export function policyForRepo(config: Config, repo: string): RunPolicy {
 export function planIsGated(policy: RunPolicy): boolean {
   return policy === 'plan_gate'
 }
+
+/**
+ * Whether an issue is classified before anyone considers acting on it.
+ *
+ * The value has existed since the gate work and was read by nothing, so a
+ * repository set to `triage` behaved exactly like one set to `automatic`. This
+ * is what gives it meaning.
+ */
+export function triageFirst(policy: RunPolicy): boolean {
+  return policy === 'triage'
+}

@@ -137,7 +137,10 @@
       }
     },
     {
-      "includes": ["packages/core/src/run/machines/issueWork.ts"],
+      "includes": [
+        "packages/core/src/run/machines/issueWork.ts",
+        "packages/core/src/run/machines/triage.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

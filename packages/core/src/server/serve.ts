@@ -1,4 +1,5 @@
 import { logger } from '@/lib/log'
+import { exitWithParent } from '@/lib/parent'
 import { publishToolEndpoint } from '@/modules/tools/endpoint'
 import { app } from '@/server/app'
 
@@ -80,7 +81,7 @@ function authorised(request: Request, token: string): boolean {
  * Written rather than logged so it is a contract instead of a log format that
  * someone later makes prettier.
  */
-export function announceReady(handle: ServerHandle): void {
+function announceReady(handle: ServerHandle): void {
   process.stdout.write(
     `${JSON.stringify({ ready: true, port: handle.port, pid: process.pid })}\n`,
   )
@@ -97,4 +98,30 @@ export function stopServer(): void {
   running?.stop(true)
   running = null
   publishToolEndpoint(null)
+}
+
+/** Starts the API and, when a shell is listening, tells it where to connect. */
+/**
+ * Brings the api up and says so, for whoever is listening.
+ *
+ * Takes the port and token rather than reading the command line, because this
+ * is the module that owns the socket and not the one that owns the arguments.
+ * A given port means the desktop shell spawned this, which is also what makes
+ * the process follow its parent out.
+ */
+export function startApi(input: {
+  defaultPort: number
+  port?: string | undefined
+  token?: string | undefined
+}): void {
+  if (input.port !== undefined) {
+    exitWithParent()
+  }
+  const handle = startServer(
+    input.port === undefined ? input.defaultPort : Number(input.port),
+    input.token,
+  )
+  if (handle) {
+    announceReady(handle)
+  }
 }

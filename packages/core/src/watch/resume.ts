@@ -63,7 +63,7 @@ export async function resumeUnfinished(
 async function resumeOne(
   db: Database,
   config: Config,
-  row: { runId: string; value: string },
+  row: { runId: string; value: string; machine: string },
 ): Promise<boolean> {
   const named = parseRunId(row.runId)
   if (named === undefined) {
@@ -104,6 +104,7 @@ async function resumeOne(
     const result = await resumeIssue(named.repo, issue, config, {
       runId: row.runId,
       snapshot,
+      machine: row.machine,
     })
     // Settled with the lease, so a worker that was taken over cannot come back
     // and overwrite this. Without it the row stays claimed, the issue is

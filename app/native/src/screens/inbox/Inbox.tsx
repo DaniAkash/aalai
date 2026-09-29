@@ -3,7 +3,7 @@ import { subjectOf, waitedFor } from 'aalai/shared'
 import { GroupHead, Screen } from '@/components/layout/Screen'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { useInboxData } from './inbox.data'
-import { asking } from './inbox.helpers'
+import { asking, grouped } from './inbox.helpers'
 
 /**
  * What needs a person, in the order it needs them.
@@ -47,31 +47,46 @@ export function Inbox() {
     )
   }
 
+  const groups = grouped(gates)
+  const sections = [
+    { label: 'Worth doing?', rows: groups.triage },
+    { label: 'Plans', rows: groups.plans },
+    { label: 'Other', rows: groups.other },
+  ]
+
   return (
     <Screen
-      title="Inbox"
       sub={`${gates.length} waiting on you. Nothing moves until you answer.`}
+      title="Inbox"
     >
-      <GroupHead label="Waiting on you" count={gates.length} />
-      {gates.map((gate) => (
-        <Link
-          key={gate.id}
-          to="/gates/$gateId"
-          params={{ gateId: gate.id }}
-          className="mb-1.5 flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-ring"
-        >
-          <span className="size-[7px] shrink-0 rounded-full bg-chart-4" />
-          <div className="min-w-0 flex-1">
-            <div className="font-mono text-[11.5px] text-muted-foreground">
-              {subjectOf(gate.runId)}
-            </div>
-            <div className="mt-0.5 truncate text-[14px]">{asking(gate)}</div>
-          </div>
-          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-            {waitedFor(gate.openedAt)}
-          </span>
-        </Link>
-      ))}
+      {sections.map((section) =>
+        section.rows.length === 0 ? null : (
+          <section key={section.label}>
+            <GroupHead label={section.label} count={section.rows.length} />
+            {section.rows.map((gate) => (
+              <Link
+                className="mb-1.5 flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors hover:border-ring"
+                key={gate.id}
+                params={{ gateId: gate.id }}
+                to="/gates/$gateId"
+              >
+                <span className="size-[7px] shrink-0 rounded-full bg-chart-4" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-[11.5px] text-muted-foreground">
+                    {subjectOf(gate.runId)}
+                  </div>
+                  <div className="mt-0.5 truncate text-[14px]">
+                    {asking(gate)}
+                  </div>
+                </div>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                  {waitedFor(gate.openedAt)}
+                </span>
+              </Link>
+            ))}
+          </section>
+        ),
+      )}
     </Screen>
   )
 }

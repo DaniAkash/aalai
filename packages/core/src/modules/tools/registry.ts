@@ -9,8 +9,13 @@ import {
 } from '@/modules/work/artifacts'
 import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { queueOutbound } from '@/modules/work/store'
-import { recordAnalysis, recordReview } from '@/run/artifacts'
-import { analysisSchema, reviewSchema } from '@/run/stations/schemas'
+import { recordAnalysis, recordReview, recordTriage } from '@/run/artifacts'
+import {
+  analysisSchema,
+  reviewSchema,
+  triageSchema,
+} from '@/run/stations/schemas'
+import { CLASSIFICATIONS, CONFIDENCES } from '@/shared/triageView'
 import type { ToolContext } from './context'
 
 /**
@@ -196,8 +201,14 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
       } as const
       await queueOutbound(ctx.run, intent)
       ctx.queued.push(intent)
+      // Only triage drains an outbox today. Telling an implementer or a
+      // reviewer that their intent will be sent would be a promise nothing
+      // keeps: theirs are queued after the handoff, bound to no gate, and
+      // delivered by nobody.
       return text(
-        'recorded for a person to review. Nothing is posted to GitHub by this tool, and delivery is not wired up yet, so do not rely on this being seen by the reporter during this run.',
+        ctx.station === 'classifier'
+          ? 'recorded for a person to review. Nothing is posted to GitHub by this tool. If a person releases it, it is sent afterwards, and you are not told either way.'
+          : 'recorded for a person to read. Nothing is posted to GitHub by this tool and nothing delivers it yet, so do not rely on the reporter seeing it.',
       )
     }
 
@@ -206,7 +217,7 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Queue a comment on the issue',
       description:
-        'Record something you would say on the issue. It is written down for a person to read and is never posted by you. Delivery is not implemented yet, so do not expect a reply.',
+        'Record something you would say on the issue. It is written down for a person to read and is never posted by you. At most it is sent after your turn has ended, so do not expect a reply.',
       inputSchema: { body: z.string().min(1) },
     },
     queue('comment_on_issue'),
@@ -224,8 +235,49 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
   )
 }
 
+function registerWriteTriage(server: McpServer, ctx: ToolContext): void {
+  server.registerTool(
+    'write_triage',
+    {
+      title: 'Record what this issue is',
+      description:
+        'Record your classification of this issue and why. Call this instead of writing the verdict as prose. A new call records a new version; it never overwrites an earlier one.',
+      inputSchema: {
+        classification: z.enum(CLASSIFICATIONS),
+        confidence: z.enum(CONFIDENCES),
+        summary: z.string().min(1),
+        reasoning: z.string().min(1),
+        affected_surface: z.array(z.string()),
+        duplicate_of: z.number().int().positive().optional(),
+        reply: z.string().optional(),
+        missing: z.array(z.string()),
+      },
+    },
+    async (input) => {
+      const triage = triageSchema.parse(input)
+      const recorded = await recordTriage(
+        ctx.subject,
+        ctx.run,
+        { number: ctx.subject.number, title: ctx.title },
+        triage,
+      )
+      ctx.written.push(recorded)
+      ctx.recorded.triage = triage
+      return text(
+        `recorded ${recorded.id} (version ${recorded.version}) as ${triage.classification} at ${triage.confidence} confidence`,
+      )
+    },
+  )
+}
+
 /** Tool names a station is given, which is the whole access control. */
 export const STATION_TOOLS: Record<StationId, readonly string[]> = {
+  classifier: [
+    'write_triage',
+    'find_artifacts',
+    'read_artifact',
+    'append_conversation',
+  ],
   analyst: [
     'write_plan',
     'find_artifacts',
@@ -246,6 +298,7 @@ export function registerStationTools(
   ctx: ToolContext,
 ): void {
   const allowed = new Set(STATION_TOOLS[ctx.station] ?? [])
+  if (allowed.has('write_triage')) registerWriteTriage(server, ctx)
   if (allowed.has('write_plan')) registerWritePlan(server, ctx)
   if (allowed.has('write_review')) registerWriteReview(server, ctx)
   if (allowed.has('find_artifacts')) registerRecall(server, ctx)

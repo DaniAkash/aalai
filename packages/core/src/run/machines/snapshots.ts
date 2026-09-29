@@ -1,9 +1,18 @@
 import type { Database } from 'bun:sqlite'
+import {
+  type AnyStateMachine,
+  createActor,
+  type InputFrom,
+  type Snapshot,
+  type SnapshotFrom,
+  waitFor,
+} from 'xstate'
 import { logger } from '@/lib/log'
 import { query } from '@/modules/db/query'
 import { machineSnapshots } from '@/modules/db/schema/schema'
 import type { RunRef } from '@/modules/work/paths'
 import { readJson, writeJson } from '@/modules/work/store'
+import { releaseRunDeps } from './deps'
 import { workState } from './types'
 
 const log = logger('snapshot')
@@ -37,7 +46,16 @@ export async function persistSnapshot(input: {
       })
       .onConflictDoUpdate({
         target: machineSnapshots.runId,
-        set: { value: input.value, snapshotPath: path, updatedAt },
+        // The machine too, not just the state. One run is driven by triage and
+        // then by issue work under the same id, and a row still claiming
+        // `triage` after the handoff would route its own resume to the wrong
+        // machine entirely.
+        set: {
+          machine: input.machine,
+          value: input.value,
+          snapshotPath: path,
+          updatedAt,
+        },
       })
       .run()
   } catch (error) {
@@ -116,10 +134,74 @@ export function unfinishedRuns(db: Database): ResumableRun[] {
     .filter((row) => !FINAL.has(row.value))
 }
 
-/** States the machine does not come back from. */
-const FINAL = new Set(['approved', 'finished'])
+/**
+ * States no machine comes back from, across all of them.
+ *
+ * A set rather than a per machine lookup because the row is filtered in SQL
+ * before anything knows which machine wrote it. Triage's terminals are here for
+ * the same reason issue work's are: a security escalation that is not listed
+ * stays resumable forever, and every startup rediscovers a finished run.
+ *
+ * `handingOff` is deliberately absent. It ends the triage machine but not the
+ * run: the pipeline goes on to drive issue work under the same id. A process
+ * that died in between would otherwise leave a row nobody ever picks up, and
+ * the issue would never be worked on at all.
+ */
+const FINAL = new Set(['approved', 'finished', 'escalated', 'failing'])
 
 /** The persisted snapshot itself, or undefined if the document is gone. */
 export async function readSnapshot(run: RunRef): Promise<unknown | undefined> {
   return await readJson<unknown>(run, 'machine')
+}
+
+/**
+ * Starts a machine, persists every transition, waits for it to finish, and
+ * always releases what it registered.
+ *
+ * Shared by both drivers, which had grown the same twenty three lines twice. A
+ * run that persisted differently depending on which machine it was would be a
+ * bad thing to find out about later.
+ *
+ * No timeout. A run parked on a gate or on a reporter can legitimately sit for
+ * a fortnight, so a clock here would eventually kill a run for waiting exactly
+ * as designed.
+ */
+export async function runMachine<TLogic extends AnyStateMachine>(input: {
+  db: Database
+  run: RunRef
+  runId: string
+  machine: string
+  logic: TLogic
+  machineInput: InputFrom<TLogic>
+  snapshot?: unknown
+  /** Cleanup the caller needs on the way out, whatever happened. */
+  onSettled?: () => void
+}): Promise<SnapshotFrom<TLogic>> {
+  const actor = createActor(input.logic, {
+    input: input.machineInput,
+    ...(input.snapshot === undefined
+      ? {}
+      : { snapshot: input.snapshot as Snapshot<unknown> }),
+  })
+  const persisting = persistEveryTransition({
+    db: input.db,
+    run: input.run,
+    runId: input.runId,
+    machine: input.machine,
+    actor,
+  })
+  try {
+    actor.start()
+    const settled = await waitFor(
+      actor,
+      (snapshot) => (snapshot as { status: string }).status === 'done',
+      { timeout: Number.POSITIVE_INFINITY },
+    )
+    await persisting.settled()
+    return settled as SnapshotFrom<TLogic>
+  } finally {
+    input.onSettled?.()
+    actor.stop()
+    releaseRunDeps(input.runId)
+  }
 }

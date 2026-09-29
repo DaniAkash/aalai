@@ -18,7 +18,14 @@ import { artifactsDir, CONVERSATION, type Subject } from './paths'
  * before this existed are the record and are not rewritten.
  */
 
-export type EntryRole = 'maintainer' | 'station'
+/**
+ * Who said it.
+ *
+ * A reporter is neither of the other two: they do not work here, so they cannot
+ * approve anything, and the keeper deliberately only treats a maintainer's
+ * words as a question a station owes an answer to.
+ */
+export type EntryRole = 'maintainer' | 'station' | 'reporter'
 
 export interface ConversationEntry {
   /** Derived from the entry, not stored: the file has no ids in it. */
@@ -34,7 +41,7 @@ const ESCAPED_OPEN = '<!-- aalai-quoted:entry'
 /** Marks a line that already began with the escape marker before it was written. */
 const QUOTE = '\u0021'
 const SENTINEL_LINE =
-  /^<!-- aalai:entry author="(?<author>[^"]*)" role="(?<role>maintainer|station)" at="(?<at>[^"]*)" -->$/
+  /^<!-- aalai:entry author="(?<author>[^"]*)" role="(?<role>maintainer|station|reporter)" at="(?<at>[^"]*)" -->$/
 const HEADING_LINE = /^## (?<author>.+?) · (?<at>\d{4}-\d{2}-\d{2}T\S+)$/
 
 /**
@@ -193,6 +200,11 @@ function withoutDecorativeHeadings(lines: readonly string[]): string[] {
 }
 
 /** A line that starts an entry, in either accepted form, or nothing. */
+/** The role a sentinel names, defaulting to the one that grants nothing. */
+function roleOf(role: string | undefined): EntryRole {
+  return role === 'maintainer' || role === 'reporter' ? role : 'station'
+}
+
 function matchHead(
   line: string,
   options: { headingsDelimit: boolean },
@@ -201,7 +213,10 @@ function matchHead(
   if (sentinel !== undefined) {
     return {
       author: sentinel.author ?? 'unknown',
-      role: sentinel.role === 'maintainer' ? 'maintainer' : 'station',
+      // Read back exactly as written. Anything unrecognised falls to
+      // `station` rather than to `maintainer`: an entry whose role cannot be
+      // parsed must not be handed the authority the keeper gives a maintainer.
+      role: roleOf(sentinel.role),
       at: sentinel.at ?? '',
       fromSentinel: true,
     }

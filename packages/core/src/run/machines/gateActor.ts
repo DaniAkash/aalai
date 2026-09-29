@@ -1,6 +1,7 @@
 import { fromCallback } from 'xstate'
 import { emit } from '@/events/bus'
 import { logger } from '@/lib/log'
+import type { GateKind } from '@/modules/db/schema/schema'
 import {
   openGate,
   readGate,
@@ -41,7 +42,13 @@ const GATE_POLL_MS = 2_000
  */
 export const gateKeeper = fromCallback<
   { type: string },
-  { runId: string; repo: string; issue: number; kind: string; pollMs?: number }
+  {
+    runId: string
+    repo: string
+    issue: number
+    kind: GateKind
+    pollMs?: number
+  }
 >(({ input, sendBack }) => {
   let stopped = false
   let unsubscribe: (() => void) | undefined
@@ -144,7 +151,7 @@ export const gateKeeper = fromCallback<
     }
     const gateId = openGate(deps.db, {
       runId: input.runId,
-      kind: 'plan',
+      kind: input.kind,
       ...(artifact === undefined
         ? {}
         : {
@@ -158,7 +165,7 @@ export const gateKeeper = fromCallback<
     // rewritten underneath it does exactly that), and without this the old
     // question stays in the inbox forever as something nobody can usefully
     // answer.
-    const retired = supersedeOpenGates(deps.db, input.runId, 'plan', {
+    const retired = supersedeOpenGates(deps.db, input.runId, input.kind, {
       except: gateId,
     })
     if (retired > 0) {

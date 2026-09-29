@@ -5,14 +5,20 @@
  * The logger stays a subscriber, so the terminal output is unchanged and the
  * UI is additive rather than a replacement.
  */
+import type { GateDecision } from '@/modules/db/schema/schema'
+
 export type Stage =
   | 'workspace'
+  | 'classifier'
   | 'analyst'
   | 'implementer'
   | 'reviewer'
   | 'deliver'
 
-export type StationId = Extract<Stage, 'analyst' | 'implementer' | 'reviewer'>
+export type StationId = Extract<
+  Stage,
+  'classifier' | 'analyst' | 'implementer' | 'reviewer'
+>
 
 export interface CriterionResultEvent {
   readonly criterion: string
@@ -105,7 +111,7 @@ export type RunEvent = Base &
     | {
         readonly type: 'gate.answered'
         readonly gateId: string
-        readonly decision: 'approved' | 'rejected' | 'changes'
+        readonly decision: GateDecision
         /** Which surface answered: the app, a terminal, a comment. */
         readonly answeredOn: string
       }
@@ -121,7 +127,7 @@ export type RunEvent = Base &
         readonly type: 'conversation.appended'
         readonly gateId: string
         readonly author: string
-        readonly role: 'maintainer' | 'station'
+        readonly role: 'maintainer' | 'station' | 'reporter'
       }
     | { readonly type: 'run.stopped'; readonly reason: string }
     | { readonly type: 'run.failed'; readonly error: string }
