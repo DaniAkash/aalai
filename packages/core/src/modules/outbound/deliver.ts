@@ -10,10 +10,12 @@ import { listGates, readGate } from '@/modules/gates'
 import type { RunRef } from '@/modules/work/paths'
 import type { OutboundIntent, QueuedIntent } from '@/modules/work/store'
 import {
+  claimDelivery,
   queueOutbound,
   readDelivery,
   readQueued,
   recordDelivery,
+  releaseDelivery,
 } from '@/modules/work/store'
 import {
   isActionable,
@@ -40,6 +42,8 @@ const log = logger('outbound')
 
 export type Refusal =
   | { readonly kind: 'no_gate' }
+  /** Somebody else is sending it right now, so this pass leaves it alone. */
+  | { readonly kind: 'in_flight' }
   | { readonly kind: 'gate_unanswered'; readonly status: string }
   | { readonly kind: 'gate_missing' }
 
@@ -74,6 +78,8 @@ export interface DeliveryReport {
 export async function queueDraftedReply(
   run: RunRef,
   triage: Triage,
+  /** Which judgement these belong to, so replaying it rewrites rather than adds. */
+  generation = 0,
 ): Promise<number> {
   if (!mayBeAnsweredPublicly(triage) || isActionable(triage)) {
     return 0
@@ -82,23 +88,31 @@ export async function queueDraftedReply(
   let queued = 0
   const reply = (triage.reply ?? '').trim()
   if (reply !== '') {
-    await queueOutbound(run, {
-      kind: 'comment_on_issue',
-      body: reply,
-      station: 'classifier',
-      queuedAt: at,
-    })
+    await queueOutbound(
+      run,
+      {
+        kind: 'comment_on_issue',
+        body: reply,
+        station: 'classifier',
+        queuedAt: at,
+      },
+      `triage-${generation}-reply`,
+    )
     queued += 1
   }
   const reason = closingReason(triage)
   if (reason !== undefined) {
-    await queueOutbound(run, {
-      kind: 'close_issue',
-      body: '',
-      station: 'classifier',
-      queuedAt: at,
-      closeReason: reason,
-    })
+    await queueOutbound(
+      run,
+      {
+        kind: 'close_issue',
+        body: '',
+        station: 'classifier',
+        queuedAt: at,
+        closeReason: reason,
+      },
+      `triage-${generation}-close`,
+    )
     queued += 1
   }
   return queued
@@ -188,9 +202,18 @@ export async function deliverOutbox(input: {
       })
       continue
     }
+    // Claimed before the send, not after. Everything above this line is a read,
+    // and two workers can pass all of it at once.
+    if (!(await claimDelivery(input.run, queued.id))) {
+      refused.push({ id: queued.id, refusal: { kind: 'in_flight' } })
+      continue
+    }
     try {
       const result = await deliverOne(input, queued)
       delivered.push({ id: queued.id, ...result, source: 'sent' })
+      // The delivery record is what stops a resend from here on, so the claim
+      // has done its job and only clutters the directory.
+      await releaseDelivery(input.run, queued.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       log.warn('an intent could not be delivered, leaving it queued', {
@@ -199,6 +222,9 @@ export async function deliverOutbox(input: {
         error: message,
       })
       failed.push({ id: queued.id, error: message })
+      // Handed back so a later pass can try again. The record of a success is
+      // what stops a resend, and there is no record here.
+      await releaseDelivery(input.run, queued.id)
     }
   }
 

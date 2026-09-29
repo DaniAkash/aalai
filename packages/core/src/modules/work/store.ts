@@ -1,3 +1,4 @@
+import { closeSync, openSync, statSync, writeSync } from 'node:fs'
 import { mkdir, rename, rm, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { type RunRef, runDir } from './paths'
@@ -104,8 +105,17 @@ export interface DeliveryRecord {
 export async function queueOutbound(
   ref: RunRef,
   intent: OutboundIntent,
+  /**
+   * A name for this intent, when the caller can produce the same one twice.
+   *
+   * Queueing sits outside the attempt that produced the judgement, so a crash
+   * between writing these and persisting the transition replays them. A random
+   * name would make that a second comment; a name derived from what the intent
+   * is makes it the same one.
+   */
+  id?: string,
 ): Promise<string> {
-  const path = join(runDir(ref), 'outbox', `${crypto.randomUUID()}.json`)
+  const path = join(runDir(ref), 'outbox', `${id ?? crypto.randomUUID()}.json`)
   await writeAtomic(path, `${JSON.stringify(intent, null, 2)}\n`)
   return path
 }
@@ -178,7 +188,7 @@ export async function readQueued(ref: RunRef): Promise<QueuedIntent[]> {
   const queued: QueuedIntent[] = []
   try {
     for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
-      if (name.endsWith('.delivered.json')) {
+      if (name.endsWith('.delivered.json') || name.endsWith('.sending.json')) {
         continue
       }
       queued.push({
@@ -220,6 +230,60 @@ export async function readDelivery(
   }
 }
 
+/** How long a claim on an intent is believed before it is treated as abandoned. */
+const CLAIM_STALE_MS = 10 * 60_000
+
+/**
+ * Takes exclusive ownership of one intent before it is sent.
+ *
+ * The check that an intent has not gone out is a read, the send is a network
+ * call, and the record of it is a later write. Two workers can both pass the
+ * read and both post, which is a duplicate comment under a maintainer's name on
+ * a public issue. Stale claim takeover makes this ordinary rather than exotic:
+ * a worker that lost its lease is still running.
+ *
+ * `wx` either creates the file or throws, with no window between the two, which
+ * is the whole reason it is a file rather than a check. A claim older than the
+ * window is taken over, because a process that died holding one must not park
+ * the intent forever.
+ */
+export async function claimDelivery(ref: RunRef, id: string): Promise<boolean> {
+  const path = join(runDir(ref), 'outbox', `${id}.sending.json`)
+  await mkdir(dirname(path), { recursive: true })
+  try {
+    const handle = openSync(path, 'wx')
+    writeSync(handle, `${JSON.stringify({ at: new Date().toISOString() })}\n`)
+    closeSync(handle)
+    return true
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw error
+    }
+  }
+  const held = statSync(path, { throwIfNoEntry: false })
+  if (held === undefined || Date.now() - held.mtimeMs < CLAIM_STALE_MS) {
+    return false
+  }
+  // Abandoned. Taking it over is a write, so the loser of a race between two
+  // takeovers simply finds it already gone on its next pass.
+  await writeAtomic(
+    path,
+    `${JSON.stringify({ at: new Date().toISOString() })}\n`,
+  )
+  return true
+}
+
+/** Gives the claim back, so a failed send can be tried again. */
+export async function releaseDelivery(ref: RunRef, id: string): Promise<void> {
+  try {
+    await unlink(join(runDir(ref), 'outbox', `${id}.sending.json`))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+  }
+}
+
 export async function recordDelivery(
   ref: RunRef,
   id: string,
@@ -238,7 +302,7 @@ export async function readOutbound(ref: RunRef): Promise<OutboundIntent[]> {
   const intents: OutboundIntent[] = []
   try {
     for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
-      if (name.endsWith('.delivered.json')) {
+      if (name.endsWith('.delivered.json') || name.endsWith('.sending.json')) {
         continue
       }
       intents.push((await Bun.file(join(dir, name)).json()) as OutboundIntent)

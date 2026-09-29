@@ -92,7 +92,11 @@ export const classifier = fromPromise(
     // Queued after the judgement settles rather than inside the turn: a station
     // does not get to decide that something reaches a stranger, and an attempt
     // that crashed halfway should not leave half a reply waiting to go out.
-    await queueDraftedReply(deps.run, outcome.value)
+    //
+    // Named by generation rather than at random. This sits outside the attempt's
+    // durable outcome, so a crash before the transition is persisted replays it,
+    // and a random name would turn that replay into a second public comment.
+    await queueDraftedReply(deps.run, outcome.value, input.generation)
     return outcome.value
   },
 )
@@ -100,6 +104,18 @@ export const classifier = fromPromise(
 export const deliverer = fromPromise(
   async ({ input }: { input: { runId: string } }): Promise<DeliveryReport> => {
     const deps = runDeps(input.runId)
+    // Bound again, here, where nothing can race it.
+    //
+    // The keeper can announce an answer in the same breath as opening the gate,
+    // which lands while the bind that runs on opening is still in flight. The
+    // machine would then arrive here with intents belonging to no gate and
+    // refuse every one of them. Binding is idempotent and only ever touches
+    // intents that name no gate, so doing it once more costs nothing and
+    // removes the ordering question entirely.
+    const releasing = releasingGate(deps.db, input.runId)
+    if (releasing !== undefined) {
+      await bindIntentsToGate(deps.run, releasing)
+    }
     return await deliverOutbox({
       db: deps.db,
       run: deps.run,

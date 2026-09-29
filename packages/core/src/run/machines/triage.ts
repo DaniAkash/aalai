@@ -512,7 +512,18 @@ export const triageMachine = setup({
         src: 'staleCloser',
         input: ({ context }) => ({ runId: context.runId }),
         onDone: 'delivering',
-        onError: 'finished',
+        // Not 'finished'. This queues two intents, and a failure can leave one
+        // of them written with no machine left to deliver either. The run
+        // reporting `skipped` would then tidy up around them.
+        onError: {
+          target: 'failing',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'the issue could not be closed after the wait',
+            }),
+          }),
+        },
       },
     },
 

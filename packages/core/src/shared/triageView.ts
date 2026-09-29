@@ -92,3 +92,72 @@ export function classificationLine(facts: TriageFacts): string {
       : `duplicate of #${facts.duplicateOf}`
   return readsAsQuestion(facts) ? `possibly ${named}?` : named
 }
+
+/**
+ * Reads the facts a decision needs back out of the report.
+ *
+ * The report is markdown with frontmatter, because an artifact is what a person
+ * reads and the database stores its path rather than its content. The three
+ * values the buttons depend on are parsed back out here rather than being
+ * carried separately, so there is one copy of them and it is the one on disk.
+ */
+export function factsFromReport(
+  report: string | null,
+): TriageFacts | undefined {
+  // No report, or one with no classification in it, is not a bug: it is a
+  // screen that cannot say what approving would do. Defaulting here offered
+  // "Approve and start" over an artifact nobody had read, which is authority
+  // granted on facts that were never shown.
+  const classification = field(report, 'classification')
+  if (classification === undefined) {
+    return undefined
+  }
+  // The report writes it as "**Duplicates:** #12"; the schema calls it
+  // `duplicate_of`. Both spellings are looked for rather than one being made
+  // to match the other, because the report is what a person reads.
+  const duplicate = Number(
+    field(report, 'duplicate_of') ?? field(report, 'duplicates') ?? '',
+  )
+  return {
+    classification,
+    confidence: field(report, 'confidence') ?? 'medium',
+    duplicateOf:
+      Number.isFinite(duplicate) && duplicate > 0 ? duplicate : undefined,
+    // A reply was drafted, so approving says it. Read from the report for the
+    // same reason as the rest: the artifact is the record.
+    willComment:
+      classification !== 'security' &&
+      (report ?? '').includes('## Drafted reply'),
+    // Nothing still waiting on an answer is closed, which is the rule delivery
+    // applies. Reading it off the report keeps the sentence above the button
+    // true: a report that asks the reporter for detail posts the question and
+    // leaves the issue open, and saying otherwise would promise a close that
+    // never comes.
+    willClose:
+      !asksForMore(report) &&
+      (classification === 'duplicate' ||
+        classification === 'noise' ||
+        classification === 'question'),
+  }
+}
+
+/** Whether the report says something it needs is missing. */
+function asksForMore(report: string | null): boolean {
+  const section = /^## Missing\s*$([\s\S]*?)(?=^## |Z)/m.exec(report ?? '')
+  const body = (section?.[1] ?? '').trim()
+  return body !== '' && !/^_?\s*nothing\.?\s*_?$/i.test(body)
+}
+
+/** A frontmatter value, or a bold field in the body, whichever the report used. */
+function field(report: string | null, name: string): string | undefined {
+  if (report === null) {
+    return undefined
+  }
+  const front = new RegExp(`^${name}:\\s*(.+)$`, 'm').exec(report)
+  if (front?.[1] !== undefined) {
+    return front[1].trim()
+  }
+  const label = name.replace(/_/g, ' ')
+  const bold = new RegExp(`\\*\\*${label}:\\*\\*\\s*#?(.+)`, 'i').exec(report)
+  return bold?.[1]?.trim()
+}

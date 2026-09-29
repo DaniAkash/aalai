@@ -11,6 +11,7 @@ import {
 } from '@/modules/outbound/deliver'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import {
+  claimDelivery,
   discardQueued,
   queueOutbound,
   readDelivery,
@@ -475,5 +476,85 @@ describe('what counts as already said, and what a withdrawal spares', () => {
     expect(await readDelivery(RUN, id)).toBeDefined()
     // The intent itself survives too: the pair is the audit trail.
     expect((await readQueued(RUN)).map((q) => q.id)).toContain(id)
+  })
+})
+
+describe('replaying a judgement does not say it twice', () => {
+  test('queueing the same generation again rewrites rather than adds', async () => {
+    // The queue sits outside the attempt's durable outcome, so a crash between
+    // writing these and persisting the transition replays this call. A random
+    // name would make that a second public comment.
+    const verdict = {
+      classification: 'question',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'the answer',
+    } as never
+
+    await queueDraftedReply(RUN, verdict, 1)
+    await queueDraftedReply(RUN, verdict, 1)
+
+    expect(await readQueued(RUN)).toHaveLength(2)
+  })
+
+  test('a genuinely new judgement queues its own', async () => {
+    const verdict = {
+      classification: 'question',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'the answer',
+    } as never
+
+    await queueDraftedReply(RUN, verdict, 1)
+    await queueDraftedReply(RUN, verdict, 2)
+
+    expect(await readQueued(RUN)).toHaveLength(4)
+  })
+})
+
+describe('two workers cannot both say it', () => {
+  test('only one of them gets to send', async () => {
+    // The gate check, the delivery-record check and the look for an existing
+    // comment are all reads. Two workers pass them together and both post,
+    // which is a duplicate comment under a maintainer's name in public.
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+    const id = (await readQueued(RUN))[0]?.id ?? ''
+
+    expect(await claimDelivery(RUN, id)).toBe(true)
+    expect(await claimDelivery(RUN, id)).toBe(false)
+  })
+
+  test('a claimed intent is left alone rather than sent again', async () => {
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+    const id = (await readQueued(RUN))[0]?.id ?? ''
+    await claimDelivery(RUN, id)
+
+    const report = await deliver()
+    expect(posted).toHaveLength(0)
+    expect(report.refused[0]?.refusal.kind).toBe('in_flight')
+  })
+
+  test('a failed send hands the claim back so it can be retried', async () => {
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+    const id = (await readQueued(RUN))[0]?.id ?? ''
+
+    postShouldFail = true
+    await deliver()
+    postShouldFail = false
+
+    // Claimable again, which is what lets a later pass pick it up.
+    expect(await claimDelivery(RUN, id)).toBe(true)
   })
 })

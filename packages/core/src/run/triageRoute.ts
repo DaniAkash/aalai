@@ -29,7 +29,13 @@ export async function triageIfAsked(input: {
   conventionFiles: readonly string[]
   snapshot?: unknown
 }): Promise<PipelineResult | undefined> {
-  if (!triageFirst(policyForRepo(input.config, input.repo))) {
+  // A run that is already in triage stays in triage, whatever the policy says
+  // now. Policy decides what a new run does; it must not decide what an
+  // existing one is, or changing it would step over an unanswered gate and
+  // start writing code, and changing it back would insert a fresh triage in
+  // front of a machine that is already past it.
+  const resuming = input.snapshot !== undefined
+  if (!resuming && !triageFirst(policyForRepo(input.config, input.repo))) {
     return undefined
   }
   const triaged = await driveTriage({

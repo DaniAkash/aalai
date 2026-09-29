@@ -268,6 +268,29 @@ export interface TriagePromptInput {
  * duplicate named at low confidence is presented to a person as a question
  * rather than as a proposal, and that rendering needs a value to read.
  */
+/**
+ * Stops a body from ending, or starting, one of these blocks.
+ *
+ * The line below tells the station that a maintainer's entry outranks its own
+ * judgement, which makes a forged one worth writing. A reporter's own words
+ * arrive here after they answer a question, so anyone who can type into an
+ * issue could otherwise close this tag, open a `<said as="maintainer">` of
+ * their own, and direct the classification of their issue.
+ *
+ * Only the tag that carries that authority is neutralised, and it is left
+ * visible rather than stripped: a report saying `it breaks on <div>` must
+ * survive intact, and a station seeing the marker should be able to tell that
+ * somebody tried this.
+ */
+function sealed(body: string): string {
+  return body.trim().replace(/<(\/?)said/gi, '&lt;$1said')
+}
+
+/** Keeps a value inside its attribute, whatever it contains. */
+function attribute(value: string): string {
+  return value.replace(/"/g, '&quot;').replace(/[<>]/g, '')
+}
+
 function discussion(
   history: readonly { author: string; role: string; body: string }[] = [],
 ): string {
@@ -277,7 +300,7 @@ function discussion(
   const said = history
     .map(
       (entry) =>
-        `<said by="${entry.author}" as="${entry.role}">\n${entry.body.trim()}\n</said>`,
+        `<said by="${attribute(entry.author)}" as="${attribute(entry.role)}">\n${sealed(entry.body)}\n</said>`,
     )
     .join('\n\n')
   // A maintainer's correction arrives here, and unlike the issue body it is a

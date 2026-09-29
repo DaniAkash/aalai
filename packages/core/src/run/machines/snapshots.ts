@@ -141,14 +141,13 @@ export function unfinishedRuns(db: Database): ResumableRun[] {
  * before anything knows which machine wrote it. Triage's terminals are here for
  * the same reason issue work's are: a security escalation that is not listed
  * stays resumable forever, and every startup rediscovers a finished run.
+ *
+ * `handingOff` is deliberately absent. It ends the triage machine but not the
+ * run: the pipeline goes on to drive issue work under the same id. A process
+ * that died in between would otherwise leave a row nobody ever picks up, and
+ * the issue would never be worked on at all.
  */
-const FINAL = new Set([
-  'approved',
-  'finished',
-  'escalated',
-  'handingOff',
-  'failing',
-])
+const FINAL = new Set(['approved', 'finished', 'escalated', 'failing'])
 
 /** The persisted snapshot itself, or undefined if the document is gone. */
 export async function readSnapshot(run: RunRef): Promise<unknown | undefined> {

@@ -3,6 +3,7 @@ import {
   approvalConsequence,
   approvalLabel,
   classificationLine,
+  factsFromReport,
   readsAsQuestion,
   type TriageFacts,
 } from '@/shared/triageView'
@@ -114,5 +115,44 @@ describe('a judgement the classifier was unsure about', () => {
     expect(approvalLabel(facts({ classification: 'bug' }))).toBe(
       'Approve and start',
     )
+  })
+})
+
+describe('the consequence agrees with what will actually happen', () => {
+  const asking = [
+    '---',
+    'classification: noise',
+    'confidence: high',
+    '---',
+    '',
+    '**Classification:** noise',
+    '',
+    '## Missing',
+    '',
+    '- the input that was passed',
+    '- the output that was expected',
+    '',
+    '## Drafted reply',
+    '',
+    'What did you pass in?',
+  ].join('\n')
+
+  const settled = asking.replace(
+    '- the input that was passed\n- the output that was expected',
+    '_Nothing._',
+  )
+
+  test('a report that asks for detail does not promise a close', () => {
+    // Delivery suppresses the close whenever something is missing, because the
+    // run is about to wait weeks on the reporter. The sentence above the button
+    // has to say the same thing.
+    const facts = factsFromReport(asking)
+    expect(facts?.willClose).toBe(false)
+    expect(approvalConsequence(facts as TriageFacts)).not.toContain('closes')
+  })
+
+  test('the same report with nothing missing does', () => {
+    const facts = factsFromReport(settled)
+    expect(facts?.willClose).toBe(true)
   })
 })
