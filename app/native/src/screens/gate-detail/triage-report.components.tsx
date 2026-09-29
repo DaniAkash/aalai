@@ -1,6 +1,7 @@
 import {
   approvalConsequence,
   approvalLabel,
+  CLASSIFICATIONS,
   classificationLine,
   readsAsQuestion,
   type TriageFacts,
@@ -9,15 +10,6 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 export type TriageDecision = 'approved' | 'rejected' | 'reclassify'
-
-const CLASSIFICATIONS = [
-  'bug',
-  'feature',
-  'question',
-  'duplicate',
-  'security',
-  'noise',
-] as const
 
 /**
  * What the classifier decided, and what saying yes to it will do.

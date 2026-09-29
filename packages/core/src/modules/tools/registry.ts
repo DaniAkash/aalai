@@ -12,11 +12,10 @@ import { queueOutbound } from '@/modules/work/store'
 import { recordAnalysis, recordReview, recordTriage } from '@/run/artifacts'
 import {
   analysisSchema,
-  CLASSIFICATIONS,
-  CONFIDENCES,
   reviewSchema,
   triageSchema,
 } from '@/run/stations/schemas'
+import { CLASSIFICATIONS, CONFIDENCES } from '@/shared/triageView'
 import type { ToolContext } from './context'
 
 /**

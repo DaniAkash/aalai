@@ -161,6 +161,11 @@ export async function bindIntentsToGate(
 }
 
 /** Everything queued for this run, oldest first, with what it is filed under. */
+/** Closing comes after saying why. */
+function rank(kind: OutboundIntent['kind']): number {
+  return kind === 'close_issue' ? 1 : 0
+}
+
 export async function readQueued(ref: RunRef): Promise<QueuedIntent[]> {
   const dir = join(runDir(ref), 'outbox')
   const glob = new Bun.Glob('*.json')
@@ -180,8 +185,14 @@ export async function readQueued(ref: RunRef): Promise<QueuedIntent[]> {
       throw error
     }
   }
-  return queued.sort((a, b) =>
-    a.intent.queuedAt.localeCompare(b.intent.queuedAt),
+  // A close is the last thing that happens, whatever the clock says. Two
+  // intents queued in the same millisecond would otherwise be ordered by
+  // whatever order the directory happened to be read in, and closing an issue
+  // before answering it is the wrong way round.
+  return queued.sort(
+    (a, b) =>
+      a.intent.queuedAt.localeCompare(b.intent.queuedAt) ||
+      rank(a.intent.kind) - rank(b.intent.kind),
   )
 }
 

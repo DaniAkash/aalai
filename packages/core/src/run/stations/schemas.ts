@@ -92,22 +92,7 @@ export const reviewSchema = z.object({
 
 export type Review = z.infer<typeof reviewSchema>
 
-export const CLASSIFICATIONS = [
-  'bug',
-  'feature',
-  'question',
-  'duplicate',
-  'security',
-  'noise',
-] as const
-// TEMPORARY: read by the triage gate screen, which lands in a later commit.
-// fallow-ignore-next-line unused-type
-export type Classification = (typeof CLASSIFICATIONS)[number]
-
-export const CONFIDENCES = ['low', 'medium', 'high'] as const
-// TEMPORARY: read by the triage gate screen, which lands in a later commit.
-// fallow-ignore-next-line unused-type
-export type Confidence = (typeof CONFIDENCES)[number]
+import { CLASSIFICATIONS, CONFIDENCES } from '@/shared/triageView'
 
 /**
  * What the classifier decided about an issue, before any code is considered.

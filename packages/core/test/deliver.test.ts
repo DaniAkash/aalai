@@ -361,3 +361,25 @@ describe('what a classification drafts, and what a correction withdraws', () => 
     expect(await readDelivery(RUN, id)).toEqual(before)
   })
 })
+
+describe('the order things go out in', () => {
+  test('the answer is posted before the issue is closed', async () => {
+    // Both are queued in the same millisecond, so without a rule the order is
+    // whatever the directory was read in, and an issue closes before the
+    // reason for closing it has been said.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await discardQueued(RUN)
+      await queueDraftedReply(RUN, {
+        classification: 'duplicate',
+        confidence: 'high',
+        summary: 's',
+        reasoning: 'r',
+        affected_surface: [],
+        missing: [],
+        reply: 'already tracked in #12',
+      } as never)
+      const kinds = (await readQueued(RUN)).map((q) => q.intent.kind)
+      expect(kinds).toEqual(['comment_on_issue', 'close_issue'])
+    }
+  })
+})

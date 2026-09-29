@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { buildStationRules, buildTriagePrompt } from '@/prompts/stations'
 import {
-  CLASSIFICATIONS,
   isActionable,
   mayBeAnsweredPublicly,
   type Triage,
   triageSchema,
 } from '@/run/stations/schemas'
+import { CLASSIFICATIONS } from '@/shared/triageView'
 import { issueFixture } from './harness'
 
 /**

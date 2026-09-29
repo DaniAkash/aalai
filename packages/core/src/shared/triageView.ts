@@ -6,6 +6,27 @@
  * makes it safe in a browser bundle.
  */
 
+/**
+ * What a classifier may decide, and how sure it may be.
+ *
+ * Here rather than beside the schema because the interface offers these as
+ * buttons and the schema validates them, and a list that exists twice is a
+ * list that will disagree with itself. The schema builds its enum from this.
+ */
+export const CLASSIFICATIONS = [
+  'bug',
+  'feature',
+  'question',
+  'duplicate',
+  'security',
+  'noise',
+] as const
+
+export const CONFIDENCES = ['low', 'medium', 'high'] as const
+
+export type Classification = (typeof CLASSIFICATIONS)[number]
+export type Confidence = (typeof CONFIDENCES)[number]
+
 export interface TriageFacts {
   readonly classification: string
   readonly confidence: string
