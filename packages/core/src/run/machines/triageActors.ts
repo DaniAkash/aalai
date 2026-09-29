@@ -3,12 +3,14 @@ import { getIssue } from '@/lib/gh'
 import {
   type DeliveryReport,
   deliverOutbox,
+  queueDraftedReply,
   releasingGate,
 } from '@/modules/outbound/deliver'
 import { latestArtifact } from '@/modules/work/artifacts'
 import { appendEntry, readConversation } from '@/modules/work/conversation'
 import {
   bindIntentsToGate,
+  discardQueued,
   queueOutbound,
   readJson,
 } from '@/modules/work/store'
@@ -87,6 +89,10 @@ export const classifier = fromPromise(
         return triage
       },
     })
+    // Queued after the judgement settles rather than inside the turn: a station
+    // does not get to decide that something reaches a stranger, and an attempt
+    // that crashed halfway should not leave half a reply waiting to go out.
+    await queueDraftedReply(deps.run, outcome.value)
     return outcome.value
   },
 )
@@ -146,6 +152,11 @@ export const corrector = fromPromise(
       role: 'maintainer',
       body: said,
     })
+    // Before the next classification drafts its own. A gate answered
+    // `reclassify` is still an answered gate, so anything the wrong judgement
+    // left queued would otherwise be released by the gate that approves the
+    // right one.
+    await discardQueued(deps.run)
   },
 )
 

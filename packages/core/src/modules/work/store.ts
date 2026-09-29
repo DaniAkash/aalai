@@ -1,4 +1,4 @@
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { mkdir, rename, rm, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { type RunRef, runDir } from './paths'
 
@@ -122,6 +122,26 @@ export async function queueOutbound(
  * keeps that gate, so re-asking a question cannot retroactively release what
  * the previous answer did not.
  */
+/**
+ * Throws away what has not gone out yet.
+ *
+ * A correction says the judgement was wrong, which makes everything that
+ * judgement drafted wrong with it. Without this the reply written for a
+ * question rides out later on the gate that approved the bug it was corrected
+ * into, because a gate answered `reclassify` is still an answered gate.
+ *
+ * Only the undelivered are dropped. A delivery record is a record of something
+ * a person has already seen, and no correction can take that back.
+ */
+export async function discardQueued(ref: RunRef): Promise<number> {
+  let dropped = 0
+  for (const queued of await readQueued(ref)) {
+    await unlink(join(runDir(ref), 'outbox', `${queued.id}.json`))
+    dropped += 1
+  }
+  return dropped
+}
+
 export async function bindIntentsToGate(
   ref: RunRef,
   gateId: string,

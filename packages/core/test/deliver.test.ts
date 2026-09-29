@@ -4,9 +4,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb } from '@/modules/db/db'
 import { answerGate, openGate } from '@/modules/gates'
-import { deliverOutbox, releasedBy } from '@/modules/outbound/deliver'
+import {
+  deliverOutbox,
+  queueDraftedReply,
+  releasedBy,
+} from '@/modules/outbound/deliver'
 import type { RunRef, Subject } from '@/modules/work/paths'
-import { queueOutbound, readDelivery, readQueued } from '@/modules/work/store'
+import {
+  discardQueued,
+  queueOutbound,
+  readDelivery,
+  readQueued,
+} from '@/modules/work/store'
 
 /**
  * Delivery is the only thing that turns what a station wrote into something the
@@ -267,5 +276,88 @@ describe('closing', () => {
     await deliver()
 
     expect(closed[0]?.reason).toBe('not_planned')
+  })
+})
+
+describe('what a classification drafts, and what a correction withdraws', () => {
+  test('a drafted reply is queued so a person can release it', async () => {
+    // Found by running a real question through a real repository: the report
+    // carried a drafted reply, the gate was approved, and nothing was posted
+    // because nothing had ever been queued.
+    await queueDraftedReply(RUN, {
+      classification: 'question',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'Yes, it capitalises after the hyphen.',
+    } as never)
+
+    const queued = await readQueued(RUN)
+    expect(queued.map((q) => q.intent.kind)).toEqual([
+      'comment_on_issue',
+      'close_issue',
+    ])
+    expect(queued[0]?.intent.body).toContain('after the hyphen')
+  })
+
+  test('a security report drafts nothing, whatever it wrote', async () => {
+    await queueDraftedReply(RUN, {
+      classification: 'security',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'here is exactly how to exploit it',
+    } as never)
+
+    expect(await readQueued(RUN)).toHaveLength(0)
+  })
+
+  test('a bug drafts no comment and no close: it becomes work', async () => {
+    await queueDraftedReply(RUN, {
+      classification: 'bug',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'we will look at this',
+    } as never)
+
+    expect(await readQueued(RUN)).toHaveLength(0)
+  })
+
+  test('correcting the classification withdraws what the wrong one drafted', async () => {
+    // Otherwise the reply written for a question rides out on the gate that
+    // approved the bug it was corrected into.
+    await queueDraftedReply(RUN, {
+      classification: 'question',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: [],
+      reply: 'an answer to a question this was not',
+    } as never)
+    expect(await readQueued(RUN)).not.toHaveLength(0)
+
+    await discardQueued(RUN)
+    expect(await readQueued(RUN)).toHaveLength(0)
+  })
+
+  test('a withdrawal does not take back something already delivered', async () => {
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+    const id = (await readQueued(RUN))[0]?.id ?? ''
+    await deliver()
+
+    const before = await readDelivery(RUN, id)
+    expect(before).toBeDefined()
+    await discardQueued(RUN)
+    expect(await readDelivery(RUN, id)).toEqual(before)
   })
 })

@@ -4,7 +4,17 @@ import { logger } from '@/lib/log'
 import { listGates, readGate } from '@/modules/gates'
 import type { RunRef } from '@/modules/work/paths'
 import type { OutboundIntent, QueuedIntent } from '@/modules/work/store'
-import { readDelivery, readQueued, recordDelivery } from '@/modules/work/store'
+import {
+  queueOutbound,
+  readDelivery,
+  readQueued,
+  recordDelivery,
+} from '@/modules/work/store'
+import {
+  isActionable,
+  mayBeAnsweredPublicly,
+  type Triage,
+} from '@/run/stations/schemas'
 
 const log = logger('outbound')
 
@@ -43,6 +53,73 @@ export interface DeliveryReport {
 }
 
 /** Whether a person has released this intent. */
+/**
+ * Turns what the classifier drafted into something a person can release.
+ *
+ * The station writes its reply into the report and queues nothing, because a
+ * station is not allowed to decide that anything reaches a stranger. This is
+ * the step between: the words it chose become an intent, and the intent waits
+ * on a gate like every other.
+ *
+ * A security report drafts nothing at all, whatever the station wrote. The
+ * whole point of routing it away from the public is that its text never reaches
+ * a comment box, and refusing it here rather than at delivery means there is
+ * nothing queued to leak if a later change forgets why.
+ */
+export async function queueDraftedReply(
+  run: RunRef,
+  triage: Triage,
+): Promise<number> {
+  if (!mayBeAnsweredPublicly(triage) || isActionable(triage)) {
+    return 0
+  }
+  const at = new Date().toISOString()
+  let queued = 0
+  const reply = (triage.reply ?? '').trim()
+  if (reply !== '') {
+    await queueOutbound(run, {
+      kind: 'comment_on_issue',
+      body: reply,
+      station: 'classifier',
+      queuedAt: at,
+    })
+    queued += 1
+  }
+  const reason = closingReason(triage)
+  if (reason !== undefined) {
+    await queueOutbound(run, {
+      kind: 'close_issue',
+      body: '',
+      station: 'classifier',
+      queuedAt: at,
+      closeReason: reason,
+    })
+    queued += 1
+  }
+  return queued
+}
+
+/**
+ * Why an issue would be closed, or nothing when it stays open.
+ *
+ * A question that has been answered is completed. A duplicate or noise was
+ * never going to be done, which is what `not_planned` means and is what keeps
+ * it out of a repository's record of work finished.
+ */
+function closingReason(
+  triage: Triage,
+): 'completed' | 'not_planned' | undefined {
+  switch (triage.classification) {
+    case 'question':
+      return 'completed'
+    case 'duplicate':
+    case 'noise':
+      return 'not_planned'
+    default:
+      return undefined
+  }
+}
+
 export function releasedBy(
   db: Database,
   intent: OutboundIntent,
@@ -126,6 +203,13 @@ async function deliverOne(
       deliveredAt: new Date().toISOString(),
     })
     return { kind: intent.kind }
+  }
+
+  // A kind this does not know how to send is refused rather than guessed at.
+  // Falling through would post a reply meant for a review thread as a comment
+  // on the issue, which is the wrong place and cannot be taken back.
+  if (intent.kind !== 'comment_on_issue') {
+    throw new Error(`no way to deliver a ${intent.kind}`)
   }
 
   // Looked for before it is sent. A crash between the comment landing and the

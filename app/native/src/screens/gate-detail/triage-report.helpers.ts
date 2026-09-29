@@ -10,7 +10,12 @@ import type { TriageFacts } from 'aalai/shared'
  */
 export function factsFromReport(report: string | null): TriageFacts {
   const classification = field(report, 'classification') ?? 'bug'
-  const duplicate = Number(field(report, 'duplicate_of') ?? '')
+  // The report writes it as "**Duplicates:** #12"; the schema calls it
+  // `duplicate_of`. Both spellings are looked for rather than one being made
+  // to match the other, because the report is what a person reads.
+  const duplicate = Number(
+    field(report, 'duplicate_of') ?? field(report, 'duplicates') ?? '',
+  )
   return {
     classification,
     confidence: field(report, 'confidence') ?? 'medium',

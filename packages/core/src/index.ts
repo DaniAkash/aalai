@@ -187,6 +187,10 @@ async function runOne(
     process.exitCode = 1
   }
   db.close()
+  // The tool surface outlives the run otherwise, and a listening socket keeps
+  // the process alive long after it has finished. A command that has said
+  // "done" and then sits there is indistinguishable from one that hung.
+  stopServer()
 }
 
 function parseRepoIssue(

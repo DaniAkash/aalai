@@ -136,6 +136,7 @@ export function GateDetail() {
               <Thread
                 answering={thread.data.state === 'answering'}
                 entries={thread.data.entries}
+                subject={row.kind === 'triage' ? 'the report' : 'the plan'}
               />
             )}
           </div>
@@ -153,6 +154,7 @@ export function GateDetail() {
             }
             pending={reply.isPending}
             sentAt={reply.isSuccess ? reply.submittedAt : 0}
+            station={row.kind === 'triage' ? 'the classifier' : 'the analyst'}
           />
         </section>
       </div>
