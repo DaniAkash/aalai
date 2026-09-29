@@ -88,18 +88,76 @@ export async function getIssue(
   return ghJson<GhIssue>(['api', `repos/${repo}/issues/${issueNumber}`])
 }
 
+/** A comment aalai posted, named well enough to find again. */
+export interface PostedComment {
+  readonly id: number
+  readonly html_url: string
+}
+
+/**
+ * Posts a comment and says which one it posted.
+ *
+ * The identifier is the point. Delivery has to survive a crash between the post
+ * landing and aalai recording that it landed, and the only way to tell that
+ * apart from a post that never happened is to be able to look for it.
+ */
 export async function commentOnIssue(
   repo: string,
   issueNumber: number,
   body: string,
-): Promise<void> {
-  await gh([
+): Promise<PostedComment> {
+  return await ghJson<PostedComment>([
     'api',
     '--method',
     'POST',
     `repos/${repo}/issues/${issueNumber}/comments`,
     '-f',
     `body=${body}`,
+  ])
+}
+
+/** Bodies of the comments on an issue, for recognising one aalai already posted. */
+export async function listIssueCommentBodies(
+  repo: string,
+  issueNumber: number,
+): Promise<{ id: number; html_url: string; body: string }[]> {
+  const lines = await gh([
+    'api',
+    '--paginate',
+    `repos/${repo}/issues/${issueNumber}/comments`,
+    '--jq',
+    '.[] | {id, html_url, body}',
+  ])
+  return lines
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map(
+      (line) =>
+        JSON.parse(line) as { id: number; html_url: string; body: string },
+    )
+}
+
+/**
+ * Closes an issue, with a reason GitHub understands.
+ *
+ * `completed` and `not_planned` are not cosmetic: GitHub renders them
+ * differently and a duplicate closed as `completed` reads as though the work was
+ * done. Triage closes almost everything as `not_planned`.
+ */
+export async function closeIssue(
+  repo: string,
+  issueNumber: number,
+  reason: 'completed' | 'not_planned' = 'not_planned',
+): Promise<void> {
+  await gh([
+    'api',
+    '--method',
+    'PATCH',
+    `repos/${repo}/issues/${issueNumber}`,
+    '-f',
+    'state=closed',
+    '-f',
+    `state_reason=${reason}`,
   ])
 }
 

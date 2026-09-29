@@ -70,11 +70,35 @@ export async function readJson<T>(
  * has to see it has seen it.
  */
 export interface OutboundIntent {
-  readonly kind: 'comment_on_issue' | 'reply_to_review'
+  readonly kind: 'comment_on_issue' | 'reply_to_review' | 'close_issue'
   readonly body: string
   readonly threadId?: string
   readonly station: string
   readonly queuedAt: string
+  /**
+   * The gate whose answer releases this.
+   *
+   * Nothing is delivered until a person has answered the question it belongs
+   * to, so an intent that names no gate is not deliverable at all. Optional
+   * only because runs queued before this existed have none, and those are not
+   * deliverable either.
+   */
+  readonly gateId?: string
+  /** How to close, when closing. GitHub renders the two differently. */
+  readonly closeReason?: 'completed' | 'not_planned'
+}
+
+/** An intent and the name it is filed under, which is what marks it delivered. */
+export interface QueuedIntent {
+  readonly id: string
+  readonly intent: OutboundIntent
+}
+
+/** What happened when an intent was delivered. Written beside it, never over it. */
+export interface DeliveryRecord {
+  readonly deliveredAt: string
+  /** The comment GitHub created, when the intent created one. */
+  readonly url?: string
 }
 
 export async function queueOutbound(
@@ -86,6 +110,60 @@ export async function queueOutbound(
   return path
 }
 
+/** Everything queued for this run, oldest first, with what it is filed under. */
+export async function readQueued(ref: RunRef): Promise<QueuedIntent[]> {
+  const dir = join(runDir(ref), 'outbox')
+  const glob = new Bun.Glob('*.json')
+  const queued: QueuedIntent[] = []
+  try {
+    for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
+      if (name.endsWith('.delivered.json')) {
+        continue
+      }
+      queued.push({
+        id: name.replace(/\.json$/, ''),
+        intent: (await Bun.file(join(dir, name)).json()) as OutboundIntent,
+      })
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error
+    }
+  }
+  return queued.sort((a, b) =>
+    a.intent.queuedAt.localeCompare(b.intent.queuedAt),
+  )
+}
+
+/**
+ * Whether this intent has already gone out, and what happened when it did.
+ *
+ * Written beside the intent rather than into it, so the thing that was queued
+ * and the fact that it was sent stay separately true.
+ */
+export async function readDelivery(
+  ref: RunRef,
+  id: string,
+): Promise<DeliveryRecord | undefined> {
+  const file = Bun.file(join(runDir(ref), 'outbox', `${id}.delivered.json`))
+  try {
+    return (await file.json()) as DeliveryRecord
+  } catch {
+    return undefined
+  }
+}
+
+export async function recordDelivery(
+  ref: RunRef,
+  id: string,
+  record: DeliveryRecord,
+): Promise<void> {
+  await writeAtomic(
+    join(runDir(ref), 'outbox', `${id}.delivered.json`),
+    `${JSON.stringify(record, null, 2)}\n`,
+  )
+}
+
 /** Everything queued for this run, oldest first. */
 export async function readOutbound(ref: RunRef): Promise<OutboundIntent[]> {
   const dir = join(runDir(ref), 'outbox')
@@ -93,6 +171,9 @@ export async function readOutbound(ref: RunRef): Promise<OutboundIntent[]> {
   const intents: OutboundIntent[] = []
   try {
     for await (const name of glob.scan({ cwd: dir, onlyFiles: true })) {
+      if (name.endsWith('.delivered.json')) {
+        continue
+      }
       intents.push((await Bun.file(join(dir, name)).json()) as OutboundIntent)
     }
   } catch (error) {
