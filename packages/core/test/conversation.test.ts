@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   appendEntry,
   formatEntry,
   parseConversation,
+  readConversation,
 } from '@/modules/work/conversation'
 import { artifactsDir, CONVERSATION, type Subject } from '@/modules/work/paths'
 
@@ -260,5 +261,28 @@ describe('two writers at once', () => {
     const all = parseConversation(await read())
     expect(all).toHaveLength(2)
     expect(all.map((e) => e.id).sort()).toEqual([got.id, alsoGot.id].sort())
+  })
+})
+
+describe('a conversation that is not there', () => {
+  test('a subject nobody has spoken at reads as empty, not as a failure', async () => {
+    expect(await readConversation(subject)).toEqual([])
+  })
+
+  test('a read that fails because the file is gone is empty, not a throw', async () => {
+    // The old shape asked whether the file existed and then read it, two awaits
+    // apart, so a file that vanished in between threw instead of producing the
+    // empty thread the check existed to produce. In CI that surfaced as an
+    // unhandled rejection between tests: nothing failed and the suite still
+    // exited non-zero.
+    //
+    // A dangling symlink is the deterministic way to make the read fail with the
+    // same error. The race itself cannot be reproduced on demand; this pins the
+    // property that matters, which is that a failed open reads as no discussion.
+    const dir = artifactsDir(subject)
+    await mkdir(dir, { recursive: true })
+    await symlink(join(dir, 'nothing-here.md'), join(dir, CONVERSATION))
+
+    expect(await readConversation(subject)).toEqual([])
   })
 })

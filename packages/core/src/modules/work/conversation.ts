@@ -235,10 +235,28 @@ function entryId(author: string, at: string, index: number): string {
   return Bun.hash(`${index}|${author}|${at}`).toString(36)
 }
 
-/** The subject's discussion as entries, or none if nothing has been said. */
+/**
+ * The subject's discussion as entries, or none if nothing has been said.
+ *
+ * Asks for the file and handles it not being there, rather than checking first
+ * and then reading. The check reads as a guard and is not one: they are two
+ * separate awaits, so a file that disappears between them makes the read throw
+ * instead of producing the empty thread the check exists to produce. A gate
+ * nobody has spoken at has no file at all, so absence is the ordinary case here
+ * and not a failure.
+ */
 export async function readConversation(
   subject: Subject,
 ): Promise<ConversationEntry[]> {
-  const file = Bun.file(join(artifactsDir(subject), CONVERSATION))
-  return (await file.exists()) ? parseConversation(await file.text()) : []
+  try {
+    const text = await Bun.file(
+      join(artifactsDir(subject), CONVERSATION),
+    ).text()
+    return parseConversation(text)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
 }

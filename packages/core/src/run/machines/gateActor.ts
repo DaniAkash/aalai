@@ -58,12 +58,21 @@ export const gateKeeper = fromCallback<
   // dropped by a state with no handler for it and never mentioned again.
   let announced: string | undefined
   const noticeReply = async (gateId: string): Promise<void> => {
+    if (stopped) {
+      return
+    }
     const deps = runDeps(input.runId)
     const gate = readGate(deps.db, gateId)
     if (gate === undefined || gate.status !== 'open') {
       return
     }
     const entries = await readConversation(deps.run.subject)
+    // Checked again on the far side of the await. Stopping clears the timer but
+    // cannot unwind a read already in flight, and the run this belongs to may be
+    // gone by the time one comes back.
+    if (stopped) {
+      return
+    }
     // Only what was said after this gate opened. The conversation belongs to the
     // subject and outlives any one gate, so a question left unanswered when an
     // earlier gate was approved is still sitting there; without this the next
@@ -194,7 +203,15 @@ export const gateKeeper = fromCallback<
     }, input.pollMs ?? GATE_POLL_MS)
   }
 
-  void start()
+  // Not left to float. A rejection here means the gate never opened and the run
+  // waits on a question nobody was asked, and as a bare `void` it disappears as
+  // an unhandled rejection with nothing naming what failed.
+  void start().catch((error: unknown) => {
+    log.error('the gate could not be opened', {
+      runId: input.runId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  })
 
   return () => {
     stopped = true
