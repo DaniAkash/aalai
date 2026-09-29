@@ -157,5 +157,77 @@ scenario('A triage gate is answerable and discussable from a terminal')
   db3.close()
 }
 
+scenario('A delivery that fails loses nothing')
+{
+  const { openGate, answerGate } = await import('@/modules/gates')
+  const { openDb: openOnce } = await import('@/modules/db/db')
+  const { queueOutbound, readQueued, readDelivery } = await import(
+    '@/modules/work/store'
+  )
+  const { deliverOutbox } = await import('@/modules/outbound/deliver')
+  const { sqlite: db4 } = openOnce()
+  const s4 = { repo: 'acme/widgets', kind: 'issue' as const, number: 88 }
+  const run4 = { subject: s4, runId: 'acme/widgets#88@1790000000088' }
+
+  const g4 = openGate(db4, {
+    runId: run4.runId,
+    kind: 'triage',
+    artifactVersion: '1',
+  })
+  answerGate(db4, {
+    gateId: g4,
+    decision: 'approved',
+    answeredBy: 'dani',
+    answeredOn: 'cli',
+  })
+  await queueOutbound(run4, {
+    kind: 'comment_on_issue',
+    body: 'this should survive a failed send',
+    station: 'classifier',
+    queuedAt: new Date().toISOString(),
+    gateId: g4,
+  })
+  const queuedId = (await readQueued(run4))[0]?.id ?? ''
+
+  // The token is wrong, so the post fails the way a revoked one would.
+  const realToken = process.env.GH_TOKEN
+  const realGhToken = process.env.GITHUB_TOKEN
+  process.env.GH_TOKEN = 'not-a-token'
+  process.env.GITHUB_TOKEN = 'not-a-token'
+  const report = await deliverOutbox({
+    db: db4,
+    run: run4,
+    repo: s4.repo,
+    issueNumber: s4.number,
+  })
+  if (realToken === undefined) {
+    delete process.env.GH_TOKEN
+  } else {
+    process.env.GH_TOKEN = realToken
+  }
+  if (realGhToken === undefined) {
+    delete process.env.GITHUB_TOKEN
+  } else {
+    process.env.GITHUB_TOKEN = realGhToken
+  }
+
+  check('nothing is reported as sent', report.delivered.length === 0)
+  check('and the failure is reported as one', report.failed.length === 1)
+  check(
+    'the intent is still queued, not dropped',
+    (await readQueued(run4)).length === 1,
+  )
+  check(
+    'and nothing claims it was delivered',
+    (await readDelivery(run4, queuedId)) === undefined,
+  )
+  const stillAnswered = (await import('@/modules/gates')).readGate(db4, g4)
+  check(
+    'the answer stands: a failed send does not un-approve it',
+    stillAnswered?.decision === 'approved',
+  )
+  db4.close()
+}
+
 rmSync(dir, { recursive: true, force: true })
 finish()
