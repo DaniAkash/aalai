@@ -280,13 +280,12 @@ export interface ClassifierInput {
   readonly repo: string
   readonly issue: GhIssue
   readonly worktree: string
+  readonly history?: readonly { author: string; role: string; body: string }[]
   readonly config: Config
   readonly signal?: AbortSignal
 }
 
 /** Decides what an issue is, before any code is considered. Modifies nothing. */
-// TEMPORARY: consumed by the triage machine, which lands next. Removed there.
-// fallow-ignore-next-line unused-export
 export async function runClassifier(
   input: ClassifierInput,
 ): Promise<{ triage: Triage; result: StationResult }> {
@@ -305,6 +304,7 @@ export async function runClassifier(
       task: buildTriagePrompt({
         repo: input.repo,
         issue: input.issue,
+        ...(input.history === undefined ? {} : { history: input.history }),
         tools: toolSurfaceIsUp(),
       }),
       // Reads only. Triage decides whether work should happen; it is not work.

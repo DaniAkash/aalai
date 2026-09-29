@@ -100,14 +100,12 @@ export const CLASSIFICATIONS = [
   'security',
   'noise',
 ] as const
-// TEMPORARY: consumed by the triage machine and the interface, which land
-// next. Removed there.
+// TEMPORARY: read by the triage gate screen, which lands in a later commit.
 // fallow-ignore-next-line unused-type
 export type Classification = (typeof CLASSIFICATIONS)[number]
 
 export const CONFIDENCES = ['low', 'medium', 'high'] as const
-// TEMPORARY: consumed by the triage machine and the interface, which land
-// next. Removed there.
+// TEMPORARY: read by the triage gate screen, which lands in a later commit.
 // fallow-ignore-next-line unused-type
 export type Confidence = (typeof CONFIDENCES)[number]
 

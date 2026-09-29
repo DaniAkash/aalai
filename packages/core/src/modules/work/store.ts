@@ -122,8 +122,6 @@ export async function queueOutbound(
  * keeps that gate, so re-asking a question cannot retroactively release what
  * the previous answer did not.
  */
-// TEMPORARY: consumed by the triage machine, which lands next. Removed there.
-// fallow-ignore-next-line unused-export
 export async function bindIntentsToGate(
   ref: RunRef,
   gateId: string,
