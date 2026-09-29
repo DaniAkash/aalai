@@ -78,7 +78,11 @@ export function approvalLabel(facts: TriageFacts): string {
   if (facts.classification === 'bug' || facts.classification === 'feature') {
     return 'Approve and start'
   }
-  if (facts.classification === 'duplicate') {
+  // Only when it will actually close. A duplicate that still needs something
+  // from the reporter posts the question and leaves the issue open, and a
+  // button promising to close it would be describing a different decision from
+  // the one the line above it describes.
+  if (facts.classification === 'duplicate' && facts.willClose) {
     return readsAsQuestion(facts) ? 'Close as duplicate' : 'Approve'
   }
   return 'Approve'

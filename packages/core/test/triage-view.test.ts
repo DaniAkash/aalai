@@ -107,7 +107,15 @@ describe('a judgement the classifier was unsure about', () => {
 
   test('and its button asks rather than approves', () => {
     expect(
-      approvalLabel(facts({ classification: 'duplicate', confidence: 'low' })),
+      approvalLabel(
+        facts({
+          classification: 'duplicate',
+          confidence: 'low',
+          // The proposal it is hedging about: closing. A duplicate still
+          // waiting on the reporter closes nothing and says so instead.
+          willClose: true,
+        }),
+      ),
     ).toBe('Close as duplicate')
   })
 
@@ -154,5 +162,30 @@ describe('the consequence agrees with what will actually happen', () => {
   test('the same report with nothing missing does', () => {
     const facts = factsFromReport(settled)
     expect(facts?.willClose).toBe(true)
+  })
+})
+
+describe('the button and the sentence describe the same decision', () => {
+  test('a duplicate that will not close does not offer to close it', () => {
+    // Found by rendering a real report: the line said "Posts a comment on the
+    // issue" while the button beside it said "Close as duplicate".
+    const facts: TriageFacts = {
+      classification: 'duplicate',
+      confidence: 'low',
+      willComment: true,
+      willClose: false,
+    }
+    expect(approvalLabel(facts)).toBe('Approve')
+    expect(approvalConsequence(facts)).toBe('Posts a comment on the issue.')
+  })
+
+  test('one that will close still offers to', () => {
+    const facts: TriageFacts = {
+      classification: 'duplicate',
+      confidence: 'low',
+      willComment: true,
+      willClose: true,
+    }
+    expect(approvalLabel(facts)).toBe('Close as duplicate')
   })
 })
