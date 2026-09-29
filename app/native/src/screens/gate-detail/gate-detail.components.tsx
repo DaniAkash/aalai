@@ -1,8 +1,12 @@
-import type { GateRow } from 'aalai/shared'
+import type { GateDecision, GateRow } from 'aalai/shared'
 import { useState } from 'react'
 import { ApprovalCard } from '@/components/agents/approval-card'
 
-export type Decision = 'approved' | 'rejected' | 'changes'
+/**
+ * Taken from the gate rather than restated, so a decision the schema gains
+ * cannot be missing here and typecheck clean.
+ */
+export type Decision = GateDecision
 
 /**
  * The decision, and the reason that travels with it.

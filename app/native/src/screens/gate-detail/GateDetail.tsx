@@ -10,6 +10,8 @@ import {
   DecisionPanel,
 } from './gate-detail.components'
 import { Composer, Thread } from './gate-thread.components'
+import { TriageDecisionPanel } from './triage-report.components'
+import { factsFromReport } from './triage-report.helpers'
 
 /**
  * One gate: what is being asked, and the decision.
@@ -18,6 +20,18 @@ import { Composer, Thread } from './gate-thread.components'
  * is the failure this gate exists to prevent, so the plan is the body of the
  * page and the decision sits under it rather than above.
  */
+/** What this gate is called on screen. */
+function titleFor(kind: string): string {
+  switch (kind) {
+    case 'plan':
+      return 'Plan approval'
+    case 'triage':
+      return 'Worth doing?'
+    default:
+      return 'Permission'
+  }
+}
+
 /** "just now" already reads as a time; everything else needs the "ago". */
 function openedAgo(openedAt: string): string {
   const waited = waitedFor(openedAt)
@@ -63,7 +77,7 @@ export function GateDetail() {
 
   return (
     <Screen
-      title={row.kind === 'plan' ? 'Plan approval' : 'Permission'}
+      title={titleFor(row.kind)}
       sub={[
         subjectOf(row.runId),
         `opened ${openedAgo(row.openedAt)}`,
@@ -143,15 +157,22 @@ export function GateDetail() {
         </section>
       </div>
 
-      {row.status === 'open' ? (
-        <DecisionPanel
-          gate={row}
-          pending={answer.isPending}
+      {row.status !== 'open' ? (
+        <Answered gate={row} />
+      ) : row.kind === 'triage' ? (
+        <TriageDecisionPanel
           error={answer.error?.message}
-          onDecide={decide}
+          facts={factsFromReport(artifact)}
+          onDecide={(decision, reason) => decide(decision, reason)}
+          pending={answer.isPending}
         />
       ) : (
-        <Answered gate={row} />
+        <DecisionPanel
+          error={answer.error?.message}
+          gate={row}
+          onDecide={decide}
+          pending={answer.isPending}
+        />
       )}
     </Screen>
   )

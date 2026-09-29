@@ -1,5 +1,6 @@
-export type { GateRow } from '@/modules/db/schema/schema'
+export type { GateDecision, GateRow } from '@/modules/db/schema/schema'
 export type { RunPolicy } from '@/modules/settings/domains'
+export * from './triageView'
 
 /**
  * Formatting both the terminal and the interface need.
