@@ -9,6 +9,7 @@ import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
 import { driveIssueWork } from '@/run/machines/drive'
 import type { IssueWorkContext } from '@/run/machines/types'
+import { triageIfAsked } from '@/run/triageRoute'
 import {
   adoptWorkspace,
   discardPath,
@@ -59,12 +60,33 @@ export async function resumeIssue(
   return await work(repo, issue, config, from)
 }
 
+/**
+ * What a triage that did not hand off means to the caller.
+ *
+ * None of these are failures: a question answered and a duplicate closed are
+ * the system working. `skipped` says the issue was dealt with and produced no
+ * pull request, which is what the run table already means by it.
+ */
 export async function runIssue(
   repo: string,
   issue: GhIssue,
   config: Config,
 ): Promise<PipelineResult> {
   return await work(repo, issue, config, undefined)
+}
+
+/** Says a run has begun, before anything exists that could fail. */
+function announceStart(runId: string, repo: string, issue: GhIssue): void {
+  log.info('run starting', { repo, issue: issue.number, title: issue.title })
+  emit({
+    type: 'run.started',
+    runId,
+    repo,
+    issue: issue.number,
+    title: issue.title,
+    at: Date.now(),
+  })
+  emit({ type: 'stage.entered', runId, stage: 'workspace', at: Date.now() })
 }
 
 async function work(
@@ -76,16 +98,7 @@ async function work(
   const runId = from?.runId ?? `${repo}#${issue.number}@${Date.now()}`
   const subject: Subject = { repo, kind: 'issue', number: issue.number }
   const run: RunRef = { subject, runId }
-  log.info('run starting', { repo, issue: issue.number, title: issue.title })
-  emit({
-    type: 'run.started',
-    runId,
-    repo,
-    issue: issue.number,
-    title: issue.title,
-    at: Date.now(),
-  })
-  emit({ type: 'stage.entered', runId, stage: 'workspace', at: Date.now() })
+  announceStart(runId, repo, issue)
 
   let workspace: Workspace
   try {
@@ -115,6 +128,23 @@ async function work(
       conventions: conventionFiles,
       at: Date.now(),
     })
+    // Triage first, when the repository asks for it. A question, a duplicate or
+    // a security report ends here and never reaches a station that writes code,
+    // which is the whole point of classifying before considering the work.
+    const triaged = await triageIfAsked({
+      runId,
+      repo,
+      issue,
+      run,
+      config,
+      workspace,
+      conventionFiles,
+    })
+    if (triaged !== undefined) {
+      result = triaged
+      return result
+    }
+
     const settled = await driveIssueWork({
       runId,
       repo,
@@ -167,14 +197,30 @@ async function work(
     await recordBestEffort('run', () =>
       recordRun(run, snapshotOf(runId, repo, issue.number, result)),
     )
-    if (reviewWorktree !== null) {
-      await discardPath(workspace, reviewWorktree)
-    }
-    // keepWorktreeOnFailure is exactly that: a successful run always cleans up,
-    // or every delivered issue leaves a checkout and a branch behind.
-    if (delivered || !config.keepWorktreeOnFailure) {
-      await discardWorkspace(workspace)
-    }
+    await tidyUp({
+      workspace,
+      reviewWorktree,
+      keep: !delivered && config.keepWorktreeOnFailure,
+    })
+  }
+}
+
+/**
+ * Puts the checkouts back.
+ *
+ * `keepWorktreeOnFailure` is exactly that: a successful run always cleans up,
+ * or every delivered issue leaves a checkout and a branch behind.
+ */
+async function tidyUp(input: {
+  workspace: Workspace
+  reviewWorktree: string | null
+  keep: boolean
+}): Promise<void> {
+  if (input.reviewWorktree !== null) {
+    await discardPath(input.workspace, input.reviewWorktree)
+  }
+  if (!input.keep) {
+    await discardWorkspace(input.workspace)
   }
 }
 
