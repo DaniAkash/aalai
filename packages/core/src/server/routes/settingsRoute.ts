@@ -17,6 +17,7 @@ const patchSchema = z.object({
   staleClaimMinutes: z.number().int().min(1).optional(),
   keepWorktreeOnFailure: z.boolean().optional(),
   defaultPolicy: z.enum(RUN_POLICIES).optional(),
+  keepPullRequestsAlive: z.boolean().optional(),
   maxRevisions: z.number().int().min(0).max(5).optional(),
   maxCiFixes: z.number().int().min(0).max(5).optional(),
   turnTimeoutMs: z.number().int().min(1000).optional(),

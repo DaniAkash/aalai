@@ -28,6 +28,8 @@ const watchedRepoSchema = z.object({
   requireLabel: z.string().optional(),
   /** Per repo run policy, overriding the global default when set. */
   policy: runPolicySchema.optional(),
+  /** Per repo answer to whether its pull requests are kept alive. */
+  keepPullRequestsAlive: z.boolean().optional(),
 })
 
 /**
@@ -103,6 +105,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     staleClaimMinutes: domains.factory.staleClaimMinutes,
     keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
     defaultPolicy: domains.factory.defaultPolicy,
+    keepPullRequestsAlive: domains.factory.keepPullRequestsAlive,
     agents: {
       analyst: domains.agents.analyst,
       implementer: domains.agents.implementer,
@@ -131,6 +134,7 @@ function toDomains(config: Config): Domains {
       staleClaimMinutes: config.staleClaimMinutes,
       keepWorktreeOnFailure: config.keepWorktreeOnFailure,
       defaultPolicy: config.defaultPolicy,
+      keepPullRequestsAlive: config.keepPullRequestsAlive,
     },
     agents: {
       analyst: config.agents.analyst,
