@@ -127,7 +127,7 @@ export type RunEvent = Base &
         readonly type: 'conversation.appended'
         readonly gateId: string
         readonly author: string
-        readonly role: 'maintainer' | 'station'
+        readonly role: 'maintainer' | 'station' | 'reporter'
       }
     | { readonly type: 'run.stopped'; readonly reason: string }
     | { readonly type: 'run.failed'; readonly error: string }

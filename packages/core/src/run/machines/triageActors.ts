@@ -189,3 +189,30 @@ export const staleCloser = fromPromise(
     })
   },
 )
+
+/**
+ * Writes what the reporter said into the discussion.
+ *
+ * Without this the reply is thrown away at the moment it arrives. The next
+ * classification is handed the refreshed issue and the internal discussion, and
+ * a comment on GitHub is in neither, so the very detail that woke the run would
+ * be invisible to the pass that woke up to read it.
+ */
+export const replyNoter = fromPromise(
+  async ({
+    input,
+  }: {
+    input: { runId: string; body: string }
+  }): Promise<void> => {
+    const deps = runDeps(input.runId)
+    const said = input.body.trim()
+    if (said === '') {
+      return
+    }
+    await appendEntry(deps.run.subject, {
+      author: deps.issue.user?.login ?? 'the reporter',
+      role: 'reporter',
+      body: said,
+    })
+  },
+)

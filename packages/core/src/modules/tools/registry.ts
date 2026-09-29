@@ -201,8 +201,14 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
       } as const
       await queueOutbound(ctx.run, intent)
       ctx.queued.push(intent)
+      // Only triage drains an outbox today. Telling an implementer or a
+      // reviewer that their intent will be sent would be a promise nothing
+      // keeps: theirs are queued after the handoff, bound to no gate, and
+      // delivered by nobody.
       return text(
-        'recorded for a person to review. Nothing is posted to GitHub by this tool. If a person releases it, it is sent afterwards, and you are not told either way.',
+        ctx.station === 'classifier'
+          ? 'recorded for a person to review. Nothing is posted to GitHub by this tool. If a person releases it, it is sent afterwards, and you are not told either way.'
+          : 'recorded for a person to read. Nothing is posted to GitHub by this tool and nothing delivers it yet, so do not rely on the reporter seeing it.',
       )
     }
 
@@ -211,7 +217,7 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
     {
       title: 'Queue a comment on the issue',
       description:
-        'Record something you would say on the issue. It is written down for a person to read and is never posted by you. If they release it, it is sent after your turn has ended, so do not expect a reply.',
+        'Record something you would say on the issue. It is written down for a person to read and is never posted by you. At most it is sent after your turn has ended, so do not expect a reply.',
       inputSchema: { body: z.string().min(1) },
     },
     queue('comment_on_issue'),

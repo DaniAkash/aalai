@@ -107,10 +107,22 @@ export function Decide({
     return <Answered gate={row} />
   }
   if (row.kind === 'triage') {
+    const facts = factsFromReport(artifact)
+    if (facts === undefined) {
+      return (
+        <p
+          className="rounded-xl border border-border border-dashed bg-card/40 p-4 text-[13px] text-muted-foreground"
+          data-testid="triage-unreadable"
+        >
+          This report could not be read, so there is nothing to approve. Nothing
+          has been sent, and the gate is still open.
+        </p>
+      )
+    }
     return (
       <TriageDecisionPanel
         error={error}
-        facts={factsFromReport(artifact)}
+        facts={facts}
         onDecide={onDecide}
         pending={pending}
       />

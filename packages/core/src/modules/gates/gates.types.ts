@@ -49,6 +49,11 @@ export type AnswerRefusal =
   | { readonly kind: 'already_answered'; readonly gate: GateRow }
   | { readonly kind: 'superseded'; readonly gate: GateRow }
   | { readonly kind: 'expired'; readonly gate: GateRow }
+  | {
+      readonly kind: 'wrong_decision'
+      readonly gate: GateRow
+      readonly allowed: readonly string[]
+    }
 
 export type AnswerResult =
   | { readonly ok: true; readonly gate: GateRow }

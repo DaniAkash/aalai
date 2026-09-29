@@ -42,6 +42,8 @@ export interface PipelineResult {
 export interface ResumeFrom {
   readonly runId: string
   readonly snapshot: unknown
+  /** Which machine wrote it, so it is restored into that one and no other. */
+  readonly machine: string
 }
 
 /**
@@ -73,6 +75,23 @@ export async function runIssue(
   config: Config,
 ): Promise<PipelineResult> {
   return await work(repo, issue, config, undefined)
+}
+
+/**
+ * The persisted snapshot, but only for the machine that wrote it.
+ *
+ * A run parked in its triage gate, or waiting weeks on a reporter, would
+ * otherwise restart by classifying from scratch, and its snapshot would go on
+ * to be restored into a machine whose states it shares none of.
+ */
+function snapshotFor(
+  from: ResumeFrom | undefined,
+  machine: string,
+): { snapshot?: unknown } {
+  if (from === undefined || from.machine !== machine) {
+    return {}
+  }
+  return { snapshot: from.snapshot }
 }
 
 /** Says a run has begun, before anything exists that could fail. */
@@ -108,7 +127,6 @@ async function work(
   }
 
   let reviewWorktree: string | null = null
-  let delivered = false
   let result: PipelineResult = { status: 'failed', error: 'run did not finish' }
 
   try {
@@ -139,6 +157,7 @@ async function work(
       config,
       workspace,
       conventionFiles,
+      ...snapshotFor(from, 'triage'),
     })
     if (triaged !== undefined) {
       result = triaged
@@ -150,7 +169,7 @@ async function work(
       repo,
       issueNumber: issue.number,
       run,
-      ...(from === undefined ? {} : { snapshot: from.snapshot }),
+      ...snapshotFor(from, 'issueWork'),
       deps: {
         db: getDb().sqlite,
         config,
@@ -185,7 +204,6 @@ async function work(
     })
     await reportOutcomeOnIssue(repo, issue, delivery)
     result = announceDelivery(runId, delivery)
-    delivered = result.status === 'delivered'
     return result
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -200,7 +218,11 @@ async function work(
     await tidyUp({
       workspace,
       reviewWorktree,
-      keep: !delivered && config.keepWorktreeOnFailure,
+      // Keyed on failure rather than on delivery. A triage that answered a
+      // question or closed a duplicate never delivers a pull request and is
+      // still a complete success, and keeping its checkout would leak one per
+      // issue the factory ever declined to work on.
+      keep: result.status === 'failed' && config.keepWorktreeOnFailure,
     })
   }
 }

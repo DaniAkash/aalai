@@ -23,6 +23,8 @@ interface ReporterInput {
   readonly pollMs?: number
   readonly nudgeAfterMs?: number
   readonly staleAfterMs?: number
+  /** Whether the one follow up was already sent, before this watch existed. */
+  readonly alreadyNudged?: boolean
 }
 
 /**
@@ -42,7 +44,10 @@ interface ReporterInput {
 export const reporterWatch = fromCallback<{ type: string }, ReporterInput>(
   ({ input, sendBack }) => {
     let stopped = false
-    let nudged = false
+    // Carried in rather than starting false: this actor is rebuilt after every
+    // nudge, and a fresh one would send a second, and a third, and never reach
+    // the threshold where it gives up.
+    let nudged = input.alreadyNudged === true
     let timer: ReturnType<typeof setInterval> | undefined
 
     // Read from the run rather than carried through the context: the issue is

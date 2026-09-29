@@ -141,6 +141,17 @@ function record(db: Database, input: AnswerGateInput): AnswerResult {
     if (gate.status !== 'open') {
       return { ok: false, refusal: refusalFor(gate) } as const
     }
+    // The decision has to mean something for this kind of gate. The column is
+    // one enum across every kind, so without this `reclassify` on a plan is
+    // recorded and then read as a rejection, and `changes` on a triage report
+    // falls through to the branch that delivers.
+    const allowed = decisionsFor(gate.kind)
+    if (!allowed.includes(input.decision)) {
+      return {
+        ok: false,
+        refusal: { kind: 'wrong_decision', gate, allowed },
+      } as const
+    }
     query(db)
       .update(gates)
       .set({
@@ -221,6 +232,24 @@ function settleIfOpen(
   // from the connection that just executed the statement.
   const row = db.query<{ n: number }, []>('SELECT changes() AS n').get()
   return row?.n ?? 0
+}
+
+/**
+ * What may be said to each kind of gate.
+ *
+ * `changes` means "plan this again" and only a plan has a plan. `reclassify`
+ * carries a correction the triage machine reads and no other machine has a
+ * state for.
+ */
+function decisionsFor(kind: string): readonly string[] {
+  switch (kind) {
+    case 'triage':
+      return ['approved', 'rejected', 'reclassify']
+    case 'plan':
+      return ['approved', 'rejected', 'changes']
+    default:
+      return ['approved', 'rejected']
+  }
 }
 
 function refusalFor(gate: GateRow): AnswerRefusal {

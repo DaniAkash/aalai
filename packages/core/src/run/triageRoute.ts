@@ -27,6 +27,7 @@ export async function triageIfAsked(input: {
   config: Config
   workspace: Workspace
   conventionFiles: readonly string[]
+  snapshot?: unknown
 }): Promise<PipelineResult | undefined> {
   if (!triageFirst(policyForRepo(input.config, input.repo))) {
     return undefined
@@ -36,6 +37,7 @@ export async function triageIfAsked(input: {
     repo: input.repo,
     issueNumber: input.issue.number,
     run: input.run,
+    ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
     deps: {
       db: getDb().sqlite,
       config: input.config,

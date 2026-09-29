@@ -195,6 +195,11 @@ function report(result: AnswerResult, decision: GateDecision): void {
       'already answered',
       `${result.refusal.gate.decision} by ${result.refusal.gate.answeredBy ?? 'someone'} on ${result.refusal.gate.answeredOn ?? 'another surface'}`,
     )
+  } else if (result.refusal.kind === 'wrong_decision') {
+    bad(
+      `a ${result.refusal.gate.kind} gate cannot be answered that way`,
+      `try ${result.refusal.allowed.join(', ')}`,
+    )
   } else if (result.refusal.kind === 'superseded') {
     bad(
       'what this gate asked about has changed',

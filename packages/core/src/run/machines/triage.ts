@@ -1,4 +1,5 @@
 import { assign, setup } from 'xstate'
+import type { DeliveryReport } from '@/modules/outbound/deliver'
 import { isActionable, mayBeAnsweredPublicly } from '@/run/stations/schemas'
 import { gateKeeper } from './gateActor'
 import { replier } from './replyActor'
@@ -8,6 +9,7 @@ import {
   classifier,
   corrector,
   deliverer,
+  replyNoter,
   staleCloser,
 } from './triageActors'
 import type { TriageContext, TriageEvent, TriageInput } from './triageTypes'
@@ -35,6 +37,7 @@ export const triageMachine = setup({
   },
   actors: {
     classifier,
+    replyNoter,
     gateKeeper,
     replier,
     deliverer,
@@ -78,6 +81,21 @@ export const triageMachine = setup({
       isActionable(context.triage),
     answeredReclassify: ({ event }: { event: TriageEvent }) =>
       event.type === 'GATE_ANSWERED' && event.decision === 'reclassify',
+    /**
+     * Whether anything a person released did not actually go out.
+     *
+     * Refusals count as well as failures. By the time this state is reached a
+     * person has answered, so an intent still being refused means it was never
+     * bound to the gate that released it, which is the same silence as a failed
+     * send and just as invisible.
+     */
+    deliveryIncomplete: ({ event }: { event: TriageEvent }) => {
+      const report = (event as { output?: DeliveryReport }).output
+      return (
+        report !== undefined &&
+        (report.failed.length > 0 || report.refused.length > 0)
+      )
+    },
     /** Whether what just went out was a question rather than an answer. */
     askedForMore: ({ context }: { context: TriageContext }) =>
       context.triage !== undefined && context.triage.missing.length > 0,
@@ -196,7 +214,20 @@ export const triageMachine = setup({
               gateId: context.gateId ?? '',
             }),
             onDone: 'waiting',
-            onError: 'waiting',
+            // Not 'waiting'. Intents that never got bound are refused at
+            // delivery as belonging to no gate, so a person would approve, the
+            // run would finish reporting success, and nothing would be posted
+            // or closed. An unanswerable failure is better than an answerable
+            // one that does nothing.
+            onError: {
+              target: '#triage.failing',
+              actions: assign({
+                outcome: () => ({
+                  kind: 'failed' as const,
+                  error: 'the queued intents could not be bound to the gate',
+                }),
+              }),
+            },
           },
         },
         waiting: {
@@ -313,7 +344,19 @@ export const triageMachine = setup({
           correction: context.correction ?? '',
         }),
         onDone: 'classifying',
-        onError: 'classifying',
+        // The corrector both records the correction and withdraws what the
+        // wrong judgement drafted. Classifying again after a half done
+        // correction can open a fresh gate while the rejected draft is still
+        // bound to the answered one, which is how it would get delivered.
+        onError: {
+          target: 'failing',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'the correction was not recorded, so it was not acted on',
+            }),
+          }),
+        },
       },
     },
 
@@ -330,6 +373,20 @@ export const triageMachine = setup({
         input: ({ context }) => ({ runId: context.runId }),
         onDone: [
           {
+            // Asked before anything else, so a question that failed to post
+            // does not park this run on a reporter who was never asked.
+            // The decision stands and the intents stay queued, but calling it
+            // finished would strand them: nothing else drains this outbox.
+            target: 'failing',
+            guard: 'deliveryIncomplete',
+            actions: assign({
+              outcome: () => ({
+                kind: 'failed' as const,
+                error: 'some of what was released could not be delivered',
+              }),
+            }),
+          },
+          {
             /*
              * The question went out, so now someone has to answer it.
              *
@@ -339,11 +396,25 @@ export const triageMachine = setup({
              */
             target: 'awaitingReporter',
             guard: 'askedForMore',
-            actions: assign({ askedAt: () => new Date().toISOString() }),
+            // Only when this is the original question. A nudge re-enters this
+            // state, and resetting the clock there would start the wait over
+            // every week and never reach the point of giving up.
+            actions: assign({
+              askedAt: ({ context }) =>
+                context.askedAt ?? new Date().toISOString(),
+            }),
           },
           { target: 'finished' },
         ],
-        onError: 'finished',
+        onError: {
+          target: 'failing',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'delivery could not be attempted',
+            }),
+          }),
+        },
       },
     },
 
@@ -361,6 +432,7 @@ export const triageMachine = setup({
           repo: context.repo,
           issue: context.issueNumber,
           askedAt: context.askedAt ?? new Date().toISOString(),
+          alreadyNudged: context.nudged === true,
           ...(context.reporterPollMs === undefined
             ? {}
             : { pollMs: context.reporterPollMs }),
@@ -377,19 +449,58 @@ export const triageMachine = setup({
         // actionable rather than more, so it is classified again rather than
         // carried forward.
         REPORTER_REPLIED: {
-          target: 'classifying',
+          target: 'notingReply',
           actions: assign({
             generation: ({ context }) => context.generation + 1,
             gateId: () => undefined,
             askedAt: () => undefined,
+            nudged: () => false,
+            reporterSaid: ({ event }) =>
+              'body' in event ? event.body : undefined,
           }),
         },
         // The nudge is queued rather than posted, like everything else, and
         // rides on the gate that already released the original question.
-        REPORTER_NUDGED: { target: 'delivering', reenter: true },
+        REPORTER_NUDGED: {
+          target: 'delivering',
+          reenter: true,
+          actions: assign({ nudged: () => true }),
+        },
         REPORTER_SILENT: {
           target: 'closing',
           actions: assign({ outcome: () => ({ kind: 'stale' as const }) }),
+        },
+      },
+    },
+
+    /**
+     * Writes down what the reporter said, then judges the issue again.
+     *
+     * Waking is not proceeding, and it is not proceeding blind either: what
+     * they said is the reason to look again, so it goes into the discussion the
+     * classifier reads before the classifier runs.
+     */
+    notingReply: {
+      invoke: {
+        src: 'replyNoter',
+        input: ({ context }) => ({
+          runId: context.runId,
+          body: context.reporterSaid ?? '',
+        }),
+        onDone: {
+          target: 'classifying',
+          actions: assign({ reporterSaid: () => undefined }),
+        },
+        // Judging again without their answer in front of it would reach the
+        // same conclusion that asked the question in the first place.
+        onError: {
+          target: 'failing',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'the reporter answered but it could not be recorded',
+            }),
+          }),
         },
       },
     },
@@ -407,6 +518,7 @@ export const triageMachine = setup({
 
     handingOff: { type: 'final' },
     escalated: { type: 'final' },
+    failing: { type: 'final' },
     finished: { type: 'final' },
   },
 })

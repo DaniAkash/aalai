@@ -136,6 +136,12 @@ export async function queueOutbound(
 export async function discardQueued(ref: RunRef): Promise<number> {
   let dropped = 0
   for (const queued of await readQueued(ref)) {
+    // An intent that has been sent keeps its file beside its delivery record.
+    // The pair is the audit trail, and deleting half of it would leave a record
+    // of something posted with no way to see what it said.
+    if ((await readDelivery(ref, queued.id)) !== undefined) {
+      continue
+    }
     await unlink(join(runDir(ref), 'outbox', `${queued.id}.json`))
     dropped += 1
   }

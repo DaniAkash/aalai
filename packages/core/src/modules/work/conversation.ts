@@ -18,7 +18,14 @@ import { artifactsDir, CONVERSATION, type Subject } from './paths'
  * before this existed are the record and are not rewritten.
  */
 
-export type EntryRole = 'maintainer' | 'station'
+/**
+ * Who said it.
+ *
+ * A reporter is neither of the other two: they do not work here, so they cannot
+ * approve anything, and the keeper deliberately only treats a maintainer's
+ * words as a question a station owes an answer to.
+ */
+export type EntryRole = 'maintainer' | 'station' | 'reporter'
 
 export interface ConversationEntry {
   /** Derived from the entry, not stored: the file has no ids in it. */

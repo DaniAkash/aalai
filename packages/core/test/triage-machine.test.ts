@@ -56,7 +56,7 @@ function triage(overrides: Partial<Triage> = {}): Triage {
  * here are the ones that ship, and only the actors that cost money or touch the
  * network are swapped out.
  */
-function machine(verdicts: Triage[]) {
+function machine(verdicts: Triage[], overrides: Record<string, unknown> = {}) {
   let call = 0
   return triageMachine.provide({
     actors: {
@@ -85,6 +85,7 @@ function machine(verdicts: Triage[]) {
         delivered.push('ran')
         return { delivered: [], refused: [], failed: [] }
       }),
+      ...overrides,
     },
   })
 }
@@ -96,8 +97,11 @@ function openGateId(): string {
 
 let actors: { stop: () => void }[] = []
 
-async function start(verdicts: Triage[]) {
-  const actor = createActor(machine(verdicts), {
+async function start(
+  verdicts: Triage[],
+  overrides: Record<string, unknown> = {},
+) {
+  const actor = createActor(machine(verdicts, overrides), {
     input: {
       runId: RUN_ID,
       repo: SUBJECT.repo,
@@ -291,5 +295,64 @@ describe('what the classifier queued is bound to the question', () => {
 
     const [queued] = await readQueued(RUN)
     expect(queued?.intent.gateId).toBe(openGateId())
+  })
+})
+
+describe('failures that used to look like success', () => {
+  test('a gate whose intents could not be bound is not answerable', async () => {
+    // Approving it would refuse every intent as belonging to no gate, and the
+    // run would report success having posted and closed nothing.
+    const actor = await start([triage({ classification: 'question' })], {
+      binder: fromPromise(async () => {
+        throw new Error('could not bind')
+      }),
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.value).toBe('failing')
+    expect(settled.context.outcome?.kind).toBe('failed')
+  })
+
+  test('an undelivered intent does not finish the run', async () => {
+    const actor = await start([triage({ classification: 'question' })], {
+      deliverer: fromPromise(
+        async (): Promise<DeliveryReport> => ({
+          delivered: [],
+          refused: [],
+          failed: [{ id: 'x', error: 'gh: HTTP 401' }],
+        }),
+      ),
+    })
+    await waitFor(actor, (s) => openGateId() !== '', { timeout: 5000 })
+    answerGate(handle.sqlite, {
+      gateId: openGateId(),
+      decision: 'approved',
+      answeredBy: 'dani',
+      answeredOn: 'app',
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.value).toBe('failing')
+  })
+
+  test('a correction that was not recorded does not open a fresh gate', async () => {
+    const actor = await start([triage({ classification: 'question' })], {
+      corrector: fromPromise(async () => {
+        throw new Error('could not record')
+      }),
+    })
+    await waitFor(actor, (s) => openGateId() !== '', { timeout: 5000 })
+    answerGate(handle.sqlite, {
+      gateId: openGateId(),
+      decision: 'reclassify',
+      answeredBy: 'dani',
+      answeredOn: 'app',
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.value).toBe('failing')
   })
 })

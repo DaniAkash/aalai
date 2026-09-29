@@ -8,8 +8,17 @@ import type { TriageFacts } from 'aalai/shared'
  * values the buttons depend on are parsed back out here rather than being
  * carried separately, so there is one copy of them and it is the one on disk.
  */
-export function factsFromReport(report: string | null): TriageFacts {
-  const classification = field(report, 'classification') ?? 'bug'
+export function factsFromReport(
+  report: string | null,
+): TriageFacts | undefined {
+  // No report, or one with no classification in it, is not a bug: it is a
+  // screen that cannot say what approving would do. Defaulting here offered
+  // "Approve and start" over an artifact nobody had read, which is authority
+  // granted on facts that were never shown.
+  const classification = field(report, 'classification')
+  if (classification === undefined) {
+    return undefined
+  }
   // The report writes it as "**Duplicates:** #12"; the schema calls it
   // `duplicate_of`. Both spellings are looked for rather than one being made
   // to match the other, because the report is what a person reads.

@@ -46,7 +46,16 @@ export async function persistSnapshot(input: {
       })
       .onConflictDoUpdate({
         target: machineSnapshots.runId,
-        set: { value: input.value, snapshotPath: path, updatedAt },
+        // The machine too, not just the state. One run is driven by triage and
+        // then by issue work under the same id, and a row still claiming
+        // `triage` after the handoff would route its own resume to the wrong
+        // machine entirely.
+        set: {
+          machine: input.machine,
+          value: input.value,
+          snapshotPath: path,
+          updatedAt,
+        },
       })
       .run()
   } catch (error) {
@@ -125,8 +134,21 @@ export function unfinishedRuns(db: Database): ResumableRun[] {
     .filter((row) => !FINAL.has(row.value))
 }
 
-/** States the machine does not come back from. */
-const FINAL = new Set(['approved', 'finished'])
+/**
+ * States no machine comes back from, across all of them.
+ *
+ * A set rather than a per machine lookup because the row is filtered in SQL
+ * before anything knows which machine wrote it. Triage's terminals are here for
+ * the same reason issue work's are: a security escalation that is not listed
+ * stays resumable forever, and every startup rediscovers a finished run.
+ */
+const FINAL = new Set([
+  'approved',
+  'finished',
+  'escalated',
+  'handingOff',
+  'failing',
+])
 
 /** The persisted snapshot itself, or undefined if the document is gone. */
 export async function readSnapshot(run: RunRef): Promise<unknown | undefined> {

@@ -35,7 +35,12 @@ const RUN: RunRef = { subject: SUBJECT, runId: RUN_ID }
 
 let posted: { repo: string; issue: number; body: string }[] = []
 let closed: { repo: string; issue: number; reason: string }[] = []
-let existingComments: { id: number; html_url: string; body: string }[] = []
+let existingComments: {
+  id: number
+  html_url: string
+  body: string
+  author: string
+}[] = []
 let postShouldFail = false
 
 mock.module('@/lib/gh', () => ({
@@ -53,6 +58,7 @@ mock.module('@/lib/gh', () => ({
     closed.push({ repo, issue, reason })
   },
   listIssueCommentBodies: async () => existingComments,
+  authenticatedLogin: async () => 'the-maintainer',
 }))
 
 beforeEach(() => {
@@ -186,6 +192,7 @@ describe('delivering twice is the failure to avoid', () => {
         id: 99,
         html_url: 'https://example.test/c/99',
         body: 'thanks for reporting this',
+        author: 'the-maintainer',
       },
     ]
 
@@ -381,5 +388,73 @@ describe('the order things go out in', () => {
       const kinds = (await readQueued(RUN)).map((q) => q.intent.kind)
       expect(kinds).toEqual(['comment_on_issue', 'close_issue'])
     }
+  })
+})
+
+describe('what counts as already said, and what a withdrawal spares', () => {
+  test('somebody else saying the same words is not us having said them', async () => {
+    // A reporter who quotes the draft back would otherwise be read as proof the
+    // comment had gone out, and it would never be sent.
+    existingComments = [
+      {
+        id: 1,
+        html_url: 'https://example.invalid/1',
+        body: 'thanks for reporting this',
+        author: 'a-stranger',
+      },
+    ]
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+
+    const report = await deliver()
+    expect(report.delivered[0]?.source).toBe('sent')
+  })
+
+  test('our own identical comment is, so it is not posted twice', async () => {
+    existingComments = [
+      {
+        id: 1,
+        html_url: 'https://example.invalid/1',
+        body: 'thanks for reporting this',
+        author: 'the-maintainer',
+      },
+    ]
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+
+    const report = await deliver()
+    expect(report.delivered[0]?.url).toBe('https://example.invalid/1')
+  })
+
+  test('a question still missing its detail is not closed as it is asked', async () => {
+    // It is about to wait weeks on the reporter. Queueing a close beside the
+    // request would post the question and shut the issue in one go.
+    await queueDraftedReply(RUN, {
+      classification: 'question',
+      confidence: 'high',
+      summary: 's',
+      reasoning: 'r',
+      affected_surface: [],
+      missing: ['the version it happens on'],
+      reply: 'Which version are you on?',
+    } as never)
+
+    const kinds = (await readQueued(RUN)).map((q) => q.intent.kind)
+    expect(kinds).toEqual(['comment_on_issue'])
+  })
+
+  test('a withdrawal leaves a delivered intent beside its record', async () => {
+    const gateId = openTriageGate()
+    answer(gateId)
+    await queueComment(gateId)
+    const id = (await readQueued(RUN))[0]?.id ?? ''
+    await deliver()
+
+    await discardQueued(RUN)
+    expect(await readDelivery(RUN, id)).toBeDefined()
+    // The intent itself survives too: the pair is the audit trail.
+    expect((await readQueued(RUN)).map((q) => q.id)).toContain(id)
   })
 })

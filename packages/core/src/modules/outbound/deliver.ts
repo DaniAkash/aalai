@@ -1,5 +1,10 @@
 import type { Database } from 'bun:sqlite'
-import { closeIssue, commentOnIssue, listIssueCommentBodies } from '@/lib/gh'
+import {
+  authenticatedLogin,
+  closeIssue,
+  commentOnIssue,
+  listIssueCommentBodies,
+} from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { listGates, readGate } from '@/modules/gates'
 import type { RunRef } from '@/modules/work/paths'
@@ -111,7 +116,11 @@ function closingReason(
 ): 'completed' | 'not_planned' | undefined {
   switch (triage.classification) {
     case 'question':
-      return 'completed'
+      // Only once it has actually been answered. A question that had to ask the
+      // reporter for something is about to wait weeks for them, and queueing a
+      // close alongside the request would post the question and shut the issue
+      // in the same breath.
+      return triage.missing.length > 0 ? undefined : 'completed'
     case 'duplicate':
     case 'noise':
       return 'not_planned'
@@ -238,8 +247,17 @@ async function alreadyPosted(
   body: string,
 ): Promise<{ html_url: string } | undefined> {
   try {
-    const comments = await listIssueCommentBodies(input.repo, input.issueNumber)
-    return comments.find((comment) => comment.body.trim() === body.trim())
+    // Ours, not anybody's. A reporter who quotes the draft back, or an earlier
+    // run of a different issue that said something as ordinary as "thanks for
+    // reporting this", would otherwise be read as evidence that this intent had
+    // already gone out, and it would silently never be sent.
+    const [comments, me] = await Promise.all([
+      listIssueCommentBodies(input.repo, input.issueNumber),
+      authenticatedLogin(),
+    ])
+    return comments.find(
+      (comment) => comment.author === me && comment.body.trim() === body.trim(),
+    )
   } catch {
     // Not being able to look is not evidence that it is not there, but the
     // alternative is never delivering anything when the read fails.

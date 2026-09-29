@@ -45,6 +45,17 @@ export interface TriageContext {
   readonly repliedTo?: string
   /** When the reporter was asked, which the wait measures everything against. */
   readonly askedAt?: string
+  /**
+   * Whether the one allowed follow up has been sent.
+   *
+   * Context rather than actor state, because the watch is torn down and rebuilt
+   * every time a nudge goes out, and a fresh actor would have no memory of
+   * having sent one. It would then ask again a week later, forever, and never
+   * reach the point of giving up.
+   */
+  readonly nudged?: boolean
+  /** What the reporter said, held only until it is written to the discussion. */
+  readonly reporterSaid?: string
   /** Lowered by tests, which cannot wait a fortnight. */
   readonly nudgeAfterMs?: number
   readonly staleAfterMs?: number
