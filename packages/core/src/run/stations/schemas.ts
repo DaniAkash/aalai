@@ -146,3 +146,36 @@ export function isActionable(triage: Triage): boolean {
 export function mayBeAnsweredPublicly(triage: Triage): boolean {
   return triage.classification !== 'security'
 }
+
+export const FAULTS = ['ours', 'theirs', 'unclear'] as const
+
+/**
+ * Whether a failing check is this change's fault.
+ *
+ * Its own decision with its own evidence, in front of every revision, because
+ * getting it wrong spends a budget on somebody else's outage and eventually
+ * abandons a correct pull request over a flaky runner.
+ */
+export const faultSchema = z.object({
+  fault: z.enum(FAULTS),
+  /** One line a person can read without opening the failing job. */
+  summary: looseText,
+  reasoning: looseText,
+  /** What in the log led to this, quoted rather than described. */
+  evidence: looseList,
+})
+
+export type FaultVerdict = z.infer<typeof faultSchema>
+
+/**
+ * Whether to spend a fix on this.
+ *
+ * `unclear` counts as theirs, and that asymmetry is the design rather than
+ * caution. Being wrong this way leaves a pull request open with a comment
+ * saying the checks failed for a reason we could not tie to the change, which
+ * a person can read and act on. Being wrong the other way rewrites working
+ * code against a failure it did not cause, and does it twice before stopping.
+ */
+export function isOurFault(verdict: FaultVerdict): boolean {
+  return verdict.fault === 'ours'
+}

@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb } from '@/modules/db/db'
 import { answerGate, openGate } from '@/modules/gates'
-import {
-  deliverOutbox,
-  queueDraftedReply,
-  releasedBy,
-} from '@/modules/outbound/deliver'
+import { deliverOutbox, releasedBy } from '@/modules/outbound/deliver'
+import { queueDraftedReply } from '@/modules/outbound/drafted'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import {
   claimDelivery,

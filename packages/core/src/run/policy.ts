@@ -33,3 +33,16 @@ export function planIsGated(policy: RunPolicy): boolean {
 export function triageFirst(policy: RunPolicy): boolean {
   return policy === 'triage'
 }
+
+/**
+ * Whether this repository's pull requests are kept alive after delivery.
+ *
+ * A repository's own answer overrides the global one, the same way its label
+ * gate and its run policy do. The question is how closely somebody is watching
+ * the repository rather than what they prefer in general: a repository nobody
+ * looks at daily is one where background revisions accumulate unseen.
+ */
+export function keepsPullRequestsAlive(config: Config, repo: string): boolean {
+  const watched = config.watch.find((w) => w.repo === repo)
+  return watched?.keepPullRequestsAlive ?? config.keepPullRequestsAlive
+}

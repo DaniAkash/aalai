@@ -187,3 +187,37 @@ export async function discardPath(
 ): Promise<void> {
   await git.removeWorktree(workspace.clonePath, path)
 }
+
+/**
+ * Gets a checkout for a branch that already has a pull request open.
+ *
+ * Adopts the one the run left behind when it is still there, and otherwise
+ * builds a new one from the branch. The second case is the normal one rather
+ * than the exception: a successful delivery removes its worktree, so by the
+ * time anything comes back to keep the pull request alive the checkout it was
+ * built in is gone. Requiring the original meant every delivered pull request
+ * was skipped, which is to say the watch never ran at all.
+ */
+export async function reviveWorkspace(
+  repo: string,
+  issueNumber: number,
+  issueTitle: string,
+  branch: string,
+): Promise<Workspace> {
+  const adopted = await adoptWorkspace(repo, issueNumber, issueTitle)
+  if (adopted !== undefined) {
+    return adopted
+  }
+
+  const clonePath = await ensureClone(repo)
+  const base = await git.defaultBranch(clonePath)
+  const worktreePath = worktreePathFor(repo, issueNumber)
+  await git.removeWorktree(clonePath, worktreePath)
+  mkdirSync(join(worktreePath, '..'), { recursive: true })
+  await git.addBranchWorktree(clonePath, worktreePath, branch)
+  log.info('rebuilt a checkout for an open pull request', {
+    path: worktreePath,
+    branch,
+  })
+  return { repo, issueNumber, clonePath, worktreePath, branch, base }
+}

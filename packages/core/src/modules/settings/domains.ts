@@ -35,6 +35,18 @@ const factoryDomain = z.object({
   keepWorktreeOnFailure: z.boolean().default(true),
   /** The default a watched repository inherits when it sets no policy. */
   defaultPolicy: runPolicySchema.default('automatic'),
+  /**
+   * Whether a delivered pull request is then kept alive.
+   *
+   * On means a run does not end when the pull request opens: checks, review
+   * comments and the base are watched, and a failure the change caused is
+   * fixed. Off means delivery is the end, which is what every version before
+   * this did.
+   *
+   * A repository may override it, because the answer differs by how closely
+   * somebody is watching the repository rather than by preference.
+   */
+  keepPullRequestsAlive: z.boolean().default(true),
 })
 
 const agentsDomain = z.object({
@@ -59,8 +71,15 @@ const agentsDomain = z.object({
 const limitsDomain = z.object({
   /** Most times the reviewer may send work back before the run gives up. */
   maxRevisions: z.number().int().min(0).max(5).default(2),
-  /** Read once a failing check is retried automatically. Stored now so the
-   * setting does not have to arrive alongside the behaviour. */
+  /**
+   * Most times a failing check may be fixed automatically before a person is
+   * needed.
+   *
+   * Counted apart from `maxRevisions` on purpose. A reviewer disagreeing and a
+   * check going red are different kinds of wrong, and one pool for both means a
+   * pull request that survived two flaky mornings has no budget left for the
+   * first thing a person actually asks for.
+   */
   maxCiFixes: z.number().int().min(0).max(5).default(2),
   turnTimeoutMs: z.number().int().min(60_000).default(900_000),
 })

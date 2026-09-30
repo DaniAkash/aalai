@@ -80,29 +80,6 @@ export async function fetchOrigin(repoDir: string): Promise<void> {
   })
 }
 
-export async function addWorktree(
-  repoDir: string,
-  worktreePath: string,
-  branch: string,
-  base: string,
-): Promise<void> {
-  assertSafeBranch(branch)
-  await execOrThrow(
-    ['git', 'worktree', 'add', '-b', branch, worktreePath, `origin/${base}`],
-    { cwd: repoDir },
-  )
-}
-
-export async function removeWorktree(
-  repoDir: string,
-  worktreePath: string,
-): Promise<void> {
-  await exec(['git', 'worktree', 'remove', '--force', worktreePath], {
-    cwd: repoDir,
-  })
-  await exec(['git', 'worktree', 'prune'], { cwd: repoDir })
-}
-
 /**
  * Parses one `git status --porcelain` line into its path.
  *
@@ -281,19 +258,6 @@ export async function diffStat(
   })
 }
 
-/** Adds a worktree for a branch that already exists, used for the review checkout. */
-export async function addExistingBranchWorktree(
-  repoDir: string,
-  worktreePath: string,
-  branch: string,
-): Promise<void> {
-  assertSafeBranch(branch)
-  await execOrThrow(
-    ['git', 'worktree', 'add', '--detach', worktreePath, branch],
-    { cwd: repoDir },
-  )
-}
-
 /** Commits whatever is staged without touching the working tree of other worktrees. */
 export async function hasStagedChanges(worktree: string): Promise<boolean> {
   const out = await exec(['git', 'diff', '--cached', '--quiet'], {
@@ -321,3 +285,13 @@ export async function headSha(worktree: string): Promise<string | undefined> {
   const result = await exec(['git', 'rev-parse', 'HEAD'], { cwd: worktree })
   return result.exitCode === 0 ? result.stdout.trim() : undefined
 }
+
+// Re-exported so the worktree operations are still reachable as `git.*`, which
+// is how every caller already spells them. They live next door for size, not
+// because they are a different idea.
+export {
+  addBranchWorktree,
+  addExistingBranchWorktree,
+  addWorktree,
+  removeWorktree,
+} from '@/lib/gitWorktree'

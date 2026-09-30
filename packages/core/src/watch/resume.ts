@@ -39,7 +39,16 @@ export async function resumeUnfinished(
   db: Database,
   config: Config,
 ): Promise<number> {
-  const pending = unfinishedRuns(db)
+  // Pull request watches are left out. They are long lived and started
+  // detached by the watch layer, which also renews their claims, so offering
+  // them here would have this pass take one over and start a second machine on
+  // the same branch, and then block on it for as long as the pull request
+  // stayed open. Resuming one after a restart is that layer's job, and it
+  // notices an abandoned claim the same way it notices an unwatched pull
+  // request.
+  const pending = unfinishedRuns(db).filter(
+    (row) => row.machine !== 'prLifecycle',
+  )
   if (pending.length === 0) {
     return 0
   }
@@ -86,7 +95,14 @@ async function resumeOne(
   // Taken over before anything runs. Without a claim two pollers can both
   // restore the same machine, and the fencing that makes a duplicate
   // observation harmless in the normal path is simply absent here.
-  const lease = takeOverRun(db, named.repo, named.issueNumber)
+  // Only an abandoned claim. A live watch renews its own, so this is what keeps
+  // a pass from taking over one that is still working and starting a second.
+  const lease = takeOverRun(
+    db,
+    named.repo,
+    named.issueNumber,
+    config.staleClaimMinutes * 60_000,
+  )
   if (lease === null) {
     log.info('another worker owns this run, leaving it', { runId: row.runId })
     return false

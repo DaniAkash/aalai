@@ -35,6 +35,7 @@ describe('settings domains', () => {
       staleClaimMinutes: 15,
       keepWorktreeOnFailure: false,
       defaultPolicy: 'automatic' as const,
+      keepPullRequestsAlive: true,
     })
     expect(readDomain(sqlite, 'factory')).toEqual({
       pollSeconds: 120,
@@ -42,6 +43,7 @@ describe('settings domains', () => {
       staleClaimMinutes: 15,
       keepWorktreeOnFailure: false,
       defaultPolicy: 'automatic' as const,
+      keepPullRequestsAlive: true,
     })
   })
 
@@ -74,6 +76,7 @@ describe('settings domains', () => {
       staleClaimMinutes: 30,
       keepWorktreeOnFailure: true,
       defaultPolicy: 'automatic' as const,
+      keepPullRequestsAlive: true,
     })
     sqlite
       .query('INSERT INTO settings (key, value) VALUES (?, ?)')

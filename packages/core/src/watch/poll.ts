@@ -6,6 +6,7 @@ import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { runIssue } from '@/run/pipeline'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
+import { watchDeliveredPullRequests } from '@/watch/pullRequests'
 import { resumeUnfinished } from '@/watch/resume'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
@@ -37,6 +38,10 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
   // restart looking like an abandoned issue.
   const resumed = await resumeUnfinished(db, config)
   let handled = resumed
+  // Started rather than awaited: these run for days and the poller has to keep
+  // going. Counted as handled so a pass that only started watches is not
+  // reported as having done nothing.
+  handled += watchDeliveredPullRequests(db, config)
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
   }
