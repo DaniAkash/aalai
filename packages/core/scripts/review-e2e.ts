@@ -7,6 +7,20 @@ const { loadConfig } = await import('@/config')
 
 const repo = 'DaniAkash/aalai-demo'
 const prNumber = Number(process.argv[2] ?? '64')
+/**
+ * A clone of the repository under review.
+ *
+ * Passed in rather than written down, because where somebody keeps their
+ * checkouts is theirs and an absolute path with a name in it has no business in
+ * a repository.
+ */
+const clonePath = process.env.AALAI_DEMO_CLONE ?? ''
+if (clonePath === '') {
+  process.stdout.write(
+    'set AALAI_DEMO_CLONE to a clone of the repository under review\n',
+  )
+  process.exit(1)
+}
 const state = process.env.AALAI_STATE_DIR ?? '/tmp'
 const h = openDb(`${state}/aalai.sqlite`)
 const run = {
@@ -24,7 +38,7 @@ provideRunDeps('review-e2e', {
   // The review itself still reads from `state`, which holds nothing.
   workspace: {
     worktreePath: state,
-    clonePath: '/Users/dani/workbench/DaniAkash/aalai-demo',
+    clonePath,
     branch: 'main',
     base: 'main',
   },
