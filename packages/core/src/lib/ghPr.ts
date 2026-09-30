@@ -319,3 +319,21 @@ export async function repoPermission(
     return 'none'
   }
 }
+
+/**
+ * The diff of a pull request, as text.
+ *
+ * Which is all a static review gets, and the reason is not convenience. No
+ * permission mode prevents an agent running a shell command, established by
+ * `scripts/permission-probe.ts`, so the only way to be sure a stranger's code
+ * does not execute is for it not to be on disk where the agent is working. Text
+ * in a prompt cannot be run.
+ */
+// TEMPORARY: read by the static review station, which lands in a later commit.
+// fallow-ignore-next-line unused-export
+export async function pullRequestDiff(
+  repo: string,
+  number: number,
+): Promise<string> {
+  return gh(['pr', 'diff', String(number), '--repo', repo])
+}
