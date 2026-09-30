@@ -1,3 +1,4 @@
+import { authenticatedLogin } from '@/lib/gh'
 import { gh } from '@/lib/ghExec'
 
 /**
@@ -244,94 +245,47 @@ export async function failedLog(
   return windowAroundFailure(stdout, maxLines)
 }
 
-export interface CommitAuthorship {
-  readonly sha: string
-  /**
-   * The GitHub account the commit's email resolves to, or null.
-   *
-   * Null is the interesting case and it is not an error: a commit whose author
-   * email belongs to no account is code from somebody this repository has never
-   * trusted, whoever opened the pull request carrying it.
-   */
-  readonly authorLogin: string | null
-  readonly authorName: string
+export interface OpenPullRequest {
+  readonly number: number
+  readonly title: string
+  /** Whether the factory opened it, which means it belongs to the other watch. */
+  readonly openedByUs: boolean
 }
 
-/** Who wrote each commit on a pull request, oldest first. */
-export async function pullRequestCommits(
+/** Open pull requests on a repository, with whether each is one of ours. */
+export async function listOpenPullRequests(
   repo: string,
-  number: number,
-): Promise<CommitAuthorship[]> {
-  const stdout = await gh([
-    'api',
-    '--paginate',
-    `repos/${repo}/pulls/${number}/commits`,
-    '--jq',
-    '.[] | {sha, authorLogin: .author.login, authorName: .commit.author.name}',
+): Promise<OpenPullRequest[]> {
+  const [stdout, me] = await Promise.all([
+    gh([
+      'pr',
+      'list',
+      '--repo',
+      repo,
+      '--state',
+      'open',
+      '--json',
+      'number,title,author',
+    ]),
+    authenticatedLogin(),
   ])
-  return stdout
-    .split('\n')
-    .filter((line) => line.trim() !== '')
-    .map((line) => JSON.parse(line) as CommitAuthorship)
+  const parsed = JSON.parse(stdout) as {
+    number: number
+    title: string
+    author: { login: string }
+  }[]
+  return parsed.map((pr) => ({
+    number: pr.number,
+    title: pr.title,
+    openedByUs: pr.author.login === me,
+  }))
 }
 
-export interface PullRequestOrigin {
-  /** The association of whoever opened it, which governs its text. */
-  readonly association: string
-  /** Whether the head lives in another repository. */
-  readonly isFork: boolean
-  readonly headRepo: string
-}
-
-/** Where a pull request came from, as distinct from what is in it. */
-export async function pullRequestOrigin(
-  repo: string,
-  number: number,
-): Promise<PullRequestOrigin> {
-  const raw = await gh([
-    'api',
-    `repos/${repo}/pulls/${number}`,
-    '--jq',
-    '{association: .author_association, isFork: .head.repo.fork, headRepo: .head.repo.full_name}',
-  ])
-  return JSON.parse(raw) as PullRequestOrigin
-}
-
-/**
- * What a repository has granted one account, or `none`.
- *
- * `read` is what GitHub answers for anybody at all on a public repository, so
- * it is not a grant and must not read as one.
- */
-export async function repoPermission(
-  repo: string,
-  login: string,
-): Promise<string> {
-  try {
-    const raw = await gh([
-      'api',
-      `repos/${repo}/collaborators/${login}/permission`,
-      '--jq',
-      '.permission',
-    ])
-    return raw.trim()
-  } catch {
-    return 'none'
-  }
-}
-
-/**
- * The diff of a pull request, as text.
- *
- * Which is all a static review gets, and the reason is not convenience. No
- * permission mode prevents an agent running a shell command, established by
- * `scripts/permission-probe.ts`, so the only way to be sure a stranger's code
- * does not execute is for it not to be on disk where the agent is working. Text
- * in a prompt cannot be run.
- */
-export async function pullRequestDiff(
-  repo: string,
-  number: number,
-): Promise<string> {
-  return gh(['pr', 'diff', String(number), '--repo', repo])
-}
+// Re-exported for the same reason: one import site for what GitHub says about a
+// pull request, whether the question is what it does or who wrote it.
+export {
+  pullRequestCommits,
+  pullRequestDiff,
+  pullRequestOrigin,
+  repoPermission,
+} from '@/lib/ghTrust'

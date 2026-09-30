@@ -1,13 +1,9 @@
-import { logger } from '@/lib/log'
 import type { RunRef } from '@/modules/work/paths'
 import type { RunDeps } from './deps'
-import { provideRunDeps, releaseRunDeps } from './deps'
 import { prLifecycle } from './prLifecycle'
 import { watchKnobs } from './prRules'
 import type { PrContext, PrOutcome } from './prTypes'
-import { runMachine } from './snapshots'
-
-const log = logger('pr')
+import { settleMachine } from './settle'
 
 /**
  * Keeps one pull request alive until it settles, persisting as it goes.
@@ -38,37 +34,27 @@ export async function drivePullRequest(input: {
    */
   signal?: AbortSignal
 }): Promise<{ outcome: PrOutcome; context: PrContext }> {
-  provideRunDeps(input.runId, input.deps)
-  try {
-    const settled = await runMachine({
-      db: input.deps.db,
-      run: input.run,
+  return settleMachine<typeof prLifecycle, PrOutcome, PrContext>({
+    runId: input.runId,
+    run: input.run,
+    deps: input.deps,
+    machine: 'prLifecycle',
+    logic: prLifecycle,
+    machineInput: {
       runId: input.runId,
-      machine: 'prLifecycle',
-      logic: prLifecycle,
-      machineInput: {
-        runId: input.runId,
-        repo: input.repo,
-        prNumber: input.prNumber,
-        // Read from settings rather than assumed by the machine, so the two
-        // allowances are the ones a person configured.
-        maxCiFixes: input.deps.config.maxCiFixes,
-        maxRevisions: input.deps.config.maxRevisions,
-        ...watchKnobs(input),
-      },
-      ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
-      ...(input.signal === undefined ? {} : { signal: input.signal }),
-    })
-    const outcome = settled.context.outcome ?? {
+      repo: input.repo,
+      prNumber: input.prNumber,
+      // Read from settings rather than assumed by the machine, so the two
+      // allowances are the ones a person configured.
+      maxCiFixes: input.deps.config.maxCiFixes,
+      maxRevisions: input.deps.config.maxRevisions,
+      ...watchKnobs(input),
+    },
+    ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+    missing: {
       kind: 'failed' as const,
       error: 'the pull request run did not say how it ended',
-    }
-    log.info('pull request settled', {
-      runId: input.runId,
-      outcome: outcome.kind,
-    })
-    return { outcome, context: settled.context }
-  } finally {
-    releaseRunDeps(input.runId)
-  }
+    },
+  })
 }
