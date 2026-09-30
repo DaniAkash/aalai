@@ -209,10 +209,16 @@ jobs:
           projectPath: app/native
           # Pin the runner instead of letting the action detect a package
           # manager. Detection walks up from projectPath looking for a
-          # lockfile; the only one here is the root bun.lock, which has
-          # resolved to npm in this action before and then failed on a `tauri`
-          # script that app/native does not expose under that name.
-          tauriScript: bunx tauri
+          # lockfile, and the only one here is the root bun.lock.
+          #
+          # `bun run tauri`, not `bunx tauri`. Both resolve the workspace CLI
+          # when run from projectPath, but bunx falls back to the registry when
+          # it does not, and `tauri` there is an unrelated v1 package whose
+          # install compiles a native image library. The failure is then a
+          # node-gyp error about a C++ file, naming nothing about Tauri or
+          # about resolution. `bun run` uses the script app/native already
+          # declares and fails as a missing command instead.
+          tauriScript: bun run tauri
           args: --target ${{ matrix.target }}
 
       - name: Add a stable-named DMG copy
