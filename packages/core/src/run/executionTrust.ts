@@ -1,12 +1,16 @@
 /**
  * The second trust question: may this code run on my machine.
  *
- * Q1, in `intake.ts`, asks whether text may become instructions to an agent. It
- * is about a pull request's description and an issue's body. This asks whether
- * code may become a process, and the two are not the same question with a flag:
- * a maintainer can open a pull request carrying somebody else's commits, which
- * passes Q1 on the strength of who opened it and says nothing at all about who
- * wrote what is in it.
+ * Q1, in `watch/intake.ts`, asks whether text may become instructions to an
+ * agent. This asks whether code may become a process, and the two are not the
+ * same question with a flag: a maintainer can open a pull request carrying
+ * somebody else's commits, which passes Q1 on the strength of who opened it and
+ * says nothing at all about who wrote what is in it.
+ *
+ * It lives beside the run rather than beside the intake screen, which is a
+ * boundary fallow pointed out and was right about. Q1 decides whether a run
+ * starts at all, which is the watching layer's job. Q2 is asked inside a run,
+ * about code that run is already reading.
  *
  * So this reads the commits rather than the opener. A commit whose author email
  * resolves to no GitHub account, or to an account this repository has granted
@@ -115,8 +119,6 @@ export function authorsToResolve(
  * that only mean anything together, and because the answer is a fact about a
  * head rather than a state anything holds.
  */
-// TEMPORARY: called by the review machine, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function screenExecution(
   repo: string,
   prNumber: number,

@@ -230,3 +230,37 @@ export function stoppedBecause(outcome: {
       return 'it stopped for a reason it did not record'
   }
 }
+
+export interface TrustFacts {
+  /** Why this is being asked rather than assumed, from Q2. */
+  readonly because: string
+  /** Who wrote the code, as far as GitHub can tell. */
+  readonly authors: readonly string[]
+  readonly repo: string
+  readonly prNumber: number
+}
+
+/**
+ * What approving a trust gate actually does, before it is approved.
+ *
+ * The most consequential sentence in the product. Everything else a gate has
+ * ever asked could be undone: a comment can be deleted, a branch can be thrown
+ * away, a pull request can be closed. This one runs somebody else's code on the
+ * machine reading it, and nothing undoes that.
+ *
+ * So it says the thing rather than the category. "Approve" is what the button
+ * would say if this were a plan.
+ */
+export function trustConsequence(facts: TrustFacts): string {
+  return `Runs this branch's tests on your machine, as code written by ${facts.authors.join(' and ')}.`
+}
+
+/** What the button says, which is never the word approve. */
+export function trustLabel(): string {
+  return 'Run it'
+}
+
+/** Why it is being asked at all, in the words Q2 used. */
+export function trustReason(facts: TrustFacts): string {
+  return `This is being asked because there is ${facts.because}.`
+}

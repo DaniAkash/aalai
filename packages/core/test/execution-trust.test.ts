@@ -3,7 +3,7 @@ import {
   type Authorship,
   authorsToResolve,
   mayExecute,
-} from '@/watch/execution'
+} from '@/run/executionTrust'
 
 /**
  * Whether somebody else's code may run on this machine.

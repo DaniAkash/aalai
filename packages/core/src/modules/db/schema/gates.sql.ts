@@ -14,7 +14,15 @@ export const GATE_DECISIONS = [
 ] as const
 export type GateDecision = (typeof GATE_DECISIONS)[number]
 
-export const GATE_KINDS = ['triage', 'plan', 'permission'] as const
+/**
+ * `trust` is the one that decides whether somebody else's code runs here.
+ *
+ * A separate kind rather than a `permission` gate, which is a question held open
+ * inside a live agent turn and dies with it. This one is durable and can sit for
+ * as long as it takes: nothing is waiting on it except a review that has already
+ * said everything it can without running anything.
+ */
+export const GATE_KINDS = ['triage', 'plan', 'permission', 'trust'] as const
 export type GateKind = (typeof GATE_KINDS)[number]
 
 /**

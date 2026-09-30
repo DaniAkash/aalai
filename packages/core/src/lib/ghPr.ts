@@ -329,8 +329,6 @@ export async function repoPermission(
  * does not execute is for it not to be on disk where the agent is working. Text
  * in a prompt cannot be run.
  */
-// TEMPORARY: read by the static review station, which lands in a later commit.
-// fallow-ignore-next-line unused-export
 export async function pullRequestDiff(
   repo: string,
   number: number,
