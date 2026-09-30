@@ -19,29 +19,26 @@ import {
 const facts: TrustFacts = {
   because:
     'a commit by an account this repository does not know (Alex Contributor)',
-  authors: ['Alex Contributor'],
-  repo: 'acme/widgets',
-  prNumber: 64,
 }
 
 describe('what approving it does', () => {
   test('says it runs code, in those words', () => {
-    const said = trustConsequence(facts)
+    const said = trustConsequence()
     expect(said).toContain('Runs')
     expect(said).toContain('on your machine')
   })
 
-  test('and names whose code', () => {
-    expect(trustConsequence(facts)).toContain('Alex Contributor')
+  test('and the reason names whose code it is', () => {
+    // On the reason rather than the consequence: the reason is what Q2
+    // established, and the consequence is the same sentence however it came to
+    // be asked.
+    expect(trustReason(facts)).toContain('Alex Contributor')
   })
 
-  test('names all of them when there are several', () => {
-    expect(
-      trustConsequence({
-        ...facts,
-        authors: ['Alex Contributor', 'Someone Else'],
-      }),
-    ).toContain('Someone Else')
+  test('and the same sentence however it came to be asked', () => {
+    // The consequence of running somebody else's code does not change with who
+    // they are or why it was noticed, so it is not assembled from either.
+    expect(trustConsequence()).toBe(trustConsequence())
   })
 
   test('the button does not say approve', () => {

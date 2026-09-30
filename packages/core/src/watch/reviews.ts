@@ -5,9 +5,14 @@ import { listOpenPullRequests } from '@/lib/ghPr'
 import { logger } from '@/lib/log'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { driveReview } from '@/run/machines/driveReview'
-import { reviveWorkspace } from '@/run/workspace'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
-import { claimedPullRequests, claimRun, completeRun } from '@/watch/state'
+import { holdReviewClaim } from '@/watch/prClaim'
+import {
+  claimedPullRequests,
+  claimRun,
+  completeRun,
+  deliveredBranch,
+} from '@/watch/state'
 
 const log = logger('review')
 
@@ -49,10 +54,14 @@ async function openOnes(
     if (already.has(key) || inFlight.has(key)) {
       continue
     }
-    // Ours is somebody else's problem, specifically the pull request watch's.
-    // Reviewing our own change is what the reviewer station already did before
-    // it was delivered.
-    if (pr.openedByUs) {
+    // Ours means the factory delivered it, which the claim table knows, rather
+    // than our account having opened it. Those are different sets and the
+    // difference matters: a maintainer opens pull requests by hand from the same
+    // account the factory pushes with, and skipping those would mean the only
+    // ones ever reviewed are from accounts that are not this one. Something the
+    // factory delivered has already been reviewed by the station that built it,
+    // and is kept alive by the other watch.
+    if (deliveredBranch(db, repo, pr.number) !== undefined) {
       continue
     }
     inFlight.add(key)
@@ -101,15 +110,27 @@ async function start(
       return
     }
 
-    // Our own default branch. The contributor's code is never checked out for
-    // the reading half, and the running half makes its own throwaway checkout.
-    const workspace = await reviveWorkspace(repo, prNumber, title, 'HEAD')
+    // No checkout of ours at all. The reading half works in a directory with no
+    // git repository in it and the running half fetches one commit into a
+    // repository of its own, so neither needs a workspace from here. Passing the
+    // literal 'HEAD' as a branch name was the first attempt and failed every
+    // review before it started, because there is no `refs/heads/HEAD` to fetch.
+    const workspace = {
+      repo,
+      issueNumber: prNumber,
+      clonePath: '',
+      worktreePath: '',
+      branch: '',
+      base: '',
+    }
+    const holding = holdReviewClaim(db, config, repo, prNumber, lease)
     const settled = await driveReview({
       runId,
       repo,
       prNumber,
       title,
       run,
+      signal: holding.signal,
       deps: {
         db,
         config,
@@ -120,6 +141,7 @@ async function start(
         conventionFiles: [],
       },
     })
+    holding.release()
     completeRun(db, repo, prNumber, {
       kind: 'pr',
       status: settled.outcome.kind === 'failed' ? 'failed' : 'delivered',

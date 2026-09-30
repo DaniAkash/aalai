@@ -1,4 +1,3 @@
-import { authenticatedLogin } from '@/lib/gh'
 import { gh } from '@/lib/ghExec'
 
 /**
@@ -49,6 +48,8 @@ export interface PullRequestState {
   readonly headSha: string
   readonly headRef: string
   readonly baseRef: string
+  /** Where the head lives. Another repository when the pull request is a fork. */
+  readonly headRepo: string
   readonly mergeable: string | null
   readonly url: string
 }
@@ -65,7 +66,7 @@ export async function pullRequestState(
     '--repo',
     repo,
     '--json',
-    'number,state,isDraft,headRefOid,headRefName,baseRefName,mergeable,url',
+    'number,state,isDraft,headRefOid,headRefName,baseRefName,headRepositoryOwner,headRepository,mergeable,url',
   ])
   const raw = JSON.parse(stdout) as Record<string, unknown>
   return {
@@ -75,6 +76,7 @@ export async function pullRequestState(
     headSha: raw.headRefOid as string,
     headRef: raw.headRefName as string,
     baseRef: raw.baseRefName as string,
+    headRepo: headRepoOf(raw),
     mergeable: (raw.mergeable as string | null) ?? null,
     url: raw.url as string,
   }
@@ -248,37 +250,35 @@ export async function failedLog(
 export interface OpenPullRequest {
   readonly number: number
   readonly title: string
-  /** Whether the factory opened it, which means it belongs to the other watch. */
-  readonly openedByUs: boolean
 }
 
-/** Open pull requests on a repository, with whether each is one of ours. */
+/**
+ * Open pull requests on a repository.
+ *
+ * Deliberately says nothing about whose they are. Whether one is the factory's
+ * own is a question the claim table answers, and answering it from the account
+ * that opened it was wrong: a maintainer opens pull requests by hand from the
+ * same account the factory pushes with.
+ */
 export async function listOpenPullRequests(
   repo: string,
 ): Promise<OpenPullRequest[]> {
-  const [stdout, me] = await Promise.all([
-    gh([
-      'pr',
-      'list',
-      '--repo',
-      repo,
-      '--state',
-      'open',
-      '--json',
-      'number,title,author',
-    ]),
-    authenticatedLogin(),
+  const stdout = await gh([
+    'pr',
+    'list',
+    '--repo',
+    repo,
+    '--state',
+    'open',
+    // Asked for explicitly, because the default is one page of thirty and the
+    // same page comes back every time: anything past it would never be
+    // reached on any later pass either.
+    '--limit',
+    '200',
+    '--json',
+    'number,title',
   ])
-  const parsed = JSON.parse(stdout) as {
-    number: number
-    title: string
-    author: { login: string }
-  }[]
-  return parsed.map((pr) => ({
-    number: pr.number,
-    title: pr.title,
-    openedByUs: pr.author.login === me,
-  }))
+  return JSON.parse(stdout) as OpenPullRequest[]
 }
 
 // Re-exported for the same reason: one import site for what GitHub says about a
@@ -289,3 +289,17 @@ export {
   pullRequestOrigin,
   repoPermission,
 } from '@/lib/ghTrust'
+
+/**
+ * Where a pull request's head lives, as `owner/name`.
+ *
+ * Assembled from two fields because `gh` reports the owner and the repository
+ * separately, and falls back to the empty string rather than to our own
+ * repository: quietly substituting ours would make a fork look local and send a
+ * fetch to the wrong place.
+ */
+function headRepoOf(raw: Record<string, unknown>): string {
+  const owner = (raw.headRepositoryOwner as { login?: string } | null)?.login
+  const name = (raw.headRepository as { name?: string } | null)?.name
+  return owner !== undefined && name !== undefined ? `${owner}/${name}` : ''
+}

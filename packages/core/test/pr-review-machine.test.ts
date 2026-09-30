@@ -19,7 +19,7 @@ type Sized = { headSha: string } & (
 type Looked = {
   moved: boolean
   headSha: string
-  headRef: string
+  headRepo: string
   state: string
 }
 
@@ -69,7 +69,7 @@ function start(overrides: Record<string, unknown> = {}) {
           async (): Promise<Looked> => ({
             moved: false,
             headSha: 'head1',
-            headRef: 'contrib/branch',
+            headRepo: 'acme/widgets',
             state: 'OPEN',
           }),
         ),
@@ -198,7 +198,7 @@ describe('what happens before anything runs', () => {
         async (): Promise<Looked> => ({
           moved: true,
           headSha: 'head2',
-          headRef: 'contrib/branch',
+          headRepo: 'acme/widgets',
           state: 'OPEN',
         }),
       ),
@@ -218,7 +218,7 @@ describe('what happens before anything runs', () => {
         async (): Promise<Looked> => ({
           moved: false,
           headSha: 'head1',
-          headRef: 'contrib/branch',
+          headRepo: 'acme/widgets',
           state: 'MERGED',
         }),
       ),

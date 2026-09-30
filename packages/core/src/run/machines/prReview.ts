@@ -167,6 +167,13 @@ export const prReview = setup({
           repo: context.repo,
           issue: context.prNumber,
           kind: 'trust' as const,
+          // Why it is being asked, in the words the trust screen used. Without
+          // it the gate can say what approving does and not why anybody is
+          // being asked, which is half the decision.
+          summary:
+            context.execution?.allowed === false
+              ? context.execution.reason
+              : 'code here was written by somebody this repository does not know',
           ...(context.gatePollMs === undefined
             ? {}
             : { pollMs: context.gatePollMs }),
@@ -220,7 +227,7 @@ export const prReview = setup({
           },
           {
             target: 'running',
-            actions: assign({ headRef: ({ event }) => event.output.headRef }),
+            actions: assign({ headRepo: ({ event }) => event.output.headRepo }),
           },
         ],
         onError: {
@@ -248,7 +255,10 @@ export const prReview = setup({
         input: ({ context }) => ({
           runId: context.runId,
           prNumber: context.prNumber,
-          headRef: context.headRef ?? '',
+          headRepo: context.headRepo ?? context.repo,
+          // The commit the head check just confirmed had not moved, which is the
+          // one a person cleared. Not the branch, which can move again.
+          sha: context.headSha,
         }),
         onDone: {
           target: 'done',

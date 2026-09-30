@@ -232,12 +232,8 @@ export function stoppedBecause(outcome: {
 }
 
 export interface TrustFacts {
-  /** Why this is being asked rather than assumed, from Q2. */
+  /** Why this is being asked rather than assumed, in the words Q2 used. */
   readonly because: string
-  /** Who wrote the code, as far as GitHub can tell. */
-  readonly authors: readonly string[]
-  readonly repo: string
-  readonly prNumber: number
 }
 
 /**
@@ -251,8 +247,8 @@ export interface TrustFacts {
  * So it says the thing rather than the category. "Approve" is what the button
  * would say if this were a plan.
  */
-export function trustConsequence(facts: TrustFacts): string {
-  return `Runs this branch's tests on your machine, as code written by ${facts.authors.join(' and ')}.`
+export function trustConsequence(): string {
+  return "Runs this branch's tests on your machine."
 }
 
 /** What the button says, which is never the word approve. */

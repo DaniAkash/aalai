@@ -17,9 +17,22 @@ export interface CommitAuthorship {
    * Null is the interesting case and it is not an error: a commit whose author
    * email belongs to no account is code from somebody this repository has never
    * trusted, whoever opened the pull request carrying it.
+   *
+   * A login here is attribution and not proof. Anybody can set
+   * `git config user.email` to a trusted account's public address and GitHub will
+   * resolve this to that account, so a login alone must never be enough to run
+   * code unattended.
    */
   readonly authorLogin: string | null
   readonly authorName: string
+  /**
+   * Whether the commit carries a signature GitHub could verify.
+   *
+   * The difference between a claim and a proof. Without it the email is the only
+   * thing linking a commit to an account, and an email is a field somebody
+   * chose.
+   */
+  readonly verified: boolean
 }
 
 export interface PullRequestOrigin {
@@ -40,7 +53,7 @@ export async function pullRequestCommits(
     '--paginate',
     `repos/${repo}/pulls/${number}/commits`,
     '--jq',
-    '.[] | {sha, authorLogin: .author.login, authorName: .commit.author.name}',
+    '.[] | {sha, authorLogin: .author.login, authorName: .commit.author.name, verified: .commit.verification.verified}',
   ])
   return stdout
     .split('\n')

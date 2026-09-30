@@ -37,6 +37,7 @@ export interface Authorship {
   readonly sha: string
   readonly authorLogin: string | null
   readonly authorName: string
+  readonly verified: boolean
 }
 
 export type ExecutionVerdict =
@@ -79,6 +80,18 @@ export function mayExecute(input: {
     return {
       allowed: false,
       reason: `${unknown.length === 1 ? 'a commit' : `${unknown.length} commits`} by an account this repository does not know (${names})`,
+    }
+  }
+
+  // A signature, or a person. An author email is a field somebody chose, so
+  // anybody can set it to a trusted account's public address and be resolved to
+  // that account. That is enough to attribute a commit and nowhere near enough
+  // to run it, so an unsigned commit is asked about however trusted it looks.
+  const unproven = input.commits.filter((commit) => !commit.verified)
+  if (unproven.length > 0) {
+    return {
+      allowed: false,
+      reason: `${unproven.length === 1 ? 'a commit' : `${unproven.length} commits`} nobody signed, so who wrote them is a claim rather than a fact`,
     }
   }
 

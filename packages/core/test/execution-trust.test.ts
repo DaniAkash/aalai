@@ -17,12 +17,14 @@ const mine: Authorship = {
   sha: 'a1',
   authorLogin: 'the-maintainer',
   authorName: 'The Maintainer',
+  verified: true,
 }
 
 const theirs: Authorship = {
   sha: 'b2',
   authorLogin: null,
   authorName: 'Alex Contributor',
+  verified: false,
 }
 
 const trusted = new Map([['the-maintainer', 'admin']])
@@ -81,7 +83,14 @@ describe('code somebody else wrote', () => {
     // `read` is what GitHub answers for anybody at all on a public repository,
     // so it is not a grant and must not read as one.
     const verdict = mayExecute({
-      commits: [{ sha: 'c3', authorLogin: 'a-stranger', authorName: 'A' }],
+      commits: [
+        {
+          sha: 'c3',
+          authorLogin: 'a-stranger',
+          authorName: 'A',
+          verified: true,
+        },
+      ],
       isFork: false,
       permissions: new Map([['a-stranger', 'read']]),
     })
@@ -91,7 +100,9 @@ describe('code somebody else wrote', () => {
 
   test('a login nobody looked up is not assumed trusted', () => {
     const verdict = mayExecute({
-      commits: [{ sha: 'c3', authorLogin: 'unlooked', authorName: 'U' }],
+      commits: [
+        { sha: 'c3', authorLogin: 'unlooked', authorName: 'U', verified: true },
+      ],
       isFork: false,
       permissions: new Map(),
     })
@@ -126,5 +137,53 @@ describe('who has to be looked up', () => {
 
   test('and an unresolvable author is nobody to look up', () => {
     expect(authorsToResolve([theirs])).toEqual([])
+  })
+})
+
+describe('a login is a claim rather than a proof', () => {
+  test('an unsigned commit is asked about however trusted the account looks', () => {
+    // Anybody can set `git config user.email` to a trusted account's public
+    // address and GitHub resolves the commit to that account. That is enough to
+    // attribute it and nowhere near enough to run it.
+    const spoofed: Authorship = {
+      sha: 'd4',
+      authorLogin: 'the-maintainer',
+      authorName: 'The Maintainer',
+      verified: false,
+    }
+    const verdict = mayExecute({
+      commits: [spoofed],
+      isFork: false,
+      permissions: trusted,
+    })
+    expect(verdict.allowed).toBe(false)
+    expect(verdict.allowed === false && verdict.reason).toContain('signed')
+  })
+
+  test('one unsigned commit among signed ones is still a no', () => {
+    const verdict = mayExecute({
+      commits: [mine, { ...mine, sha: 'a2', verified: false }],
+      isFork: false,
+      permissions: trusted,
+    })
+    expect(verdict.allowed).toBe(false)
+  })
+
+  test('and a signed commit from an account with no access is still a no', () => {
+    // The two questions are separate: whether we know who wrote it, and whether
+    // we trust them. A signature answers only the first.
+    const verdict = mayExecute({
+      commits: [
+        {
+          sha: 'e5',
+          authorLogin: 'a-stranger',
+          authorName: 'A',
+          verified: true,
+        },
+      ],
+      isFork: false,
+      permissions: new Map([['a-stranger', 'read']]),
+    })
+    expect(verdict.allowed).toBe(false)
   })
 })

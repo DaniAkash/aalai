@@ -79,21 +79,31 @@ export const staticReviewer = fromPromise(
       pullRequestCommits(deps.repo, input.prNumber),
     ])
     const { runStaticReview } = await import('@/run/stations/review')
-    await runStaticReview({
-      runId: input.runId,
-      repo: deps.repo,
-      prNumber: input.prNumber,
-      title: input.title,
-      diff,
-      authors: [...new Set(commits.map((c) => c.authorLogin ?? c.authorName))],
-      willRun: input.willRun,
-      // Our own checkout of our own default branch, which is where the review
-      // reads from. The contributor's code is in the prompt and nowhere else.
-      worktree: deps.workspace.worktreePath,
-      config: deps.config,
-      signal,
-    })
-    log.info('read the change without running it', { pr: input.prNumber })
+    const { emptySpace } = await import('@/run/reviewSpace')
+    const space = await emptySpace()
+    try {
+      await runStaticReview({
+        runId: input.runId,
+        repo: deps.repo,
+        prNumber: input.prNumber,
+        title: input.title,
+        diff,
+        authors: [
+          ...new Set(commits.map((c) => c.authorLogin ?? c.authorName)),
+        ],
+        willRun: input.willRun,
+        // A directory with no git repository in it. Not a worktree of our clone,
+        // which was the first attempt and was wrong: a worktree shares its
+        // clone's objects and refs, so `git show origin/their-branch:file` prints
+        // their code from inside it, and the agent reading has an ungated shell.
+        worktree: space.path,
+        config: deps.config,
+        signal,
+      })
+      log.info('read the change without running it', { pr: input.prNumber })
+    } finally {
+      await space.discard()
+    }
   },
 )
 
@@ -106,7 +116,7 @@ export const headWatch = fromPromise(
   }): Promise<{
     moved: boolean
     headSha: string
-    headRef: string
+    headRepo: string
     state: string
   }> => {
     const deps = runDeps(input.runId)
@@ -114,10 +124,10 @@ export const headWatch = fromPromise(
     return {
       moved: pr.headSha !== input.headSha,
       headSha: pr.headSha,
-      // Carried out of here because the only thing that checks anything out
-      // reads it, and it should use the branch this check just looked at rather
-      // than asking again and possibly getting a different answer.
-      headRef: pr.headRef,
+      // Where the commit lives, because a fork's head is not on our remote and
+      // the only thing that checks anything out has to fetch from wherever it
+      // actually is.
+      headRepo: pr.headRepo,
       state: pr.state,
     }
   },
@@ -146,25 +156,28 @@ export const dynamicReviewer = fromPromise(
   async ({
     input,
   }: {
-    input: { runId: string; prNumber: number; headRef: string }
+    input: {
+      runId: string
+      prNumber: number
+      /** Where the commit lives, which is not our repository for a fork. */
+      headRepo: string
+      /** The exact commit a person cleared, not the branch it was on. */
+      sha: string
+    }
   }): Promise<RanTests> => {
-    const deps = runDeps(input.runId)
-    const { addBranchWorktree, removeWorktree } = await import(
-      '@/lib/gitWorktree'
-    )
+    const { checkoutCommit } = await import('@/run/reviewSpace')
     const { findTestCommand } = await import('@/run/testCommand')
     const { exec } = await import('@/lib/proc')
-    const { join } = await import('node:path')
 
-    const checkout = join(
-      deps.workspace.clonePath,
-      '..',
-      `review-pr-${input.prNumber}`,
-    )
-    await removeWorktree(deps.workspace.clonePath, checkout)
-    await addBranchWorktree(deps.workspace.clonePath, checkout, input.headRef)
+    // Created before the try, and discarded inside it, so a checkout that half
+    // happened is still cleaned up. Wrapping only what comes after the add was
+    // the first shape and left a directory behind when the add itself failed.
+    const space = await checkoutCommit({
+      headRepo: input.headRepo,
+      sha: input.sha,
+    })
     try {
-      const found = await findTestCommand(checkout)
+      const found = await findTestCommand(space.path)
       if (!found.found) {
         log.info('not running anything, because nothing said how', {
           pr: input.prNumber,
@@ -172,11 +185,11 @@ export const dynamicReviewer = fromPromise(
         })
         return { ran: false, passed: false, output: '', why: found.why }
       }
-      log.info('running the tests on this branch', {
+      log.info('running the tests on this commit', {
         pr: input.prNumber,
         how: found.command.how,
       })
-      const result = await exec([...found.command.argv], { cwd: checkout })
+      const result = await exec([...found.command.argv], { cwd: space.path })
       const output = `${result.stdout}\n${result.stderr}`.trim()
       return {
         ran: true,
@@ -184,9 +197,9 @@ export const dynamicReviewer = fromPromise(
         output: output.split('\n').slice(-60).join('\n'),
       }
     } finally {
-      // Whatever happened. Somebody else's checkout is not something to leave
-      // sitting next to our own.
-      await removeWorktree(deps.workspace.clonePath, checkout)
+      // Whatever happened. Somebody else's code is not a thing to leave lying
+      // about, and this one is the copy that was allowed to run.
+      await space.discard()
     }
   },
 )

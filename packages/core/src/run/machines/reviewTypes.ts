@@ -21,8 +21,8 @@ export interface ReviewContext {
   /** The head the review and any trust decision belong to. */
   readonly headSha: string
   readonly gateId?: string
-  /** The branch to check out, once there is a reason to check anything out. */
-  readonly headRef?: string
+  /** Where the head lives, which is another repository when it is a fork. */
+  readonly headRepo?: string
   /** What the suite said, when it was allowed to run. */
   readonly tests?: {
     readonly ran: boolean

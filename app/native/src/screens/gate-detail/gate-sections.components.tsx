@@ -8,6 +8,7 @@ import {
 import { Composer, Thread, type ThreadEntry } from './gate-thread.components'
 import { TriageDecisionPanel } from './triage-report.components'
 import { factsFromReport } from './triage-report.helpers'
+import { TrustDecisionPanel } from './trust.components'
 
 /**
  * Who the words on this screen are about.
@@ -105,6 +106,25 @@ export function Decide({
 }) {
   if (row.status !== 'open') {
     return <Answered gate={row} />
+  }
+  if (row.kind === 'trust') {
+    // Its own panel, because the shared one offers asking for changes and this
+    // kind accepts only two answers. Offering the third would put an action on
+    // screen that comes back as an error.
+    return (
+      <TrustDecisionPanel
+        error={error}
+        // Only what the gate actually recorded. Inventing an author list to
+        // fill a field would put a name on screen that nothing established.
+        facts={{
+          because:
+            row.summary ??
+            'code here was written by somebody this repository does not know',
+        }}
+        onDecide={onDecide}
+        pending={pending}
+      />
+    )
   }
   if (row.kind === 'triage') {
     const facts = factsFromReport(artifact)
