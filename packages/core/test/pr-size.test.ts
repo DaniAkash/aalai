@@ -96,3 +96,56 @@ describe('deciding whether to give a verdict', () => {
     expect(isReviewable({ lines: 1201, files: 5 }).reviewable).toBe(false)
   })
 })
+
+describe('a changed line that looks like a header', () => {
+  test('an added line whose content starts with ++ is counted', () => {
+    // A unified diff renders it as `+++...`, so matching the marker without a
+    // space swallowed it, and enough of those would let an oversized change slip
+    // under the limit.
+    const sneaky = [
+      'diff --git a/a.ts b/a.ts',
+      '--- a/a.ts',
+      '+++ b/a.ts',
+      '@@ -1,1 +1,3 @@',
+      '+++i',
+      '+++j',
+      '+ordinary',
+    ].join('\n')
+    expect(sizeOf(sneaky).lines).toBe(3)
+  })
+
+  test('a removed line starting with -- is counted too', () => {
+    const sneaky = [
+      'diff --git a/a.ts b/a.ts',
+      '--- a/a.ts',
+      '+++ b/a.ts',
+      '@@ -1,2 +1,1 @@',
+      '---count-me',
+      '-ordinary',
+    ].join('\n')
+    expect(sizeOf(sneaky).lines).toBe(2)
+  })
+
+  test('and the real headers are still not counted', () => {
+    const plain = [
+      'diff --git a/a.ts b/a.ts',
+      '--- a/a.ts',
+      '+++ b/a.ts',
+      '@@ -1,1 +1,1 @@',
+      '+one',
+    ].join('\n')
+    expect(sizeOf(plain).lines).toBe(1)
+  })
+
+  test('a diff made of them cannot hide its size', () => {
+    // The shape of the bypass: many lines, none of them counted before.
+    const many = [
+      'diff --git a/a.ts b/a.ts',
+      '--- a/a.ts',
+      '+++ b/a.ts',
+      '@@ -1,1 +1,2000 @@',
+      ...Array.from({ length: 2000 }, (_, i) => `+++value${i}`),
+    ].join('\n')
+    expect(isReviewable(sizeOf(many)).reviewable).toBe(false)
+  })
+})

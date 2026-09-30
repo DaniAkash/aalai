@@ -52,29 +52,38 @@ export async function checkoutCommit(input: {
 }): Promise<{ path: string; discard: () => Promise<void> }> {
   const path = await mkdtemp(join(tmpdir(), 'aalai-run-'))
   const env = githubEnv()
-  await execOrThrow(['git', 'init', '--quiet'], { cwd: path })
-  await execOrThrow(
-    [
-      'git',
-      'fetch',
-      '--depth',
-      '1',
-      `https://github.com/${input.headRepo}.git`,
-      input.sha,
-    ],
-    { cwd: path, env },
-  )
-  await execOrThrow(['git', 'checkout', '--quiet', 'FETCH_HEAD'], { cwd: path })
-
-  // Checked rather than assumed. The point of fetching a sha is that what is
-  // here is what somebody cleared, and saying so only matters if it is true.
-  const at = await exec(['git', 'rev-parse', 'HEAD'], { cwd: path })
-  const head = at.stdout.trim()
-  if (head !== input.sha) {
-    await rm(path, { recursive: true, force: true })
-    throw new Error(
-      `checked out ${head.slice(0, 8)} but ${input.sha.slice(0, 8)} was the commit cleared to run`,
+  // Every way out of here that is not success removes the directory. Without
+  // this a failed fetch left one behind, because the caller's cleanup only runs
+  // once this has returned something for it to clean up.
+  try {
+    await execOrThrow(['git', 'init', '--quiet'], { cwd: path })
+    await execOrThrow(
+      [
+        'git',
+        'fetch',
+        '--depth',
+        '1',
+        `https://github.com/${input.headRepo}.git`,
+        input.sha,
+      ],
+      { cwd: path, env },
     )
+    await execOrThrow(['git', 'checkout', '--quiet', 'FETCH_HEAD'], {
+      cwd: path,
+    })
+
+    // Checked rather than assumed. The point of fetching a sha is that what is
+    // here is what somebody cleared, and saying so only matters if it is true.
+    const at = await exec(['git', 'rev-parse', 'HEAD'], { cwd: path })
+    const head = at.stdout.trim()
+    if (head !== input.sha) {
+      throw new Error(
+        `checked out ${head.slice(0, 8)} but ${input.sha.slice(0, 8)} was the commit cleared to run`,
+      )
+    }
+  } catch (error) {
+    await rm(path, { recursive: true, force: true })
+    throw error
   }
   log.info('checked out exactly the commit that was cleared', {
     repo: input.headRepo,

@@ -155,7 +155,9 @@ export interface RanTests {
 export const dynamicReviewer = fromPromise(
   async ({
     input,
+    signal,
   }: {
+    signal: AbortSignal
     input: {
       runId: string
       prNumber: number
@@ -189,7 +191,14 @@ export const dynamicReviewer = fromPromise(
         pr: input.prNumber,
         how: found.command.how,
       })
-      const result = await exec([...found.command.argv], { cwd: space.path })
+      // Cancellable, and the child is waited for. Losing the claim means this
+      // checkout is about to be deleted and another machine started on the same
+      // pull request, and a test run left alive would still be executing it
+      // while both of those happen.
+      const result = await exec([...found.command.argv], {
+        cwd: space.path,
+        signal,
+      })
       const output = `${result.stdout}\n${result.stderr}`.trim()
       return {
         ran: true,

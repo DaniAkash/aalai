@@ -26,7 +26,13 @@ export function holdReviewClaim(
   lease: string,
 ): { signal: AbortSignal; release: () => void } {
   const lost = new AbortController()
-  const every = Math.max(60_000, (config.staleClaimMinutes * 60_000) / 3)
+  // A third of the lease, and never as long as the lease itself. The floor was
+  // a minute, which with the shortest permitted lease of one minute scheduled
+  // the first renewal at exactly the moment it went stale, leaving a window for
+  // a pass to take the claim and start a second machine. Ten seconds is short
+  // enough to be harmless and long enough not to be a busy loop.
+  const leaseMs = config.staleClaimMinutes * 60_000
+  const every = Math.max(10_000, Math.min(leaseMs / 3, leaseMs - 10_000))
   const timer = setInterval(() => {
     if (renewClaim(db, repo, prNumber, lease, 'pr')) {
       return

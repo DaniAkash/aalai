@@ -11,12 +11,17 @@ export interface StaticReviewInput {
   readonly authors: readonly string[]
   readonly willRun: boolean
   /**
-   * A checkout of our own default branch, never the contributor's.
+   * An empty directory with no git repository in it.
    *
-   * The station needs somewhere to run, and where that is matters more than
-   * anything the permission mode says: an agent can run shell commands whatever
-   * mode it is in, so the only thing keeping a stranger's code from executing is
-   * that it is not on disk here.
+   * Not a checkout of anything, and specifically not a worktree of our clone of
+   * the repository under review, which is what this said first and was wrong
+   * about: a worktree shares its clone's objects and refs, so
+   * `git show origin/their-branch:file` prints the contributor's code from
+   * inside one, and the agent reading has a shell no permission mode gates.
+   *
+   * Where this points is the only thing keeping a stranger's code from being
+   * executable here, so it is worth being exact about in the one place a future
+   * caller will read.
    */
   readonly worktree: string
   readonly config: Config

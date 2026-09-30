@@ -39,9 +39,14 @@ export function sizeOf(diff: string): DiffSize {
       files += 1
       continue
     }
-    // Only real changes. The +++ and --- headers start with a marker too, and
-    // counting them would add two lines per file to every diff.
-    if (line.startsWith('+++') || line.startsWith('---')) {
+    // Only real changes. The file headers start with a marker too, and counting
+    // them would add two lines per file to every diff.
+    //
+    // The space matters. Matching on `+++` alone also swallows an added line
+    // whose own content begins with `++`, which a unified diff renders as
+    // `+++...`, and enough of those would let an oversized change slip under
+    // the limit.
+    if (line.startsWith('+++ ') || line.startsWith('--- ')) {
       continue
     }
     if (line.startsWith('+') || line.startsWith('-')) {
