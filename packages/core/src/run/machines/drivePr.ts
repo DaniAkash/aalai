@@ -27,6 +27,15 @@ export async function drivePullRequest(input: {
   snapshot?: unknown
   pollMs?: number
   windowMs?: number
+  /**
+   * Cancelled when this worker is no longer the one holding the claim.
+   *
+   * Losing a lease is not a warning. Another worker taking over means a second
+   * machine is about to classify and push to the same branch, and two of those
+   * on one branch is the thing the claim exists to prevent, so the one that lost
+   * has to stop rather than finish what it was doing.
+   */
+  signal?: AbortSignal
 }): Promise<{ outcome: PrOutcome; context: PrContext }> {
   provideRunDeps(input.runId, input.deps)
   try {
@@ -51,6 +60,7 @@ export async function drivePullRequest(input: {
         ...(input.windowMs === undefined ? {} : { windowMs: input.windowMs }),
       },
       ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     })
     const outcome = settled.context.outcome ?? {
       kind: 'failed' as const,

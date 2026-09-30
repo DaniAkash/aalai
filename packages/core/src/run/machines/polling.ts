@@ -21,16 +21,29 @@ export function pollEvery(
   what: string,
 ): () => void {
   let stopped = false
+  let busy = false
   const isStopped = () => stopped
 
   const tick = (): void => {
-    void look(isStopped).catch((error: unknown) => {
-      // A watch outlives any one failed request, and the next tick asks again
-      // from the same remembered position.
-      log.debug(`could not ${what}`, {
-        error: error instanceof Error ? error.message : String(error),
+    // One at a time. A slow request would otherwise still be in flight when the
+    // next tick fires, and two observations of the same thing can come back out
+    // of order: the older answer arrives last and overwrites what the newer one
+    // established, or reports the same change twice.
+    if (busy) {
+      return
+    }
+    busy = true
+    void look(isStopped)
+      .catch((error: unknown) => {
+        // A watch outlives any one failed request, and the next tick asks again
+        // from the same remembered position.
+        log.debug(`could not ${what}`, {
+          error: error instanceof Error ? error.message : String(error),
+        })
       })
-    })
+      .finally(() => {
+        busy = false
+      })
   }
 
   tick()

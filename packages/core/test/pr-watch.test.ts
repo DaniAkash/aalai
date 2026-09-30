@@ -269,3 +269,65 @@ describe('the very first look', () => {
     ])
   })
 })
+
+describe('a check that goes red, green, then red again', () => {
+  test('is news the second time too', () => {
+    // A rerun somebody did to see whether it was flaky. Remembering every
+    // failure ever seen on the commit filtered the second one out forever, so
+    // the watch never looked at it again.
+    const failing = look({ checks: [check('test', 'failure')] })
+    const afterFirst = seenAfter(SEEN, failing, signalsFrom(SEEN, failing))
+    expect(signalsFrom(afterFirst, failing)).toEqual([])
+
+    const green = look({ checks: [check('test', 'success')] })
+    const afterRerun = seenAfter(
+      afterFirst,
+      green,
+      signalsFrom(afterFirst, green),
+    )
+
+    expect(signalsFrom(afterRerun, failing)).toEqual([
+      { kind: 'checks_failed', names: ['test'] },
+    ])
+  })
+})
+
+describe('checks that finished badly without saying failure', () => {
+  test('a timed out check is a failing check', () => {
+    // It was reported as neither failing nor pending, so a pull request with a
+    // red tick on GitHub could be called green and the watch stopped.
+    expect(
+      signalsFrom(SEEN, look({ checks: [check('test', 'timed_out')] })),
+    ).toEqual([{ kind: 'checks_failed', names: ['test'] }])
+  })
+
+  test('so are cancelled, stale and action required', () => {
+    for (const conclusion of [
+      'cancelled',
+      'stale',
+      'action_required',
+      'startup_failure',
+    ]) {
+      expect(
+        signalsFrom(SEEN, look({ checks: [check('test', conclusion)] })),
+      ).toEqual([{ kind: 'checks_failed', names: ['test'] }])
+    }
+  })
+
+  test('a conclusion nobody here has heard of reads as a problem', () => {
+    // Safer than the other way round: an unknown conclusion treated as fine is
+    // a pull request reported healthy on evidence nobody understood.
+    expect(
+      signalsFrom(SEEN, look({ checks: [check('test', 'something_new')] })),
+    ).toEqual([{ kind: 'checks_failed', names: ['test'] }])
+  })
+
+  test('but neutral and skipped are genuinely fine', () => {
+    expect(
+      signalsFrom(
+        SEEN,
+        look({ checks: [check('a', 'neutral'), check('b', 'skipped')] }),
+      ),
+    ).toEqual([])
+  })
+})

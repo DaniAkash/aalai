@@ -1,17 +1,17 @@
 import type { Database } from 'bun:sqlite'
 import type { Config } from '@/config'
-import type { GhIssue } from '@/lib/gh'
 import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { getDb } from '@/modules/db/db'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { drivePullRequest } from '@/run/machines/drivePr'
-import type { PipelineResult } from '@/run/pipeline'
+import { readSnapshot } from '@/run/machines/snapshots'
 import { keepsPullRequestsAlive } from '@/run/policy'
 import { reviveWorkspace } from '@/run/workspace'
 import {
+  abandonedPullRequests,
   claimRun,
   completeRun,
+  deliveredBranch,
   deliveredPullRequests,
   renewClaim,
 } from '@/watch/state'
@@ -37,7 +37,15 @@ export function watchDeliveredPullRequests(
   config: Config,
 ): number {
   let started = 0
-  for (const delivered of deliveredPullRequests(db)) {
+  // Both kinds in one pass: pull requests nothing has watched yet, and ones
+  // whose worker went away and whose claim has gone quiet. They need exactly the
+  // same treatment, so telling them apart here would only mean two code paths
+  // for one job, and the resumed half is the one that had no heartbeat when
+  // there were two.
+  for (const delivered of [
+    ...deliveredPullRequests(db),
+    ...resumable(db, config),
+  ]) {
     if (!keepsPullRequestsAlive(config, delivered.repo)) {
       continue
     }
@@ -128,30 +136,33 @@ async function start(
       repo: delivered.repo,
       pr: delivered.prNumber,
     })
-    // Renewed while the watch runs. The lease exists so a killed process does
-    // not hold a subject forever, and a watch measured in days would otherwise
-    // look abandoned long before it was.
-    const heartbeat = setInterval(
-      () => {
-        if (!renewClaim(db, delivered.repo, delivered.prNumber, lease, 'pr')) {
-          log.warn('this watch no longer holds its claim', {
-            repo: delivered.repo,
-            pr: delivered.prNumber,
-          })
-        }
-      },
-      Math.max(60_000, (config.staleClaimMinutes * 60_000) / 3),
+    const holding = holdClaim(
+      db,
+      config,
+      delivered.repo,
+      delivered.prNumber,
+      lease,
     )
 
     try {
+      // Restored when there is one. A watch coming back after a restart keeps the
+      // baseline it had established, rather than starting blank and reporting the
+      // pull request's own base as having moved.
+      const snapshot = await readSnapshot(run)
       const settled = await drivePullRequest({
+        signal: holding.signal,
+        ...(snapshot === undefined ? {} : { snapshot }),
         runId,
         repo: delivered.repo,
         prNumber: delivered.prNumber,
         issueNumber: delivered.issueNumber,
         run,
         deps: {
-          db: getDb().sqlite,
+          // The handle the caller gave us, not the process global one. A state
+          // directory the caller opened separately would otherwise have its
+          // snapshots and outbox written to one database and its claim updated
+          // in another.
+          db,
           config,
           issue,
           repo: delivered.repo,
@@ -170,10 +181,9 @@ async function start(
       })
       return true
     } finally {
-      // Whatever happened. A timer left running holds a claim alive for a watch
-      // that is no longer there, which is worse than the stale lease it exists
-      // to prevent.
-      clearInterval(heartbeat)
+      // Whatever happened. A timer left running renews a claim for a watch that
+      // is no longer there, which is worse than the stale lease it prevents.
+      holding.release()
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -193,56 +203,71 @@ async function start(
 }
 
 /**
- * Picks a pull request watch back up where a killed process left it.
+ * Watches whose worker went away, described the way a fresh one is.
  *
- * The snapshot goes into the machine that wrote it. Its own branch is where the
- * work is, so the checkout is rebuilt from the branch the same way a fresh watch
- * builds one, and the machine restores whatever it had already established
- * rather than starting from a blank baseline and reporting the base as moved.
+ * The snapshot is left where it is: the driver restores it, so a resumed watch
+ * comes back with whatever it had already established rather than starting from
+ * a blank baseline and reporting the pull request's own base as having moved.
  */
-export async function resumePullRequest(input: {
-  db: Database
-  config: Config
-  repo: string
-  prNumber: number
-  issue: GhIssue
-  run: RunRef
-  runId: string
-  snapshot: unknown
-}): Promise<PipelineResult> {
-  const branch = branchOf(input.db, input.repo, input.prNumber)
-  const workspace = await reviveWorkspace(
-    input.repo,
-    input.issue.number,
-    input.issue.title,
-    branch,
-  )
-  const settled = await drivePullRequest({
-    runId: input.runId,
-    repo: input.repo,
-    prNumber: input.prNumber,
-    issueNumber: input.issue.number,
-    run: input.run,
-    snapshot: input.snapshot,
-    deps: {
-      db: input.db,
-      config: input.config,
-      issue: input.issue,
-      repo: input.repo,
-      workspace,
-      run: input.run,
-      conventionFiles: [],
-    },
-  })
-  return settled.outcome.kind === 'failed'
-    ? { status: 'failed', error: settled.outcome.error }
-    : { status: 'delivered', branch }
+function resumable(
+  db: Database,
+  config: Config,
+): { repo: string; issueNumber: number; prNumber: number; branch: string }[] {
+  const found: {
+    repo: string
+    issueNumber: number
+    prNumber: number
+    branch: string
+  }[] = []
+  for (const row of abandonedPullRequests(
+    db,
+    config.staleClaimMinutes * 60_000,
+  )) {
+    const delivered = deliveredBranch(db, row.repo, row.prNumber)
+    if (delivered === undefined || delivered.branch === '') {
+      continue
+    }
+    found.push({
+      repo: row.repo,
+      issueNumber: delivered.issueNumber,
+      prNumber: row.prNumber,
+      branch: delivered.branch,
+    })
+  }
+  return found
 }
 
-/** The branch a delivered pull request was built on, recorded by its issue's run. */
-function branchOf(db: Database, repo: string, prNumber: number): string {
-  const found = deliveredPullRequests(db).find(
-    (row) => row.repo === repo && row.prNumber === prNumber,
-  )
-  return found?.branch ?? ''
+/**
+ * Keeps a claim alive while a watch runs, and gives up the watch if it cannot.
+ *
+ * Two halves of one thing. The lease goes stale so a killed process does not
+ * hold a subject forever, which is right for a run of minutes and wrong for a
+ * watch of days, so it is renewed. And a renewal that fails means somebody else
+ * now holds the claim, which is not a warning: a second machine is about to
+ * classify and push to this branch, so the one that lost has to stop rather
+ * than finish what it was doing.
+ */
+function holdClaim(
+  db: Database,
+  config: Config,
+  repo: string,
+  prNumber: number,
+  lease: string,
+): { signal: AbortSignal; release: () => void } {
+  const lost = new AbortController()
+  const every = Math.max(60_000, (config.staleClaimMinutes * 60_000) / 3)
+  const timer = setInterval(() => {
+    if (renewClaim(db, repo, prNumber, lease, 'pr')) {
+      return
+    }
+    log.warn('this watch lost its claim, stopping it', { repo, pr: prNumber })
+    clearInterval(timer)
+    lost.abort()
+  }, every)
+  return {
+    signal: lost.signal,
+    release: () => {
+      clearInterval(timer)
+    },
+  }
 }

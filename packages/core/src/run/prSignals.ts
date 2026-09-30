@@ -175,10 +175,11 @@ export function seenAfter(seen: Seen, look: Look, signals: Signal[]): Seen {
     pushedSha: seen.looked ? seen.pushedSha : look.headSha,
     headSha: look.headSha,
     baseSha: look.baseSha === '' ? seen.baseSha : look.baseSha,
-    failedChecks:
-      look.headSha === seen.headSha
-        ? [...new Set([...seen.failedChecks, ...failed])]
-        : failed,
+    // What is failing now, not everything that ever failed on this commit.
+    // Unioning them meant a check that failed, was rerun green, then failed
+    // again on the same commit was filtered out forever and never looked at
+    // again, which is exactly the rerun somebody does to see if it was flaky.
+    failedChecks: failed,
     lastCommentId:
       comments === undefined
         ? seen.lastCommentId

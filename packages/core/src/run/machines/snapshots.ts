@@ -176,6 +176,14 @@ export async function runMachine<TLogic extends AnyStateMachine>(input: {
   snapshot?: unknown
   /** Cleanup the caller needs on the way out, whatever happened. */
   onSettled?: () => void
+  /**
+   * Stops the machine without waiting for it to finish.
+   *
+   * For the one case where finishing is the wrong thing: a worker that has lost
+   * its claim is about to be replaced, and carrying on would mean two machines
+   * working the same branch.
+   */
+  signal?: AbortSignal
 }): Promise<SnapshotFrom<TLogic>> {
   const actor = createActor(input.logic, {
     input: input.machineInput,
@@ -190,11 +198,17 @@ export async function runMachine<TLogic extends AnyStateMachine>(input: {
     machine: input.machine,
     actor,
   })
+  const abort = () => {
+    actor.stop()
+  }
+  input.signal?.addEventListener('abort', abort, { once: true })
   try {
     actor.start()
     const settled = await waitFor(
       actor,
-      (snapshot) => (snapshot as { status: string }).status === 'done',
+      (snapshot) =>
+        (snapshot as { status: string }).status === 'done' ||
+        input.signal?.aborted === true,
       { timeout: Number.POSITIVE_INFINITY },
     )
     await persisting.settled()

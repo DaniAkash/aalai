@@ -173,10 +173,22 @@ export function takeOverRun(
   db: Database,
   repo: string,
   issue: number,
+  /**
+   * How long a claim has to have been quiet before it counts as abandoned.
+   *
+   * Only an abandoned one may be taken over, which was always what this claimed
+   * to do and did not: it replaced the lease on any claimed row at all. With a
+   * short run that was survivable, because the pass holding the claim also held
+   * the poller and nothing else was looking. A watch that runs for days and
+   * renews its claim is looked at by every pass, and taking it over started a
+   * second watcher on the same branch while the first was still pushing to it.
+   */
+  staleAfterMs: number,
   /** Which subject is being taken over. A pull request resumes like an issue. */
   kind: SubjectKind = ISSUE,
 ): string | null {
   const lease = crypto.randomUUID()
+  const staleBefore = new Date(Date.now() - staleAfterMs).toISOString()
   const result = query(db)
     .update(runs)
     .set({ lease, startedAt: new Date().toISOString() })
@@ -186,6 +198,7 @@ export function takeOverRun(
         eq(runs.subjectKind, kind),
         eq(runs.subjectNumber, issue),
         eq(runs.status, 'claimed'),
+        lt(runs.startedAt, staleBefore),
       ),
     )
     .returning({ repo: runs.repo })
@@ -255,6 +268,62 @@ export function renewClaim(
  * subject, so the ones worth starting are the delivered issues whose pull
  * request has no such row.
  */
+/**
+ * The branch a pull request was delivered on, whatever is watching it.
+ *
+ * Separate from the unwatched listing, which deliberately excludes anything that
+ * already has a run. Resuming one is exactly the case where the row is present,
+ * so reading the branch through that filter returned nothing and the resumed
+ * watch tried to build a checkout for an empty branch name.
+ */
+export function deliveredBranch(
+  db: Database,
+  repo: string,
+  prNumber: number,
+): { branch: string; issueNumber: number } | undefined {
+  const rows = query(db)
+    .select({
+      issueNumber: runs.subjectNumber,
+      prUrl: runs.prUrl,
+      branch: runs.branch,
+    })
+    .from(runs)
+    .where(and(eq(runs.repo, repo), eq(runs.subjectKind, ISSUE)))
+    .all()
+  for (const row of rows) {
+    if (Number((row.prUrl ?? '').split('/').pop()) === prNumber) {
+      return { branch: row.branch ?? '', issueNumber: row.issueNumber }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Pull request watches whose worker went away.
+ *
+ * A claim that has gone quiet past the stale window, on a row still marked
+ * claimed. The watch layer picks these up itself rather than the issue resume
+ * path doing it, because it is the half that knows these are long lived and
+ * have to be started detached.
+ */
+export function abandonedPullRequests(
+  db: Database,
+  staleAfterMs: number,
+): { repo: string; prNumber: number }[] {
+  const staleBefore = new Date(Date.now() - staleAfterMs).toISOString()
+  return query(db)
+    .select({ repo: runs.repo, prNumber: runs.subjectNumber })
+    .from(runs)
+    .where(
+      and(
+        eq(runs.subjectKind, 'pr'),
+        eq(runs.status, 'claimed'),
+        lt(runs.startedAt, staleBefore),
+      ),
+    )
+    .all()
+}
+
 export function deliveredPullRequests(db: Database): {
   repo: string
   issueNumber: number
