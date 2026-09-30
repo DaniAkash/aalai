@@ -1,0 +1,306 @@
+# Tag-triggered macOS desktop release: per-arch DMGs on a draft GitHub release.
+#
+# Signed and notarized when the Apple secrets exist, and an honest unsigned
+# build when they do not, so the app is installable before anyone enrolls in
+# anything. The release body says which of the two it is.
+#
+# How to cut one:
+#   1. Bump the version in app/native/src-tauri/tauri.conf.json and
+#      app/native/src-tauri/Cargo.toml so the two agree
+#   2. Commit as `chore(release): desktop vX.Y.Z`. cliff.toml filters that
+#      prefix out, so the bump never appears in the next changelog.
+#   3. git tag desktop-vX.Y.Z && git push origin main --tags
+#   4. Wait for the build, then publish the draft from the Releases page
+#
+# Repo secrets, all optional: their absence produces an unsigned build rather
+# than a failure. Documented in full alongside this change.
+#
+#   APPLE_CERTIFICATE            base64 of the Developer ID Application .p12
+#   APPLE_CERTIFICATE_PASSWORD   the password that .p12 was exported with
+#   APPLE_SIGNING_IDENTITY       Developer ID Application: <name> (<team id>)
+#   KEYCHAIN_PASSWORD            throwaway, unlocks the runner's temp keychain
+#   APPLE_ID                     the account that owns the membership
+#   APPLE_PASSWORD               an app-specific password, not the real one
+#   APPLE_TEAM_ID                the ten character team identifier
+#
+# No TAURI_SIGNING_* here, unlike a project that ships an updater. Those sign
+# updater bundles, and this app has no updater to feed: no plugin, no
+# createUpdaterArtifacts, no endpoint. They would configure nothing.
+#
+# This is a separate file from release.yml on purpose. That one publishes the
+# npm package over OIDC trusted publishing, whose claim is pinned to its bare
+# filename and cannot be edited after creation. Renaming or repurposing it
+# breaks publishing in a way that has to be recovered by deleting and remaking
+# the publisher.
+
+name: Release desktop (macOS DMGs)
+
+on:
+  push:
+    tags:
+      # Its own prefix, so a tag can never trigger this and the npm release
+      # together, and so each workflow's changelog range can filter to its own
+      # history with `git describe --match`.
+      - 'desktop-v[0-9]*'
+
+permissions:
+  contents: write
+
+jobs:
+  # Computed once on a free runner rather than per matrix entry, which would
+  # duplicate the work and let the two arches disagree about the notes.
+  changelog:
+    name: Compute changelog
+    runs-on: ubuntu-latest
+    outputs:
+      first_release: ${{ steps.previous_tag.outputs.first_release }}
+      content: ${{ steps.changelog.outputs.content }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # git-cliff walks back to the previous tag, which needs real history.
+          fetch-depth: 0
+
+      - name: Determine the previous desktop tag
+        id: previous_tag
+        run: |
+          set +e
+          # --match keeps this to desktop releases: the npm package tags share
+          # the history and would otherwise act as a range boundary.
+          PREVIOUS=$(git describe --tags --abbrev=0 --match 'desktop-v[0-9]*' "${GITHUB_REF_NAME}^" 2>/dev/null)
+          set -e
+          if [ -z "$PREVIOUS" ]; then
+            echo "first_release=true" >> "$GITHUB_OUTPUT"
+            echo "No previous desktop tag, treating this as the first release."
+          else
+            echo "first_release=false" >> "$GITHUB_OUTPUT"
+            echo "previous_tag=$PREVIOUS" >> "$GITHUB_OUTPUT"
+            echo "Previous tag: $PREVIOUS"
+          fi
+
+      - name: Generate the changelog
+        if: steps.previous_tag.outputs.first_release == 'false'
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          # No --include-path: the desktop build carries the whole repository.
+          # The sidecar is packages/core compiled, so a change there ships in
+          # this artifact as surely as a change to the interface does.
+          args: >-
+            --strip header
+            --tag-pattern '^desktop-v[0-9].*'
+            ${{ steps.previous_tag.outputs.previous_tag }}..${{ github.ref_name }}
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [changelog]
+    # Pinned rather than macos-latest. The label moves when GitHub rolls
+    # images, and a moved image changes the Xcode and SDK this links against.
+    # A release should not be the place that discovers a toolchain change.
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      # .cargo/config.toml redirects build-dir into CARGO_HOME so the worktrees
+      # on a laptop share one dependency graph. A runner is a single ephemeral
+      # checkout that gains nothing from that, while rust-cache and every
+      # bundle path below are written against target/. ci.yml overrides this
+      # back for the same reason.
+      CARGO_BUILD_BUILD_DIR: ${{ github.workspace }}/app/native/src-tauri/target
+    strategy:
+      # One arch failing must not cancel the other. The release job's needs:
+      # then goes unsatisfied and no draft appears, so a half release cannot be
+      # published by accident.
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Refuse a tag that does not match the app version
+        # A pushed tag cannot be moved, so a mismatch mislabels the release
+        # permanently, in the filenames and in the app's own About. release.yml
+        # guards the package version the same way.
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#desktop-v}"
+          CONF_VERSION=$(node -p "require('./app/native/src-tauri/tauri.conf.json').version")
+          if [ "$TAG_VERSION" != "$CONF_VERSION" ]; then
+            echo "Tag says $TAG_VERSION, tauri.conf.json says $CONF_VERSION." >&2
+            echo "Bump the version, commit, then retag." >&2
+            exit 1
+          fi
+          echo "Building aalai $CONF_VERSION for ${{ matrix.target }}"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      # Pinned for the same reason as ci.yml: rust-cache hashes every toolchain
+      # the runner reports into its key, so a floating toolchain turns a warm
+      # cache into a coin flip as runner images move.
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/native/src-tauri -> target
+          # Per-target key: the two matrix entries compile different artifacts
+          # and sharing a cache between them is a guaranteed miss.
+          key: ${{ matrix.target }}
+          cache-all-crates: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the sidecar for this target
+        # The step without which nothing else matters. tauri.conf.json declares
+        # externalBin ["binaries/aalai-core"], which Tauri resolves by appending
+        # the target triple, and nothing in the tauri build produces that file.
+        # Missing, it fails at bundle time as a configuration error rather than
+        # as a missing build step.
+        #
+        # bun --compile cross compiles to the other darwin arch from either
+        # runner, and build-sidecar.ts skips its dev-copy step when the triple
+        # it was given is not the host's.
+        run: bun run build:sidecar ${{ matrix.target }}
+
+      - name: Decide whether this build can be signed
+        id: signing
+        # Read through env rather than interpolated into the script, so nothing
+        # depends on masking to keep a secret out of the log. Only the emptiness
+        # of each value is ever observed.
+        env:
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARY_USER: ${{ secrets.APPLE_ID }}
+        run: |
+          if [ -n "$IDENTITY" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            if [ -n "$NOTARY_USER" ]; then
+              echo "Signing identity and notarization credentials both present."
+            else
+              echo "::warning::Signing identity present but no APPLE_ID, so this build is signed and NOT notarized. Gatekeeper still blocks it on another machine."
+            fi
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No APPLE_SIGNING_IDENTITY, building unsigned. The DMG installs, and macOS will call it damaged until it is opened via right click or de-quarantined."
+          fi
+
+      - name: Tauri build
+        # tauri-action decodes the certificate, imports it into a temporary
+        # keychain, runs the build, signs inside out (the sidecar first, then
+        # the app) and notarizes. With the Apple env empty it skips signing and
+        # warns instead of failing, which is what makes an unsigned release a
+        # supported outcome rather than a broken one.
+        uses: tauri-apps/tauri-action@v0
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: app/native
+          # Pin the runner instead of letting the action detect a package
+          # manager. Detection walks up from projectPath looking for a
+          # lockfile; the only one here is the root bun.lock, which has
+          # resolved to npm in this action before and then failed on a `tauri`
+          # script that app/native does not expose under that name.
+          tauriScript: bunx tauri
+          args: --target ${{ matrix.target }}
+
+      - name: Add a stable-named DMG copy
+        # The bundler stamps the version into the filename, which is right for
+        # the release page and useless for a link that should keep working.
+        # Both ship, side by side.
+        run: |
+          set -euo pipefail
+          cd app/native/src-tauri/target/${{ matrix.target }}/release/bundle/dmg
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) STABLE=aalai-aarch64.dmg ;;
+            x86_64-apple-darwin)  STABLE=aalai-x64.dmg ;;
+            *) echo "Unknown target ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          src=$(find . -maxdepth 1 -name '*.dmg' | head -n 1)
+          cp -- "$src" "$STABLE"
+          ls -la
+
+      - name: Upload the DMGs for the release job
+        # A job-to-job carrier, not an archive: everything lands on the release
+        # within minutes, hence the short retention.
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.target }}
+          path: app/native/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create draft release
+    needs: [changelog, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both arches
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dmg-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Compose the release body
+        id: body
+        # Written to a file rather than an output, because release notes
+        # contain newlines and backticks and a multiline output is one
+        # unescaped delimiter away from a broken run.
+        env:
+          NOTES: ${{ needs.changelog.outputs.content }}
+          FIRST: ${{ needs.changelog.outputs.first_release }}
+          SIGNED: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+        run: |
+          set -euo pipefail
+          {
+            if [ -n "$NOTES" ]; then
+              printf '%s\n' "$NOTES"
+            elif [ "$FIRST" = "true" ]; then
+              printf 'First desktop release.\n'
+            else
+              printf 'No changes since the previous desktop release.\n'
+            fi
+            # Quoted heredocs, written at the block scalar's own indent so YAML
+            # strips it and the shell sees a terminator at column 0. Everything
+            # inside is literal, so the markdown keeps its backticks unescaped.
+            cat <<'INSTALL'
+
+          ## Install
+
+          Apple Silicon takes the `aarch64` disk image, Intel takes the `x64` one.
+          INSTALL
+            if [ "$SIGNED" != "true" ]; then
+              cat <<'UNSIGNED'
+
+          This build is **unsigned**. macOS will say the app is damaged, which means Gatekeeper is refusing an unsigned download rather than that anything is wrong with it. Open it once with right click then Open, or clear the quarantine flag:
+
+          ```
+          xattr -dr com.apple.quarantine /Applications/aalai.app
+          ```
+          UNSIGNED
+            fi
+          } > body.md
+          cat body.md
+
+      - name: Create the draft release
+        uses: softprops/action-gh-release@v3
+        with:
+          # Draft, never automatic. Read it, then click publish.
+          draft: true
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: body.md
+          files: artifacts/*.dmg
+          fail_on_unmatched_files: true
