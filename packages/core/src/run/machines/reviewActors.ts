@@ -54,7 +54,12 @@ export const executionScreen = fromPromise(
     input: { runId: string; prNumber: number }
   }): Promise<ExecutionVerdict> => {
     const deps = runDeps(input.runId)
-    return screenExecution(deps.repo, input.prNumber)
+    const watched = deps.config.watch.find((w) => w.repo === deps.repo)
+    return screenExecution(
+      deps.repo,
+      input.prNumber,
+      watched?.requireSignedCommits ?? deps.config.requireSignedCommits,
+    )
   },
 )
 

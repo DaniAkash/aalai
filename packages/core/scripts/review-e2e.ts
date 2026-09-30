@@ -30,7 +30,20 @@ const { reviewOpenPullRequests } = await import('@/watch/reviews')
 
 const h = openDb(join(process.env.AALAI_STATE_DIR, 'aalai.sqlite'))
 const base = await loadConfig()
-const config = { ...base, watch: [{ repo }] }
+// Two passes over the same pull requests. Strict is the default and holds
+// everything for a person, which is safe and exercises none of the running half,
+// so the second pass is a repository that has said write access is its trust
+// boundary. Without both, the path that actually runs somebody's tests has no
+// coverage at all, which is how it lost coverage when signatures became
+// required.
+const strict = process.env.AALAI_DEMO_SIGNED !== 'waived'
+const config = {
+  ...base,
+  requireSignedCommits: strict,
+  watch: [{ repo, requireSignedCommits: strict }],
+}
+process.stdout.write(`REQUIRE_SIGNED=${strict}
+`)
 
 // Exactly what the poller calls, including the claim and the screen.
 const started = reviewOpenPullRequests(h.sqlite, config as never)

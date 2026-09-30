@@ -56,6 +56,16 @@ export function mayExecute(input: {
   isFork: boolean
   /** What the repository has granted each login, from `repoPermission`. */
   permissions: ReadonlyMap<string, string>
+  /**
+   * Whether a signature is required before code runs. Defaults to requiring one.
+   *
+   * Off is a repository saying that write access is its trust boundary and that
+   * an email is what links a commit to an account. That is a weaker position and
+   * it is the one most repositories are actually in, because most commits are
+   * unsigned: left on, every pull request waits for a person, which is safe and
+   * is not the same as the contributor path working.
+   */
+  requireSigned?: boolean
 }): ExecutionVerdict {
   if (input.commits.length === 0) {
     // Nothing read, rather than nothing to worry about. A head whose commits
@@ -87,7 +97,10 @@ export function mayExecute(input: {
   // anybody can set it to a trusted account's public address and be resolved to
   // that account. That is enough to attribute a commit and nowhere near enough
   // to run it, so an unsigned commit is asked about however trusted it looks.
-  const unproven = input.commits.filter((commit) => !commit.verified)
+  const unproven =
+    input.requireSigned === false
+      ? []
+      : input.commits.filter((commit) => !commit.verified)
   if (unproven.length > 0) {
     return {
       allowed: false,
@@ -135,6 +148,7 @@ export function authorsToResolve(
 export async function screenExecution(
   repo: string,
   prNumber: number,
+  requireSigned = true,
 ): Promise<ExecutionVerdict> {
   const [origin, commits] = await Promise.all([
     pullRequestOrigin(repo, prNumber),
@@ -148,6 +162,7 @@ export async function screenExecution(
     commits,
     isFork: origin.isFork,
     permissions,
+    requireSigned,
   })
   log.info('decided whether this code may run', {
     repo,

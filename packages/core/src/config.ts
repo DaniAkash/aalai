@@ -30,6 +30,8 @@ const watchedRepoSchema = z.object({
   policy: runPolicySchema.optional(),
   /** Per repo answer to whether its pull requests are kept alive. */
   keepPullRequestsAlive: z.boolean().optional(),
+  /** Per repo answer to whether running code requires a signature. */
+  requireSignedCommits: z.boolean().optional(),
 })
 
 /**
@@ -106,6 +108,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
     defaultPolicy: domains.factory.defaultPolicy,
     keepPullRequestsAlive: domains.factory.keepPullRequestsAlive,
+    requireSignedCommits: domains.factory.requireSignedCommits,
     agents: {
       analyst: domains.agents.analyst,
       implementer: domains.agents.implementer,
@@ -135,6 +138,7 @@ function toDomains(config: Config): Domains {
       keepWorktreeOnFailure: config.keepWorktreeOnFailure,
       defaultPolicy: config.defaultPolicy,
       keepPullRequestsAlive: config.keepPullRequestsAlive,
+      requireSignedCommits: config.requireSignedCommits,
     },
     agents: {
       analyst: config.agents.analyst,

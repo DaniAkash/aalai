@@ -187,3 +187,67 @@ describe('a login is a claim rather than a proof', () => {
     expect(verdict.allowed).toBe(false)
   })
 })
+
+describe('a repository that says write access is its trust boundary', () => {
+  test('an unsigned commit from a trusted account may run', () => {
+    // The position most repositories are actually in, because most commits are
+    // unsigned. Left strict, every pull request waits for a person, which is
+    // safe and is not the same as the contributor path working.
+    const verdict = mayExecute({
+      commits: [{ ...mine, verified: false }],
+      isFork: false,
+      permissions: trusted,
+      requireSigned: false,
+    })
+    expect(verdict.allowed).toBe(true)
+  })
+
+  test('but an unknown author still may not', () => {
+    // Waiving the signature is not waiving the question of who wrote it.
+    const verdict = mayExecute({
+      commits: [theirs],
+      isFork: false,
+      permissions: trusted,
+      requireSigned: false,
+    })
+    expect(verdict.allowed).toBe(false)
+  })
+
+  test('nor an account with no write access', () => {
+    const verdict = mayExecute({
+      commits: [
+        {
+          sha: 'f6',
+          authorLogin: 'a-stranger',
+          authorName: 'A',
+          verified: false,
+        },
+      ],
+      isFork: false,
+      permissions: new Map([['a-stranger', 'read']]),
+      requireSigned: false,
+    })
+    expect(verdict.allowed).toBe(false)
+  })
+
+  test('nor a fork', () => {
+    const verdict = mayExecute({
+      commits: [{ ...mine, verified: false }],
+      isFork: true,
+      permissions: trusted,
+      requireSigned: false,
+    })
+    expect(verdict.allowed).toBe(false)
+  })
+
+  test('and the strict default is what applies when nothing says otherwise', () => {
+    // Omitted rather than false. A setting that has to be remembered to be safe
+    // is the wrong way round.
+    const verdict = mayExecute({
+      commits: [{ ...mine, verified: false }],
+      isFork: false,
+      permissions: trusted,
+    })
+    expect(verdict.allowed).toBe(false)
+  })
+})
