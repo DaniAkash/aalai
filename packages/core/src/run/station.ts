@@ -38,10 +38,20 @@ export interface StationInput {
   readonly systemRules: string
   readonly task: string
   /**
-   * `approve-reads` is how a station that must not modify anything is stopped
-   * from doing so. The analyst and the reviewer both run under it, which makes
-   * "the analyst plans, it does not implement" a property of the run rather
-   * than a line in a prompt.
+   * What the agent is asked to treat as allowed. Not what it is prevented from.
+   *
+   * This was documented as making "the analyst plans, it does not implement" a
+   * property of the run rather than a line in a prompt. It is not, and
+   * `scripts/permission-probe.ts` is what established that: under
+   * `approve-reads`, under `deny-all`, and under `deny-all` with a policy of
+   * `autoDeny: ['*']` and `defaultAction: 'deny'`, the agent ran a shell command
+   * that wrote a file outside its own worktree. The permission layer does not
+   * gate the agent's shell tool.
+   *
+   * So it is worth setting, because an agent that is told reads are what it
+   * needs will usually stay inside that, and it is worth nothing as a guarantee.
+   * Anything that must not happen has to be made impossible by what is on disk
+   * and what is reachable, not by asking.
    */
   readonly permission: StationPermission
   readonly config: Config

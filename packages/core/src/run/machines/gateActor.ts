@@ -47,6 +47,15 @@ export const gateKeeper = fromCallback<
     repo: string
     issue: number
     kind: GateKind
+    /**
+     * One line saying what this gate is about, when the kind alone is not enough.
+     *
+     * A plan gate needs none: the artifact is the question. A trust gate does,
+     * because the thing a person needs to know is why they are being asked, and
+     * that is a fact the run established rather than anything readable from the
+     * gate's kind.
+     */
+    summary?: string
     pollMs?: number
   }
 >(({ input, sendBack }) => {
@@ -152,6 +161,7 @@ export const gateKeeper = fromCallback<
     const gateId = openGate(deps.db, {
       runId: input.runId,
       kind: input.kind,
+      ...(input.summary === undefined ? {} : { summary: input.summary }),
       ...(artifact === undefined
         ? {}
         : {

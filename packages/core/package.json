@@ -52,7 +52,9 @@
     "demo:seed": "bun run scripts/seed-gate-conversation.ts",
     "demo:parked": "bun run scripts/parked-run-harness.ts",
     "e2e:cli": "bun run scripts/gate-cli-e2e.ts",
-    "demo:triage": "bun run scripts/seed-triage.ts"
+    "demo:triage": "bun run scripts/seed-triage.ts",
+    "probe:permissions": "bun run scripts/permission-probe.ts",
+    "e2e:review": "bun run scripts/review-e2e.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

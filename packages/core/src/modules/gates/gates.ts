@@ -241,12 +241,16 @@ function settleIfOpen(
  * carries a correction the triage machine reads and no other machine has a
  * state for.
  */
-function decisionsFor(kind: string): readonly string[] {
+export function decisionsFor(kind: string): readonly string[] {
   switch (kind) {
     case 'triage':
       return ['approved', 'rejected', 'reclassify']
     case 'plan':
       return ['approved', 'rejected', 'changes']
+    case 'trust':
+      // No `changes`: this is not a question about the code, it is a question
+      // about whether to run it. There is nothing to send back.
+      return ['approved', 'rejected']
     default:
       return ['approved', 'rejected']
   }

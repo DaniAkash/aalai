@@ -7,13 +7,13 @@ import { drivePullRequest } from '@/run/machines/drivePr'
 import { readSnapshot } from '@/run/machines/snapshots'
 import { keepsPullRequestsAlive } from '@/run/policy'
 import { reviveWorkspace } from '@/run/workspace'
+import { holdReviewClaim } from '@/watch/prClaim'
 import {
   abandonedPullRequests,
   claimRun,
   completeRun,
   deliveredBranch,
   deliveredPullRequests,
-  renewClaim,
 } from '@/watch/state'
 
 const log = logger('pr')
@@ -136,7 +136,7 @@ async function start(
       repo: delivered.repo,
       pr: delivered.prNumber,
     })
-    const holding = holdClaim(
+    const holding = holdReviewClaim(
       db,
       config,
       delivered.repo,
@@ -235,39 +235,4 @@ function resumable(
     })
   }
   return found
-}
-
-/**
- * Keeps a claim alive while a watch runs, and gives up the watch if it cannot.
- *
- * Two halves of one thing. The lease goes stale so a killed process does not
- * hold a subject forever, which is right for a run of minutes and wrong for a
- * watch of days, so it is renewed. And a renewal that fails means somebody else
- * now holds the claim, which is not a warning: a second machine is about to
- * classify and push to this branch, so the one that lost has to stop rather
- * than finish what it was doing.
- */
-function holdClaim(
-  db: Database,
-  config: Config,
-  repo: string,
-  prNumber: number,
-  lease: string,
-): { signal: AbortSignal; release: () => void } {
-  const lost = new AbortController()
-  const every = Math.max(60_000, (config.staleClaimMinutes * 60_000) / 3)
-  const timer = setInterval(() => {
-    if (renewClaim(db, repo, prNumber, lease, 'pr')) {
-      return
-    }
-    log.warn('this watch lost its claim, stopping it', { repo, pr: prNumber })
-    clearInterval(timer)
-    lost.abort()
-  }, every)
-  return {
-    signal: lost.signal,
-    release: () => {
-      clearInterval(timer)
-    },
-  }
 }

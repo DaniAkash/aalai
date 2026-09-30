@@ -47,6 +47,21 @@ const factoryDomain = z.object({
    * somebody is watching the repository rather than by preference.
    */
   keepPullRequestsAlive: z.boolean().default(true),
+  /**
+   * Whether running somebody's code requires their commits to be signed.
+   *
+   * On by default, because an author email is a field anybody can set to a
+   * trusted account's public address, and a login resolved from one is
+   * attribution rather than proof.
+   *
+   * It is a setting rather than a rule because of what it costs when nobody
+   * signs. Most commits in most repositories are unsigned, so leaving this on
+   * means every pull request waits for a person, which is safe and is not the
+   * same as the contributor path working. Turning it off says: on this
+   * repository, write access is the trust boundary and I accept that an email is
+   * what links a commit to an account.
+   */
+  requireSignedCommits: z.boolean().default(true),
 })
 
 const agentsDomain = z.object({

@@ -8,6 +8,7 @@ import { runIssue } from '@/run/pipeline'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { watchDeliveredPullRequests } from '@/watch/pullRequests'
 import { resumeUnfinished } from '@/watch/resume'
+import { reviewOpenPullRequests } from '@/watch/reviews'
 import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
 
 const log = logger('poll')
@@ -42,6 +43,10 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
   // going. Counted as handled so a pass that only started watches is not
   // reported as having done nothing.
   handled += watchDeliveredPullRequests(db, config)
+  // Reviewing what other people opened, started rather than awaited for the same
+  // reason: a review can sit on a trust gate for as long as it takes somebody to
+  // decide whether to run a stranger's code.
+  handled += reviewOpenPullRequests(db, config)
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
   }

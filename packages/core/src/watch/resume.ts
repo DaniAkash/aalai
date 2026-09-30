@@ -46,8 +46,12 @@ export async function resumeUnfinished(
   // stayed open. Resuming one after a restart is that layer's job, and it
   // notices an abandoned claim the same way it notices an unwatched pull
   // request.
+  // Both of the long lived machines are left out. They are started detached by
+  // the watch layer, which also renews their claims, so offering them here would
+  // have this pass take one over and start a second machine on the same pull
+  // request, and then block on it for as long as that one waits.
   const pending = unfinishedRuns(db).filter(
-    (row) => row.machine !== 'prLifecycle',
+    (row) => row.machine !== 'prLifecycle' && row.machine !== 'prReview',
   )
   if (pending.length === 0) {
     return 0
