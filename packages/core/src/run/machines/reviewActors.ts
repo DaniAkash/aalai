@@ -103,13 +103,90 @@ export const headWatch = fromPromise(
     input,
   }: {
     input: { runId: string; prNumber: number; headSha: string }
-  }): Promise<{ moved: boolean; headSha: string; state: string }> => {
+  }): Promise<{
+    moved: boolean
+    headSha: string
+    headRef: string
+    state: string
+  }> => {
     const deps = runDeps(input.runId)
     const pr = await pullRequestState(deps.repo, input.prNumber)
     return {
       moved: pr.headSha !== input.headSha,
       headSha: pr.headSha,
+      // Carried out of here because the only thing that checks anything out
+      // reads it, and it should use the branch this check just looked at rather
+      // than asking again and possibly getting a different answer.
+      headRef: pr.headRef,
       state: pr.state,
+    }
+  },
+)
+
+export interface RanTests {
+  readonly ran: boolean
+  readonly passed: boolean
+  /** What happened, trimmed, for the verdict to quote. */
+  readonly output: string
+  readonly why?: string
+}
+
+/**
+ * Checks out the branch and runs its tests.
+ *
+ * The only place in this machine that puts somebody else's code on disk, and it
+ * is reachable exactly two ways: the authors are trusted, or a person answered a
+ * gate that said in plain words that approving it runs this code on their
+ * machine. Everything upstream of here exists to make sure one of those is true.
+ *
+ * The checkout is thrown away afterwards whatever happened, because a branch
+ * left lying around is a branch something else might wander into.
+ */
+export const dynamicReviewer = fromPromise(
+  async ({
+    input,
+  }: {
+    input: { runId: string; prNumber: number; headRef: string }
+  }): Promise<RanTests> => {
+    const deps = runDeps(input.runId)
+    const { addBranchWorktree, removeWorktree } = await import(
+      '@/lib/gitWorktree'
+    )
+    const { findTestCommand } = await import('@/run/testCommand')
+    const { exec } = await import('@/lib/proc')
+    const { join } = await import('node:path')
+
+    const checkout = join(
+      deps.workspace.clonePath,
+      '..',
+      `review-pr-${input.prNumber}`,
+    )
+    await removeWorktree(deps.workspace.clonePath, checkout)
+    await addBranchWorktree(deps.workspace.clonePath, checkout, input.headRef)
+    try {
+      const found = await findTestCommand(checkout)
+      if (!found.found) {
+        log.info('not running anything, because nothing said how', {
+          pr: input.prNumber,
+          why: found.why,
+        })
+        return { ran: false, passed: false, output: '', why: found.why }
+      }
+      log.info('running the tests on this branch', {
+        pr: input.prNumber,
+        how: found.command.how,
+      })
+      const result = await exec([...found.command.argv], { cwd: checkout })
+      const output = `${result.stdout}\n${result.stderr}`.trim()
+      return {
+        ran: true,
+        passed: result.exitCode === 0,
+        output: output.split('\n').slice(-60).join('\n'),
+      }
+    } finally {
+      // Whatever happened. Somebody else's checkout is not something to leave
+      // sitting next to our own.
+      await removeWorktree(deps.workspace.clonePath, checkout)
     }
   },
 )

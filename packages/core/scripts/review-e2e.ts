@@ -6,10 +6,11 @@ const { openDb } = await import('@/modules/db/db')
 const { loadConfig } = await import('@/config')
 
 const repo = 'DaniAkash/aalai-demo'
+const prNumber = Number(process.argv[2] ?? '64')
 const state = process.env.AALAI_STATE_DIR ?? '/tmp'
 const h = openDb(`${state}/aalai.sqlite`)
 const run = {
-  subject: { repo, kind: 'pr' as const, number: 64 },
+  subject: { repo, kind: 'pr' as const, number: prNumber },
   runId: 'review-e2e',
 }
 const config = await loadConfig()
@@ -18,8 +19,15 @@ provideRunDeps('review-e2e', {
   run,
   repo,
   config,
-  issue: { number: 64, title: 'a contribution' },
-  workspace: { worktreePath: state, branch: 'main', base: 'main' },
+  issue: { number: prNumber, title: 'a contribution' },
+  // A real clone, because the dynamic half needs somewhere to add a worktree.
+  // The review itself still reads from `state`, which holds nothing.
+  workspace: {
+    worktreePath: state,
+    clonePath: '/Users/dani/workbench/DaniAkash/aalai-demo',
+    branch: 'main',
+    base: 'main',
+  },
   conventionFiles: [],
 } as never)
 
@@ -29,7 +37,7 @@ const actor = createActor(
     input: {
       runId: 'review-e2e',
       repo,
-      prNumber: 64,
+      prNumber,
       title: 'fix: capitalise only the first letter of each word',
       gatePollMs: 200,
     },
@@ -74,6 +82,8 @@ process.stdout.write(`Q2=${JSON.stringify(c.execution)}\n`)
 process.stdout.write(
   `GATES=${JSON.stringify(h.sqlite.query('select id,kind,status from gates').all())}\n`,
 )
+process.stdout.write(`TESTS=${JSON.stringify(c.tests ?? null)}\n`)
+process.stdout.write(`OUTCOME=${JSON.stringify(c.outcome ?? null)}\n`)
 actor.stop()
 h.sqlite.close()
 process.exit(0)

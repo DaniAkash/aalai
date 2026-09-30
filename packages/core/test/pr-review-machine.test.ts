@@ -9,13 +9,19 @@ import type { RunRef, Subject } from '@/modules/work/paths'
 import type { ExecutionVerdict } from '@/run/executionTrust'
 import { provideRunDeps, releaseRunDeps } from '@/run/machines/deps'
 import { prReview } from '@/run/machines/prReview'
+import type { RanTests } from '@/run/machines/reviewActors'
 
 /** What the sizer and the head check hand back, so a stub matches the real one. */
 type Sized = { headSha: string } & (
   | { reviewable: true }
   | { reviewable: false; why: string }
 )
-type Looked = { moved: boolean; headSha: string; state: string }
+type Looked = {
+  moved: boolean
+  headSha: string
+  headRef: string
+  state: string
+}
 
 /**
  * Reviewing somebody else's pull request.
@@ -52,10 +58,18 @@ function start(overrides: Record<string, unknown> = {}) {
           }),
         ),
         staticReviewer: fromPromise(async () => {}),
+        dynamicReviewer: fromPromise(
+          async (): Promise<RanTests> => ({
+            ran: true,
+            passed: true,
+            output: ' 1 pass\n 0 fail',
+          }),
+        ),
         headWatch: fromPromise(
           async (): Promise<Looked> => ({
             moved: false,
             headSha: 'head1',
+            headRef: 'contrib/branch',
             state: 'OPEN',
           }),
         ),
@@ -184,6 +198,7 @@ describe('what happens before anything runs', () => {
         async (): Promise<Looked> => ({
           moved: true,
           headSha: 'head2',
+          headRef: 'contrib/branch',
           state: 'OPEN',
         }),
       ),
@@ -203,6 +218,7 @@ describe('what happens before anything runs', () => {
         async (): Promise<Looked> => ({
           moved: false,
           headSha: 'head1',
+          headRef: 'contrib/branch',
           state: 'MERGED',
         }),
       ),
@@ -262,5 +278,95 @@ describe('when trust cannot be established', () => {
     })
     await waitFor(actor, (s) => s.matches('askingToRun'), { timeout: 5000 })
     expect(actor.getSnapshot().context.execution?.allowed).toBe(false)
+  })
+})
+
+describe('running somebody else’s tests', () => {
+  const trusted = {
+    executionScreen: fromPromise(
+      async (): Promise<ExecutionVerdict> => ({ allowed: true }),
+    ),
+  }
+
+  test('happens for a trusted contributor, and reports what they said', async () => {
+    const actor = start(trusted)
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.context.outcome?.kind).toBe('reviewed')
+    expect(settled.context.tests?.passed).toBe(true)
+  })
+
+  test('happens for a stranger only once somebody said it may', async () => {
+    const actor = start()
+    await waitFor(actor, (s) => s.context.gateId !== undefined, {
+      timeout: 5000,
+    })
+    expect(visited).not.toContain('running')
+    answerGate(handle.sqlite, {
+      gateId: actor.getSnapshot().context.gateId ?? '',
+      decision: 'approved',
+      answeredBy: 'dani',
+      answeredOn: 'app',
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(visited).toContain('running')
+    expect(settled.context.outcome?.kind).toBe('reviewed')
+  })
+
+  test('a suite that cannot be found is said rather than invented', async () => {
+    // Guessing a command and running it in somebody's checkout is worse than
+    // admitting the tests could not be found: the guess might be a deploy.
+    const actor = start({
+      ...trusted,
+      dynamicReviewer: fromPromise(
+        async (): Promise<RanTests> => ({
+          ran: false,
+          passed: false,
+          output: '',
+          why: 'this repository declares no test script',
+        }),
+      ),
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.context.tests?.ran).toBe(false)
+    expect(settled.context.tests?.why).toContain('no test script')
+    // Still a review, because reading it was the useful part either way.
+    expect(settled.context.outcome?.kind).toBe('reviewed')
+  })
+
+  test('a checkout that could not be made is a failure, not a silent pass', async () => {
+    const actor = start({
+      ...trusted,
+      dynamicReviewer: fromPromise(async () => {
+        throw new Error('could not add the worktree')
+      }),
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.context.outcome?.kind).toBe('failed')
+  })
+
+  test('failing tests are reported rather than hidden', async () => {
+    const actor = start({
+      ...trusted,
+      dynamicReviewer: fromPromise(
+        async (): Promise<RanTests> => ({
+          ran: true,
+          passed: false,
+          output: '(fail) capitalises only the first letter',
+        }),
+      ),
+    })
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.context.tests?.passed).toBe(false)
+    expect(settled.context.tests?.output).toContain('(fail)')
   })
 })

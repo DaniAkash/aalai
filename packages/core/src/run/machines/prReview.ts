@@ -1,6 +1,7 @@
 import { assign, setup } from 'xstate'
 import { gateKeeper } from './gateActor'
 import {
+  dynamicReviewer,
   executionScreen,
   headWatch,
   sizer,
@@ -28,7 +29,14 @@ export const prReview = setup({
     input: {} as ReviewInput,
     events: {} as ReviewEvent,
   },
-  actors: { sizer, executionScreen, staticReviewer, headWatch, gateKeeper },
+  actors: {
+    sizer,
+    executionScreen,
+    staticReviewer,
+    dynamicReviewer,
+    headWatch,
+    gateKeeper,
+  },
   guards: {
     /** Whether the code may run without anybody being asked. */
     mayRun: ({ context }: { context: ReviewContext }) =>
@@ -211,16 +219,8 @@ export const prReview = setup({
             actions: assign({ outcome: () => ({ kind: 'stale' as const }) }),
           },
           {
-            // Running is the next piece of work. Until it exists this says so
-            // rather than reporting a review that ran nothing as one that did.
-            target: 'done',
-            actions: assign({
-              outcome: () => ({
-                kind: 'failed' as const,
-                error:
-                  'the code was cleared to run and running it is not built yet',
-              }),
-            }),
+            target: 'running',
+            actions: assign({ headRef: ({ event }) => event.output.headRef }),
           },
         ],
         onError: {
@@ -229,6 +229,43 @@ export const prReview = setup({
             outcome: () => ({
               kind: 'failed' as const,
               error: 'could not check whether the head had moved',
+            }),
+          }),
+        },
+      },
+    },
+
+    /**
+     * The one state that puts somebody else's code on disk.
+     *
+     * Reachable two ways and no others: the authors are trusted, or a person
+     * answered a gate that said approving it would run this code on their
+     * machine. Everything before it exists to establish that one of those holds.
+     */
+    running: {
+      invoke: {
+        src: 'dynamicReviewer',
+        input: ({ context }) => ({
+          runId: context.runId,
+          prNumber: context.prNumber,
+          headRef: context.headRef ?? '',
+        }),
+        onDone: {
+          target: 'done',
+          actions: assign({
+            tests: ({ event }) => event.output,
+            outcome: () => ({ kind: 'reviewed' as const }),
+          }),
+        },
+        // A checkout that could not be made or a suite that could not be run is
+        // not a verdict. Saying so beats a review that reads as though the tests
+        // were run and says nothing about them.
+        onError: {
+          target: 'done',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'the branch was cleared to run and the tests could not be',
             }),
           }),
         },
