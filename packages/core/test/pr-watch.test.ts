@@ -16,6 +16,7 @@ import {
  */
 
 const SEEN: Seen = {
+  looked: true,
   headSha: 'aaa',
   lastCommentId: 10,
   baseSha: 'base1',
@@ -211,5 +212,60 @@ describe('what is remembered afterwards', () => {
     const l = look({ comments: [comment(11, 'a-maintainer')] })
     const next = seenAfter(SEEN, l, signalsFrom(SEEN, l))
     expect(signalsFrom(next, l)).toEqual([])
+  })
+})
+
+describe('the very first look', () => {
+  const never: Seen = {
+    looked: false,
+    headSha: '',
+    lastCommentId: 0,
+    baseSha: '',
+    failedChecks: [],
+    pushedSha: '',
+  }
+
+  test('does not report the base as having moved', () => {
+    // Nobody has moved a base nobody had recorded. The first version reported
+    // exactly this and then stopped the run before looking at a single check,
+    // which meant no pull request was ever actually watched.
+    expect(signalsFrom(never, look())).toEqual([])
+  })
+
+  test('does not report the delivered commit as somebody else’s work', () => {
+    const signals = signalsFrom(
+      never,
+      look({ headSha: 'delivered', headAuthor: 'a-person' }),
+    )
+    expect(signals.some((s) => s.kind === 'branch_touched')).toBe(false)
+  })
+
+  test('but does report a check that is already failing', () => {
+    // True now rather than a change from something, and a pull request that
+    // was already red when the watch started is the ordinary case after a
+    // restart.
+    expect(
+      signalsFrom(never, look({ checks: [check('test', 'failure')] })),
+    ).toEqual([{ kind: 'checks_failed', names: ['test'] }])
+  })
+
+  test('and does report comments nobody has answered', () => {
+    expect(
+      signalsFrom(never, look({ comments: [comment(3, 'a-maintainer')] })),
+    ).toHaveLength(1)
+  })
+
+  test('and records the delivered commit as ours, so the next look is quiet', () => {
+    const first = look({ headSha: 'delivered', headAuthor: 'a-person' })
+    const next = seenAfter(never, first, signalsFrom(never, first))
+    expect(signalsFrom(next, first)).toEqual([])
+  })
+
+  test('after which a genuinely moved base is reported', () => {
+    const first = look()
+    const next = seenAfter(never, first, signalsFrom(never, first))
+    expect(signalsFrom(next, look({ baseSha: 'base2' }))).toEqual([
+      { kind: 'base_moved', baseSha: 'base2' },
+    ])
   })
 })

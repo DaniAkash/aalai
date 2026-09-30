@@ -209,12 +209,19 @@ export function stoppedBecause(outcome: {
   kind: string
   why?: string
   author?: string
+  state?: string
 }): string {
   switch (outcome.kind) {
     case 'handedBack':
       return `${outcome.author ?? 'somebody'} pushed to the branch, so this stopped touching it`
     case 'exhausted':
       return outcome.why ?? 'there was nothing left to try'
+    case 'closed':
+      // Not "green". A pull request can be closed with its checks red, and
+      // saying otherwise describes the opposite of what happened.
+      return outcome.state === 'MERGED'
+        ? 'it was merged'
+        : 'it was closed without being merged'
     case 'settled':
       return 'the checks are green and nobody is asking for anything'
     case 'stale':

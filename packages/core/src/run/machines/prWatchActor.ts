@@ -50,7 +50,10 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
           return
         }
         if (pr.state !== 'OPEN') {
-          sendBack({ type: 'PR_GONE' })
+          // Which way it went, not merely that it went. A pull request closed
+          // without merging reported as settled would be described to a person
+          // as having green checks, which is the opposite of what happened.
+          sendBack({ type: 'PR_CLOSED', state: pr.state })
           return
         }
 
@@ -81,8 +84,11 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
             pr: input.prNumber,
             signals: signals.map((s) => s.kind).join(','),
           })
-          sendBack({ type: 'SIGNALS', signals })
         }
+        // Reported every time, even when nothing changed, because what this
+        // look established has to reach the machine: the watch is rebuilt on
+        // every state change and remembers nothing on its own.
+        sendBack({ type: 'LOOKED', signals, seen })
       },
       'look at the pull request',
     )

@@ -11,17 +11,11 @@ import type { RunRef } from '@/modules/work/paths'
 import type { OutboundIntent, QueuedIntent } from '@/modules/work/store'
 import {
   claimDelivery,
-  queueOutbound,
   readDelivery,
   readQueued,
   recordDelivery,
   releaseDelivery,
 } from '@/modules/work/store'
-import {
-  isActionable,
-  mayBeAnsweredPublicly,
-  type Triage,
-} from '@/run/stations/schemas'
 
 const log = logger('outbound')
 
@@ -62,96 +56,6 @@ export interface DeliveryReport {
 }
 
 /** Whether a person has released this intent. */
-/**
- * Turns what the classifier drafted into something a person can release.
- *
- * The station writes its reply into the report and queues nothing, because a
- * station is not allowed to decide that anything reaches a stranger. This is
- * the step between: the words it chose become an intent, and the intent waits
- * on a gate like every other.
- *
- * A security report drafts nothing at all, whatever the station wrote. The
- * whole point of routing it away from the public is that its text never reaches
- * a comment box, and refusing it here rather than at delivery means there is
- * nothing queued to leak if a later change forgets why.
- */
-export async function queueDraftedReply(
-  run: RunRef,
-  triage: Triage,
-  /** Which judgement these belong to, so replaying it rewrites rather than adds. */
-  generation = 0,
-): Promise<number> {
-  if (!mayBeAnsweredPublicly(triage) || isActionable(triage)) {
-    return 0
-  }
-  const at = new Date().toISOString()
-  let queued = 0
-  const reply = (triage.reply ?? '').trim()
-  if (reply !== '') {
-    await queueOutbound(
-      run,
-      {
-        kind: 'comment_on_issue',
-        body: reply,
-        station: 'classifier',
-        queuedAt: at,
-      },
-      `triage-${generation}-reply`,
-    )
-    queued += 1
-  }
-  const reason = closingReason(triage)
-  if (reason !== undefined) {
-    await queueOutbound(
-      run,
-      {
-        kind: 'close_issue',
-        body: '',
-        station: 'classifier',
-        queuedAt: at,
-        closeReason: reason,
-      },
-      `triage-${generation}-close`,
-    )
-    queued += 1
-  }
-  return queued
-}
-
-/**
- * Why an issue would be closed, or nothing when it stays open.
- *
- * A question that has been answered is completed. A duplicate or noise was
- * never going to be done, which is what `not_planned` means and is what keeps
- * it out of a repository's record of work finished.
- */
-function closingReason(
-  triage: Triage,
-): 'completed' | 'not_planned' | undefined {
-  // Nothing that is still waiting on an answer gets closed, whatever it was
-  // classified as. `missing` is what sends the machine off to wait weeks on the
-  // reporter, so queueing a close beside the question would post the question
-  // and shut the issue in the same breath, and then sit there waiting for a
-  // reply to a thread nobody can reply to.
-  //
-  // Found by running a vague report through the real repository: it came back
-  // as noise with four missing details and a close queued behind it. Keying
-  // this on the classification rather than on the question being asked was the
-  // mistake, because every classification can ask.
-  if (triage.missing.length > 0) {
-    return undefined
-  }
-  switch (triage.classification) {
-    case 'question':
-      return 'completed'
-    case 'duplicate':
-    case 'noise':
-      return 'not_planned'
-    default:
-      return undefined
-  }
-}
-
 export function releasedBy(
   db: Database,
   intent: OutboundIntent,
@@ -181,50 +85,29 @@ export async function deliverOutbox(input: {
   run: RunRef
   repo: string
   issueNumber: number
+  /**
+   * A gate id this run released itself, for the one case with no person in it.
+   *
+   * A pull request the factory owns saying that a failing check was not caused
+   * by its own change is not a station speaking for the maintainer about
+   * somebody else's issue, and there is no gate on that run for the intent to
+   * wait behind. Naming a sentinel keeps the rule one rule: an intent still has
+   * to say what released it.
+   */
+  released?: string
 }): Promise<DeliveryReport> {
   const delivered: Delivered[] = []
   const refused: { id: string; refusal: Refusal }[] = []
   const failed: { id: string; error: string }[] = []
 
   for (const queued of await readQueued(input.run)) {
-    const refusal = releasedBy(input.db, queued.intent)
-    if (refusal !== undefined) {
-      refused.push({ id: queued.id, refusal })
-      continue
-    }
-    const already = await readDelivery(input.run, queued.id)
-    if (already !== undefined) {
-      delivered.push({
-        id: queued.id,
-        kind: queued.intent.kind,
-        ...(already.url === undefined ? {} : { url: already.url }),
-        source: 'already',
-      })
-      continue
-    }
-    // Claimed before the send, not after. Everything above this line is a read,
-    // and two workers can pass all of it at once.
-    if (!(await claimDelivery(input.run, queued.id))) {
-      refused.push({ id: queued.id, refusal: { kind: 'in_flight' } })
-      continue
-    }
-    try {
-      const result = await deliverOne(input, queued)
-      delivered.push({ id: queued.id, ...result, source: 'sent' })
-      // The delivery record is what stops a resend from here on, so the claim
-      // has done its job and only clutters the directory.
-      await releaseDelivery(input.run, queued.id)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.warn('an intent could not be delivered, leaving it queued', {
-        id: queued.id,
-        kind: queued.intent.kind,
-        error: message,
-      })
-      failed.push({ id: queued.id, error: message })
-      // Handed back so a later pass can try again. The record of a success is
-      // what stops a resend, and there is no record here.
-      await releaseDelivery(input.run, queued.id)
+    const outcome = await deliverOrSay(input, queued)
+    if (outcome.kind === 'delivered') {
+      delivered.push(outcome.delivered)
+    } else if (outcome.kind === 'refused') {
+      refused.push({ id: queued.id, refusal: outcome.refusal })
+    } else {
+      failed.push({ id: queued.id, error: outcome.error })
     }
   }
 
@@ -310,4 +193,76 @@ async function alreadyPosted(
 export function releasingGate(db: Database, runId: string): string | undefined {
   const [answered] = listGates(db, { runId, status: 'answered' })
   return answered?.id
+}
+
+type OneOutcome =
+  | { kind: 'delivered'; delivered: Delivered }
+  | { kind: 'refused'; refusal: Refusal }
+  | { kind: 'failed'; error: string }
+
+/**
+ * One intent: sent, refused, or failed.
+ *
+ * Split out because the loop above had grown every reason at once and the
+ * reasons are not related to each other: a gate nobody answered, a record
+ * saying it already went, a claim somebody else holds, and a send that threw.
+ */
+async function deliverOrSay(
+  input: {
+    db: Database
+    run: RunRef
+    repo: string
+    issueNumber: number
+    released?: string
+  },
+  queued: QueuedIntent,
+): Promise<OneOutcome> {
+  const refusal =
+    input.released !== undefined && queued.intent.gateId === input.released
+      ? undefined
+      : releasedBy(input.db, queued.intent)
+  if (refusal !== undefined) {
+    return { kind: 'refused', refusal }
+  }
+
+  const already = await readDelivery(input.run, queued.id)
+  if (already !== undefined) {
+    return {
+      kind: 'delivered',
+      delivered: {
+        id: queued.id,
+        kind: queued.intent.kind,
+        ...(already.url === undefined ? {} : { url: already.url }),
+        source: 'already',
+      },
+    }
+  }
+
+  // Claimed before the send, not after. Everything above this line is a read,
+  // and two workers can pass all of it at once.
+  if (!(await claimDelivery(input.run, queued.id))) {
+    return { kind: 'refused', refusal: { kind: 'in_flight' } }
+  }
+
+  try {
+    const result = await deliverOne(input, queued)
+    // The delivery record is what stops a resend from here on, so the claim has
+    // done its job and only clutters the directory.
+    await releaseDelivery(input.run, queued.id)
+    return {
+      kind: 'delivered',
+      delivered: { id: queued.id, ...result, source: 'sent' },
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log.warn('an intent could not be delivered, leaving it queued', {
+      id: queued.id,
+      kind: queued.intent.kind,
+      error: message,
+    })
+    // Handed back so a later pass can try again. The record of a success is
+    // what stops a resend, and there is no record here.
+    await releaseDelivery(input.run, queued.id)
+    return { kind: 'failed', error: message }
+  }
 }

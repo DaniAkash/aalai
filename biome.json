@@ -139,6 +139,7 @@
     {
       "includes": [
         "packages/core/src/run/machines/issueWork.ts",
+        "packages/core/src/run/machines/prLifecycle.ts",
         "packages/core/src/run/machines/triage.ts"
       ],
       "linter": {

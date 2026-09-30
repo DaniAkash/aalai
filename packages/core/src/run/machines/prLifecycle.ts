@@ -3,7 +3,13 @@ import { exhaustedBecause } from '@/run/budgets'
 import { ready } from '@/run/prCollect'
 import { isOurFault } from '@/run/stations/schemas'
 import { ciFixer, failureReporter, faultClassifier } from './prActors'
-import { affordable, upshot, watchInput } from './prRules'
+import {
+  affordable,
+  rememberSeen,
+  startingFrom,
+  upshot,
+  watchInput,
+} from './prRules'
 import type { PrContext, PrEvent, PrInput } from './prTypes'
 import { prWatch } from './prWatchActor'
 
@@ -47,26 +53,7 @@ export const prLifecycle = setup({
   },
 }).createMachine({
   id: 'prLifecycle',
-  context: ({ input }) => ({
-    runId: input.runId,
-    repo: input.repo,
-    prNumber: input.prNumber,
-    maxCiFixes: input.maxCiFixes,
-    maxRevisions: input.maxRevisions,
-    ...(input.issueNumber === undefined
-      ? {}
-      : { issueNumber: input.issueNumber }),
-    ...(input.pollMs === undefined ? {} : { pollMs: input.pollMs }),
-    ...(input.windowMs === undefined ? {} : { windowMs: input.windowMs }),
-    pending: [],
-    ciFixes: 0,
-    revisions: 0,
-    headSha: '',
-    baseSha: '',
-    lastCommentId: 0,
-    failedChecks: [],
-    pushedSha: '',
-  }),
+  context: ({ input }) => startingFrom(input),
   initial: 'watching',
   states: {
     /**
@@ -79,17 +66,33 @@ export const prLifecycle = setup({
     watching: {
       invoke: { src: 'prWatch', input: watchInput },
       on: {
-        SIGNALS: {
-          target: 'collecting',
-          actions: assign({
-            openedAt: () => new Date().toISOString(),
-            pending: ({ event }) =>
-              event.type === 'SIGNALS' ? [...event.signals] : [],
-          }),
-        },
-        PR_GONE: {
+        LOOKED: [
+          {
+            target: 'collecting',
+            guard: ({ event }) =>
+              event.type === 'LOOKED' && event.signals.length > 0,
+            actions: assign({
+              openedAt: () => new Date().toISOString(),
+              pending: ({ event }) =>
+                event.type === 'LOOKED' ? [...event.signals] : [],
+              ...rememberSeen,
+            }),
+          },
+          {
+            // A quiet look. Nothing to act on, but what it established still
+            // has to be kept, or the next one establishes it again and reports
+            // the pull request's own base as having moved.
+            actions: assign(rememberSeen),
+          },
+        ],
+        PR_CLOSED: {
           target: 'done',
-          actions: assign({ outcome: () => ({ kind: 'settled' as const }) }),
+          actions: assign({
+            outcome: ({ event }) => ({
+              kind: 'closed' as const,
+              state: event.type === 'PR_CLOSED' ? event.state : 'CLOSED',
+            }),
+          }),
         },
       },
     },
@@ -112,17 +115,23 @@ export const prLifecycle = setup({
         ],
       },
       on: {
-        SIGNALS: {
+        LOOKED: {
           actions: assign({
             pending: ({ context, event }) =>
-              event.type === 'SIGNALS'
+              event.type === 'LOOKED'
                 ? [...context.pending, ...event.signals]
                 : context.pending,
+            ...rememberSeen,
           }),
         },
-        PR_GONE: {
+        PR_CLOSED: {
           target: 'done',
-          actions: assign({ outcome: () => ({ kind: 'settled' as const }) }),
+          actions: assign({
+            outcome: ({ event }) => ({
+              kind: 'closed' as const,
+              state: event.type === 'PR_CLOSED' ? event.state : 'CLOSED',
+            }),
+          }),
         },
       },
     },

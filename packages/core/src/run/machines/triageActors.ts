@@ -3,9 +3,9 @@ import { getIssue } from '@/lib/gh'
 import {
   type DeliveryReport,
   deliverOutbox,
-  queueDraftedReply,
   releasingGate,
 } from '@/modules/outbound/deliver'
+import { queueDraftedReply } from '@/modules/outbound/drafted'
 import { latestArtifact } from '@/modules/work/artifacts'
 import { appendEntry, readConversation } from '@/modules/work/conversation'
 import {

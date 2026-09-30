@@ -173,6 +173,8 @@ export function takeOverRun(
   db: Database,
   repo: string,
   issue: number,
+  /** Which subject is being taken over. A pull request resumes like an issue. */
+  kind: SubjectKind = ISSUE,
 ): string | null {
   const lease = crypto.randomUUID()
   const result = query(db)
@@ -181,7 +183,7 @@ export function takeOverRun(
     .where(
       and(
         eq(runs.repo, repo),
-        eq(runs.subjectKind, ISSUE),
+        eq(runs.subjectKind, kind),
         eq(runs.subjectNumber, issue),
         eq(runs.status, 'claimed'),
       ),
@@ -203,6 +205,44 @@ export function forgetRun(db: Database, repo: string, issue: number): boolean {
       ),
     )
     .returning({ repo: runs.repo })
+    .all()
+  return result.length > 0
+}
+
+/**
+ * Says a claim is still being worked on.
+ *
+ * A lease goes stale so that a killed process does not hold a subject forever,
+ * which is right for a run that takes minutes and wrong for a watch that takes
+ * days: without this, a pull request being actively watched looks abandoned
+ * after the stale interval and a second watcher starts on the same branch,
+ * which is two revisions on one branch, the exact thing the claim prevents.
+ *
+ * Fenced on the lease, so a worker that has already been taken over cannot
+ * revive its own claim.
+ *
+ * @returns Whether the claim was still ours to renew.
+ */
+export function renewClaim(
+  db: Database,
+  repo: string,
+  number: number,
+  lease: string,
+  kind: SubjectKind = ISSUE,
+): boolean {
+  const result = query(db)
+    .update(runs)
+    .set({ startedAt: new Date().toISOString() })
+    .where(
+      and(
+        eq(runs.repo, repo),
+        eq(runs.subjectKind, kind),
+        eq(runs.subjectNumber, number),
+        eq(runs.status, 'claimed'),
+        eq(runs.lease, lease),
+      ),
+    )
+    .returning({ lease: runs.lease })
     .all()
   return result.length > 0
 }

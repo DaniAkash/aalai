@@ -52,6 +52,25 @@ function start(
   return actor
 }
 
+/** One look, the way the watch reports one. */
+function look(
+  actor: { send: (event: never) => void },
+  signals: readonly Signal[],
+) {
+  actor.send({
+    type: 'LOOKED',
+    signals,
+    seen: {
+      looked: true,
+      headSha: 'aaa',
+      baseSha: 'base1',
+      lastCommentId: 0,
+      failedChecks: [],
+      pushedSha: 'aaa',
+    },
+  } as never)
+}
+
 const ourFault = fromPromise(
   async (): Promise<FaultVerdict> => ({
     fault: 'ours',
@@ -79,7 +98,7 @@ afterEach(() => {
 describe('a branch somebody else touched', () => {
   test('stops the run rather than pushing over them', async () => {
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [touched] })
+    look(actor, [touched])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -90,7 +109,7 @@ describe('a branch somebody else touched', () => {
     // The answer to a failing check is a push, and this is the one signal
     // that forbids one.
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [failing, touched] })
+    look(actor, [failing, touched])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -101,10 +120,10 @@ describe('a branch somebody else touched', () => {
 describe('whose fault a failing check is', () => {
   test('somebody else’s is said out loud and then watched again', async () => {
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const back = await waitFor(
       actor,
-      (s) => s.matches('watching') && s.context.pending.length === 0,
+      (s) => s.value === 'watching' && s.context.pending.length === 0,
       {
         timeout: 5000,
       },
@@ -115,10 +134,10 @@ describe('whose fault a failing check is', () => {
 
   test('and no fix is spent on it', async () => {
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const back = await waitFor(
       actor,
-      (s) => s.matches('watching') && s.context.pending.length === 0,
+      (s) => s.value === 'watching' && s.context.pending.length === 0,
       { timeout: 5000 },
     )
     expect(back.context.ciFixes).toBe(0)
@@ -126,10 +145,10 @@ describe('whose fault a failing check is', () => {
 
   test('ours is fixed, and the fix is what gets pushed', async () => {
     const actor = start({ faultClassifier: ourFault })
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const back = await waitFor(
       actor,
-      (s) => s.matches('watching') && s.context.pushedSha !== '',
+      (s) => s.value === 'watching' && s.context.pushedSha !== '',
       { timeout: 5000 },
     )
     expect(back.context.pushedSha).toBe('fixed-sha')
@@ -146,7 +165,7 @@ describe('whose fault a failing check is', () => {
         throw new Error('the fix changed nothing (no-changes)')
       }),
     })
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -157,10 +176,10 @@ describe('whose fault a failing check is', () => {
     // A classification deciding somebody else broke it costs nothing, which is
     // the entire reason the classification happens before the fix.
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const back = await waitFor(
       actor,
-      (s) => s.matches('watching') && s.context.pending.length === 0,
+      (s) => s.value === 'watching' && s.context.pending.length === 0,
       { timeout: 5000 },
     )
     expect(back.context.ciFixes).toBe(0)
@@ -172,7 +191,7 @@ describe('whose fault a failing check is', () => {
         throw new Error('the agent went away')
       }),
     })
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -185,7 +204,7 @@ describe('what is not built yet says so', () => {
     // Silently dropping it leaves a pull request that can never merge looking
     // perfectly healthy, which is the failure shape this phase keeps finding.
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [moved] })
+    look(actor, [moved])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -198,7 +217,7 @@ describe('what is not built yet says so', () => {
 
   test('a review comment stops with a reason rather than being dropped', async () => {
     const actor = start()
-    actor.send({ type: 'SIGNALS', signals: [asked] })
+    look(actor, [asked])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -212,7 +231,7 @@ describe('what is not built yet says so', () => {
 describe('the budgets', () => {
   test('a pull request out of ci fixes stops, and says which ran out', async () => {
     const actor = start({}, { maxCiFixes: 0 })
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
@@ -223,10 +242,10 @@ describe('the budgets', () => {
     // The two draw from different pools, which is the whole reason there are
     // two of them.
     const actor = start({}, { maxRevisions: 0 })
-    actor.send({ type: 'SIGNALS', signals: [failing] })
+    look(actor, [failing])
     const back = await waitFor(
       actor,
-      (s) => s.matches('watching') && s.context.pending.length === 0,
+      (s) => s.value === 'watching' && s.context.pending.length === 0,
       { timeout: 5000 },
     )
     expect(back.status).toBe('active')
@@ -234,12 +253,27 @@ describe('the budgets', () => {
 })
 
 describe('a pull request that is no longer open', () => {
-  test('ends the run', async () => {
+  test('ends the run, saying which way it went', async () => {
     const actor = start()
-    actor.send({ type: 'PR_GONE' })
+    actor.send({ type: 'PR_CLOSED', state: 'MERGED' } as never)
     const settled = await waitFor(actor, (s) => s.status === 'done', {
       timeout: 5000,
     })
-    expect(settled.context.outcome?.kind).toBe('settled')
+    expect(settled.context.outcome?.kind).toBe('closed')
+    expect(
+      settled.context.outcome?.kind === 'closed' &&
+        settled.context.outcome.state,
+    ).toBe('MERGED')
+  })
+
+  test('one closed without merging is not reported as green', async () => {
+    // It can be closed with its checks red, and calling that settled would
+    // describe the opposite of what happened.
+    const actor = start()
+    actor.send({ type: 'PR_CLOSED', state: 'CLOSED' } as never)
+    const settled = await waitFor(actor, (s) => s.status === 'done', {
+      timeout: 5000,
+    })
+    expect(settled.context.outcome?.kind).not.toBe('settled')
   })
 })

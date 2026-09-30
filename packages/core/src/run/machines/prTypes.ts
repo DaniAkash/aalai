@@ -1,4 +1,4 @@
-import type { Signal } from '@/run/prSignals'
+import type { Seen, Signal } from '@/run/prSignals'
 
 /** What a pull request run was started with. */
 export interface PrInput {
@@ -35,6 +35,7 @@ export interface PrContext {
   readonly ciFixes: number
   readonly revisions: number
   /** What the last look established, so the next one knows what is new. */
+  readonly looked: boolean
   readonly headSha: string
   readonly baseSha: string
   readonly lastCommentId: number
@@ -51,6 +52,8 @@ export type PrOutcome =
   | { readonly kind: 'handedBack'; readonly author: string }
   /** The budget ran out, with the reason a person will read. */
   | { readonly kind: 'exhausted'; readonly why: string }
+  /** Merged, or closed by somebody. Either way there is nothing left to watch. */
+  | { readonly kind: 'closed'; readonly state: string }
   /** Checks are green and nobody is asking for anything. */
   | { readonly kind: 'settled' }
   /** Closed after nobody came back to it. */
@@ -58,10 +61,21 @@ export type PrOutcome =
   | { readonly kind: 'failed'; readonly error: string }
 
 export type PrEvent =
-  | { readonly type: 'FAULT_OURS' }
-  | { readonly type: 'FAULT_THEIRS' }
-  | { readonly type: 'SIGNALS'; readonly signals: readonly Signal[] }
+  /**
+   * One look, with what it found and what it now knows.
+   *
+   * The `seen` travels with it because the watch is torn down and rebuilt every
+   * time the machine changes state, so anything it learned privately would be
+   * forgotten. That is how the first version kept re-establishing a baseline it
+   * had already established, and reporting the same pull request's base as
+   * having moved on every re-entry.
+   */
+  | { readonly type: 'PR_CLOSED'; readonly state: string }
+  | {
+      readonly type: 'LOOKED'
+      readonly signals: readonly Signal[]
+      readonly seen: Seen
+    }
   | { readonly type: 'WINDOW_CLOSED' }
   | { readonly type: 'NOTHING_LEFT' }
-  | { readonly type: 'PR_GONE' }
   | { readonly type: 'STALE' }

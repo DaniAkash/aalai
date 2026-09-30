@@ -73,7 +73,7 @@ export const failureReporter = fromPromise(
       '',
       'Nothing has been changed on the branch. If that reading is wrong, say so here and it will be looked at again.',
     ].join('\n')
-    await queueComment(deps, input.prNumber, body)
+    await sayOnPullRequest(deps, input.prNumber, body)
   },
 )
 
@@ -88,21 +88,65 @@ async function changeSummary(
   return [stat.trim(), '', 'files changed:', ...names].join('\n')
 }
 
-/** Queues a comment the way every other outbound thing is queued. */
-async function queueComment(
+/**
+ * Queues a note and sends it.
+ *
+ * Queued and then drained in the same breath, unlike everything triage queues.
+ * The gate exists because a station's words about a stranger's issue need a
+ * person's release before they are said in public. This is different in the way
+ * that matters: the pull request is the factory's own, the note says only that a
+ * failure was not caused by this change, and there is no gate on this run for an
+ * intent to wait behind. Queueing it and leaving it was the first version, and
+ * it meant the promised note was never posted anywhere at all.
+ */
+async function sayOnPullRequest(
   deps: ReturnType<typeof runDeps>,
   prNumber: number,
   body: string,
 ): Promise<void> {
   const { queueOutbound } = await import('@/modules/work/store')
-  await queueOutbound(deps.run, {
-    kind: 'comment_on_issue',
-    body,
-    station: 'reviewer',
-    queuedAt: new Date().toISOString(),
+  const { deliverOutbox } = await import('@/modules/outbound/deliver')
+  const at = new Date().toISOString()
+  await queueOutbound(
+    deps.run,
+    {
+      kind: 'comment_on_issue',
+      body,
+      station: 'reviewer',
+      queuedAt: at,
+      // Released by the run itself. Nothing here is a station speaking for the
+      // maintainer about somebody else's issue.
+      gateId: SELF_RELEASED,
+    },
+    `pr-${prNumber}-not-ours`,
+  )
+  const report = await deliverOutbox({
+    db: deps.db,
+    run: deps.run,
+    // The pull request, not the issue that produced it. Sending this to the
+    // issue would put a note about a failing check on a thread that was closed
+    // when the pull request opened.
+    repo: deps.repo,
+    issueNumber: prNumber,
+    released: SELF_RELEASED,
   })
-  log.info('queued a note on the pull request', { pr: prNumber })
+  if (report.delivered.length === 0) {
+    throw new Error('the note about the failing checks could not be posted')
+  }
+  log.info('said on the pull request that the failure was not ours', {
+    pr: prNumber,
+  })
 }
+
+/**
+ * The gate id standing for "this run released it itself".
+ *
+ * Delivery refuses anything naming no gate, which is the property that keeps a
+ * station from posting. A run that is allowed to speak for itself still has to
+ * name something, and naming a sentinel keeps that rule one rule rather than
+ * two.
+ */
+const SELF_RELEASED = 'self:pr-lifecycle'
 
 /**
  * Fixes a failing check, commits it and pushes.

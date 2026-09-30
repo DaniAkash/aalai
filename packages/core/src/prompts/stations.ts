@@ -365,7 +365,7 @@ export function buildFaultPrompt(input: FaultPromptInput): string {
   return `A check failed on pull request #${input.prNumber} in ${input.repo}, which was opened by this change. Decide whether the change caused it.
 
 <failing>
-${input.failing.join('\n')}
+${sealed(input.failing.join('\n'), 'log', 'diff', 'failing')}
 </failing>
 
 <log>
@@ -414,7 +414,7 @@ export function buildCiFixPrompt(input: CiFixPromptInput): string {
 Why it is ours: ${input.why}
 
 <failing>
-${input.failing.join('\n')}
+${sealed(input.failing.join('\n'), 'log', 'diff', 'failing')}
 </failing>
 
 <log>

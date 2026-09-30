@@ -3,9 +3,11 @@ import type { Config } from '@/config'
 import { emit } from '@/events/bus'
 import { getIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
+import type { SubjectKind } from '@/modules/db/schema/schema'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { readSnapshot, unfinishedRuns } from '@/run/machines/snapshots'
 import { resumeIssue } from '@/run/pipeline'
+import { resumePullRequest } from '@/watch/pullRequests'
 import { completeRun, takeOverRun } from '@/watch/state'
 
 const log = logger('resume')
@@ -70,9 +72,15 @@ async function resumeOne(
     log.warn('run id not understood, leaving it alone', { runId: row.runId })
     return false
   }
+  // A pull request watch is resumed as a pull request. Constructing an issue
+  // subject for one meant its snapshot was looked for in the wrong directory and
+  // its claim could never be taken back, so a watch killed mid flight was stuck
+  // forever: the row existed, so nothing started a new watch, and the resume
+  // could not adopt the old one.
+  const kind: SubjectKind = row.machine === 'prLifecycle' ? 'pr' : 'issue'
   const subject: Subject = {
     repo: named.repo,
-    kind: 'issue',
+    kind,
     number: named.issueNumber,
   }
   const run: RunRef = { subject, runId: row.runId }
@@ -86,7 +94,7 @@ async function resumeOne(
   // Taken over before anything runs. Without a claim two pollers can both
   // restore the same machine, and the fencing that makes a duplicate
   // observation harmless in the normal path is simply absent here.
-  const lease = takeOverRun(db, named.repo, named.issueNumber)
+  const lease = takeOverRun(db, named.repo, named.issueNumber, kind)
   if (lease === null) {
     log.info('another worker owns this run, leaving it', { runId: row.runId })
     return false
@@ -101,15 +109,32 @@ async function resumeOne(
       state: row.value,
       at: Date.now(),
     })
-    const result = await resumeIssue(named.repo, issue, config, {
-      runId: row.runId,
-      snapshot,
-      machine: row.machine,
-    })
+    // A pull request watch resumes into its own machine. Handing its snapshot
+    // to the issue pipeline would restore a machine that shares none of its
+    // states, and the pipeline would begin by looking for a plan that a pull
+    // request run never had.
+    const result =
+      kind === 'pr'
+        ? await resumePullRequest({
+            db,
+            config,
+            repo: named.repo,
+            prNumber: named.issueNumber,
+            issue,
+            run,
+            runId: row.runId,
+            snapshot,
+          })
+        : await resumeIssue(named.repo, issue, config, {
+            runId: row.runId,
+            snapshot,
+            machine: row.machine,
+          })
     // Settled with the lease, so a worker that was taken over cannot come back
     // and overwrite this. Without it the row stays claimed, the issue is
     // skipped by every later poll, and a delivered run looks unfinished.
     completeRun(db, named.repo, named.issueNumber, {
+      kind,
       status: result.status,
       ...(result.branch === undefined ? {} : { branch: result.branch }),
       ...(result.prUrl === undefined ? {} : { prUrl: result.prUrl }),

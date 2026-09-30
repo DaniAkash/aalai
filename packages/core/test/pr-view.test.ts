@@ -70,3 +70,17 @@ describe('why it stopped', () => {
     expect(stoppedBecause({ kind: 'mystery' })).toContain('did not record')
   })
 })
+
+describe('a pull request that closed', () => {
+  test('merged says merged', () => {
+    expect(stoppedBecause({ kind: 'closed', state: 'MERGED' })).toContain(
+      'merged',
+    )
+  })
+
+  test('closed without merging does not claim the checks were green', () => {
+    const said = stoppedBecause({ kind: 'closed', state: 'CLOSED' })
+    expect(said).not.toContain('green')
+    expect(said).toContain('without being merged')
+  })
+})
