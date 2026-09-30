@@ -79,11 +79,7 @@ export function startingFrom(input: PrInput): PrContext {
     prNumber: input.prNumber,
     maxCiFixes: input.maxCiFixes,
     maxRevisions: input.maxRevisions,
-    ...(input.issueNumber === undefined
-      ? {}
-      : { issueNumber: input.issueNumber }),
-    ...(input.pollMs === undefined ? {} : { pollMs: input.pollMs }),
-    ...(input.windowMs === undefined ? {} : { windowMs: input.windowMs }),
+    ...watchKnobs(input),
     pending: [],
     // Nothing has been observed, which is not the same as having observed
     // nothing: the difference is what stops a first look reporting the pull
@@ -96,5 +92,25 @@ export function startingFrom(input: PrInput): PrContext {
     lastCommentId: 0,
     failedChecks: [],
     pushedSha: '',
+  }
+}
+
+/**
+ * The optional knobs a watch is started with, spread once.
+ *
+ * Both the driver and the starting context list the same three, and two copies
+ * of a list of optional fields is two places for one of them to be forgotten.
+ */
+export function watchKnobs(input: {
+  issueNumber?: number
+  pollMs?: number
+  windowMs?: number
+}): { issueNumber?: number; pollMs?: number; windowMs?: number } {
+  return {
+    ...(input.issueNumber === undefined
+      ? {}
+      : { issueNumber: input.issueNumber }),
+    ...(input.pollMs === undefined ? {} : { pollMs: input.pollMs }),
+    ...(input.windowMs === undefined ? {} : { windowMs: input.windowMs }),
   }
 }

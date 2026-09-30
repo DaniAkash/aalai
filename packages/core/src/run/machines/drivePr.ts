@@ -3,6 +3,7 @@ import type { RunRef } from '@/modules/work/paths'
 import type { RunDeps } from './deps'
 import { provideRunDeps, releaseRunDeps } from './deps'
 import { prLifecycle } from './prLifecycle'
+import { watchKnobs } from './prRules'
 import type { PrContext, PrOutcome } from './prTypes'
 import { runMachine } from './snapshots'
 
@@ -53,11 +54,7 @@ export async function drivePullRequest(input: {
         // allowances are the ones a person configured.
         maxCiFixes: input.deps.config.maxCiFixes,
         maxRevisions: input.deps.config.maxRevisions,
-        ...(input.issueNumber === undefined
-          ? {}
-          : { issueNumber: input.issueNumber }),
-        ...(input.pollMs === undefined ? {} : { pollMs: input.pollMs }),
-        ...(input.windowMs === undefined ? {} : { windowMs: input.windowMs }),
+        ...watchKnobs(input),
       },
       ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
       ...(input.signal === undefined ? {} : { signal: input.signal }),
