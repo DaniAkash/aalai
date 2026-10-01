@@ -48,7 +48,8 @@
         }
       },
       "suspicious": {
-        "noConsole": "error"
+        "noConsole": "error",
+        "noImportCycles": "error"
       },
       "style": {
         "noProcessEnv": "error",

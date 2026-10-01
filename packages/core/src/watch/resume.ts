@@ -6,23 +6,10 @@ import { logger } from '@/lib/log'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { readSnapshot, unfinishedRuns } from '@/run/machines/snapshots'
 import { resumeIssue } from '@/run/pipeline'
+import { parseRunId } from '@/shared/format'
 import { completeRun, takeOverRun } from '@/watch/state'
 
 const log = logger('resume')
-
-/** `owner/repo#42@1790000000000` is how a run names itself. */
-const RUN_ID = /^(?<repo>[^#]+)#(?<issue>\d+)@\d+$/
-
-export function parseRunId(
-  runId: string,
-): { repo: string; issueNumber: number } | undefined {
-  const match = RUN_ID.exec(runId)
-  const repo = match?.groups?.repo
-  const issue = match?.groups?.issue
-  return repo === undefined || issue === undefined
-    ? undefined
-    : { repo, issueNumber: Number(issue) }
-}
 
 /**
  * Picks up every run whose machine stopped somewhere other than an end state.

@@ -5,7 +5,7 @@ import { appendEntry, readConversation } from '@/modules/work/conversation'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { readSnapshot } from '@/run/machines/snapshots'
 import { gateActivity } from '@/run/machines/types'
-import { parseRunId } from '@/watch/resume'
+import { parseRunId } from '@/shared/format'
 import { readGate } from './gates'
 
 /**

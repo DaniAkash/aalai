@@ -14,7 +14,7 @@ import {
 } from '@/run/machines/snapshots'
 import { workState } from '@/run/machines/types'
 import type { Analysis, Review } from '@/run/stations/schemas'
-import { parseRunId } from '@/watch/resume'
+import { parseRunId } from '@/shared/format'
 
 let dir: string
 let db: ReturnType<typeof openDb>
@@ -188,4 +188,42 @@ describe('carrying a run on from its snapshot', () => {
     expect(again.context.review?.verdict).toBe('approve')
     expect(workState(again.value)).toBe('approved')
   })
+})
+
+describe('a module graph with no cycles in it', () => {
+  // These two could not be imported first at all. Every cycle in the project
+  // ran through one edge: the gate conversation reached for a run id parser
+  // that lived beside the resume pass, which pulls in the whole run pipeline.
+  // The parser moved somewhere with no dependencies and all twelve closed.
+  const modules = [
+    '@/run/machines/triage',
+    '@/run/machines/actors',
+    '@/run/machines/issueWork',
+    '@/run/machines/drive',
+    '@/modules/gates',
+    '@/run/pipeline',
+    '@/run/station',
+  ]
+
+  for (const specifier of modules) {
+    test(`${specifier} can be the first module loaded`, async () => {
+      // Imported through a fresh subprocess, because once anything else in the
+      // graph has loaded, the order that breaks is no longer reachable.
+      const proc = Bun.spawn(
+        [
+          'bun',
+          '-e',
+          `import('${specifier}').then(() => console.log('ok')).catch((e) => { console.log('FAIL: ' + e.message); process.exit(1) })`,
+        ],
+        {
+          cwd: import.meta.dir.replace(/\/test$/, ''),
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const out = await new Response(proc.stdout).text()
+      expect(await proc.exited).toBe(0)
+      expect(out.trim()).toBe('ok')
+    })
+  }
 })
