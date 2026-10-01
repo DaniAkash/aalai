@@ -1,3 +1,4 @@
+import type { RunPolicy } from 'aalai/shared'
 import type { InferRequestType, InferResponseType } from 'hono/client'
 import { createMutation, createQuery } from 'react-query-kit'
 import { api } from '@/modules/api/client'
@@ -6,7 +7,6 @@ import { queryClient } from '@/modules/api/queryClient'
 
 type Client = Awaited<ReturnType<typeof api>>
 type ReposResponse = InferResponseType<Client['api']['repos']['$get']>
-type OwnedResponse = InferResponseType<Client['api']['github']['repos']['$get']>
 
 export const useWatchedRepos = createQuery<ReposResponse>({
   queryKey: ['repos'],
@@ -16,17 +16,11 @@ export const useWatchedRepos = createQuery<ReposResponse>({
   },
 })
 
-/** What the signed in gh account can act on. Slow, so it is only asked for on demand. */
-export const useOwnedRepos = createQuery<OwnedResponse>({
-  queryKey: ['github', 'repos'],
-  fetcher: async () => {
-    const client = await api()
-    return parseResponse<OwnedResponse>(await client.api.github.repos.$get())
-  },
-  staleTime: 5 * 60 * 1000,
-})
-
-export const useWatchRepo = createMutation<ReposResponse, { repo: string }>({
+/** Adds several at once, with the policy the picker showed while choosing. */
+export const useWatchRepos = createMutation<
+  ReposResponse,
+  { repos: string[]; policy: RunPolicy }
+>({
   mutationFn: async (vars) => {
     const client = await api()
     return parseResponse<ReposResponse>(

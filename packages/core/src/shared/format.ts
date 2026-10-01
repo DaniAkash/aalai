@@ -1,5 +1,6 @@
 export type { GateDecision, GateRow } from '@/modules/db/schema/schema'
 export type { RunPolicy } from '@/modules/settings/domains'
+export * from './pickerRows'
 export * from './triageView'
 
 /**
