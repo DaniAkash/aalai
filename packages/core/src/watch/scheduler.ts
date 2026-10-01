@@ -61,12 +61,3 @@ export async function promoteQueued(
   }
   return { started, running, capacity, paused: false }
 }
-
-/** What the capacity meter reads. */
-export function capacityOf(db: Database, config: Config) {
-  return {
-    running: runningCount(db),
-    capacity: config.maxParallelRuns,
-    paused: config.queuePaused,
-  }
-}

@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { eventsRoute } from '@/server/routes/eventsRoute'
 import { gatesRoute } from '@/server/routes/gatesRoute'
+import { queueRoute } from '@/server/routes/queueRoute'
 import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
 import { settingsRoute } from '@/server/routes/settingsRoute'
@@ -19,6 +20,7 @@ export const app = new Hono()
   .route('/api', reposRoute)
   .route('/api', eventsRoute)
   .route('/api', gatesRoute)
+  .route('/api', queueRoute)
   .route('/api', settingsRoute)
   .route('/api', toolsRoute)
 
