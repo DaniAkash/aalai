@@ -14,6 +14,10 @@ import { RUN_POLICIES } from '@/modules/settings/domains'
 const patchSchema = z.object({
   pollSeconds: z.number().int().min(10).optional(),
   maxIssuesPerPoll: z.number().int().min(1).optional(),
+  // Bounded here as well as in the domain, so a request that would exceed what
+  // a laptop can take is refused rather than clamped quietly.
+  maxParallelRuns: z.number().int().min(1).max(4).optional(),
+  queuePaused: z.boolean().optional(),
   staleClaimMinutes: z.number().int().min(1).optional(),
   keepWorktreeOnFailure: z.boolean().optional(),
   defaultPolicy: z.enum(RUN_POLICIES).optional(),

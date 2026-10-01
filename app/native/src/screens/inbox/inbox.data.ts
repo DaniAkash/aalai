@@ -1,4 +1,5 @@
 import { useOpenGates } from '@/modules/api/gates.hooks'
+import { useQueue } from '@/modules/api/queue.hooks'
 import { usePastRuns } from '@/modules/api/runs.hooks'
 
 /**
@@ -10,9 +11,14 @@ import { usePastRuns } from '@/modules/api/runs.hooks'
 export function useInboxData() {
   const gates = useOpenGates()
   const runs = usePastRuns()
+  const queue = useQueue()
 
   return {
     gates: gates.data?.gates ?? [],
+    // What the watcher found and nobody has decided about yet. Nothing has
+    // started for any of these, which is the point: the decision is the
+    // maintainer's and it is made here.
+    offers: (queue.data?.entries ?? []).filter((e) => e.status === 'offered'),
     // What the factory is doing instead, so an empty inbox reads as calm
     // rather than as broken.
     working:
@@ -26,6 +32,7 @@ export function useInboxData() {
     retry: () => {
       void gates.refetch()
       void runs.refetch()
+      void queue.refetch()
     },
   }
 }

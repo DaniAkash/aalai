@@ -51,42 +51,22 @@ export const queueRoute = new Hono()
   .post(
     '/queue/:owner/:name/:kind/:number',
     zValidator('param', subjectParam),
-    async (c) => {
-      const { owner, name, kind, number } = c.req.valid('param')
-      const repo = `${owner}/${name}`
-      const db = openState()
-      try {
-        if (!enqueueRun(db, repo, kind, number)) {
-          return c.json(
-            { error: 'cannot be queued from its current state' },
-            409,
-          )
-        }
-        return c.json({ entry: readRun(db, repo, kind, number) })
-      } finally {
-        db.close()
-      }
-    },
+    (c) =>
+      act(
+        c.req.valid('param'),
+        enqueueRun,
+        'cannot be queued from its current state',
+      ),
   )
   .delete(
     '/queue/:owner/:name/:kind/:number',
     zValidator('param', subjectParam),
-    async (c) => {
-      const { owner, name, kind, number } = c.req.valid('param')
-      const repo = `${owner}/${name}`
-      const db = openState()
-      try {
-        if (!dismissRun(db, repo, kind, number)) {
-          return c.json(
-            { error: 'only an offer or a queued run can be dismissed' },
-            409,
-          )
-        }
-        return c.json({ entry: readRun(db, repo, kind, number) })
-      } finally {
-        db.close()
-      }
-    },
+    (c) =>
+      act(
+        c.req.valid('param'),
+        dismissRun,
+        'only an offer or a queued run can be dismissed',
+      ),
   )
   .post(
     '/queue/:owner/:name/:kind/:number/start',
@@ -147,3 +127,33 @@ export const queueRoute = new Hono()
       }
     },
   )
+
+type Subject = z.infer<typeof subjectParam>
+
+/**
+ * Queueing and dismissing differ only in which function they call and what
+ * they say when it refuses, so the connection handling lives once.
+ */
+function act(
+  subject: Subject,
+  change: (
+    db: ReturnType<typeof openState>,
+    repo: string,
+    kind: Subject['kind'],
+    number: number,
+  ) => boolean,
+  refusal: string,
+): Response {
+  const repo = `${subject.owner}/${subject.name}`
+  const db = openState()
+  try {
+    if (!change(db, repo, subject.kind, subject.number)) {
+      return Response.json({ error: refusal }, { status: 409 })
+    }
+    return Response.json({
+      entry: readRun(db, repo, subject.kind, subject.number),
+    })
+  } finally {
+    db.close()
+  }
+}

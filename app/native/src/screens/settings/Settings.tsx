@@ -2,7 +2,7 @@ import { GroupHead, Screen } from '@/components/layout/Screen'
 import { ErrorNote, Loading } from '@/components/state'
 import { useSaveSettings, useSettings } from '@/modules/api/settings.hooks'
 import { PolicyPicker } from '@/screens/repos/repos.components'
-import { Field, NumberField, Toggle } from './settings.components'
+import { Field, NumberField, ParallelRuns, Toggle } from './settings.components'
 
 /**
  * What the factory does, and how much of it without a person.
@@ -48,6 +48,15 @@ export function Settings() {
             value={current.defaultPolicy}
             pending={save.isPending}
             onChange={(defaultPolicy) => save.mutate({ defaultPolicy })}
+          />
+        </Field>
+        <Field
+          label="Runs at the same time"
+          detail="Each one drives a coding agent and a checkout. This is a laptop, not a build farm."
+        >
+          <ParallelRuns
+            value={current.maxParallelRuns}
+            onChange={(maxParallelRuns) => save.mutate({ maxParallelRuns })}
           />
         </Field>
         <Field label="Poll every" detail="Seconds between looks at GitHub.">

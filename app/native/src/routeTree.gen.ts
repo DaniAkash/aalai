@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as QueueRouteImport } from './routes/queue'
 import { Route as ReposRouteImport } from './routes/repos'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as GatesGateIdRouteImport } from './routes/gates/$gateId'
@@ -19,6 +20,11 @@ import { Route as RunsRunIdRouteImport } from './routes/runs/$runId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueRoute = QueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReposRoute = ReposRouteImport.update({
@@ -49,6 +55,7 @@ const RunsRunIdRoute = RunsRunIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/queue': typeof QueueRoute
   '/repos': typeof ReposRoute
   '/settings': typeof SettingsRoute
   '/gates/$gateId': typeof GatesGateIdRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/queue': typeof QueueRoute
   '/repos': typeof ReposRoute
   '/settings': typeof SettingsRoute
   '/gates/$gateId': typeof GatesGateIdRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/queue': typeof QueueRoute
   '/repos': typeof ReposRoute
   '/settings': typeof SettingsRoute
   '/gates/$gateId': typeof GatesGateIdRoute
@@ -75,12 +84,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/repos' | '/settings' | '/gates/$gateId' | '/runs/$runId' | '/runs/'
+    | '/'
+    | '/queue'
+    | '/repos'
+    | '/settings'
+    | '/gates/$gateId'
+    | '/runs/$runId'
+    | '/runs/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/repos' | '/settings' | '/gates/$gateId' | '/runs/$runId' | '/runs'
+  to:
+    | '/'
+    | '/queue'
+    | '/repos'
+    | '/settings'
+    | '/gates/$gateId'
+    | '/runs/$runId'
+    | '/runs'
   id:
     | '__root__'
     | '/'
+    | '/queue'
     | '/repos'
     | '/settings'
     | '/gates/$gateId'
@@ -90,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  QueueRoute: typeof QueueRoute
   ReposRoute: typeof ReposRoute
   SettingsRoute: typeof SettingsRoute
   GatesGateIdRoute: typeof GatesGateIdRoute
@@ -104,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/repos': {
@@ -146,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  QueueRoute: QueueRoute,
   ReposRoute: ReposRoute,
   SettingsRoute: SettingsRoute,
   GatesGateIdRoute: GatesGateIdRoute,

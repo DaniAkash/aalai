@@ -4,6 +4,7 @@ import { GroupHead, Screen } from '@/components/layout/Screen'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import { useInboxData } from './inbox.data'
 import { asking, grouped } from './inbox.helpers'
+import { Offers } from './offers.components'
 
 /**
  * What needs a person, in the order it needs them.
@@ -14,7 +15,8 @@ import { asking, grouped } from './inbox.helpers'
  * somebody.
  */
 export function Inbox() {
-  const { gates, working, isPending, isError, error, retry } = useInboxData()
+  const { gates, offers, working, isPending, isError, error, retry } =
+    useInboxData()
 
   if (isPending) {
     return (
@@ -35,6 +37,7 @@ export function Inbox() {
   if (gates.length === 0) {
     return (
       <Screen title="Inbox" sub="Nothing is waiting on you.">
+        <Offers offers={offers} />
         <Empty
           title="Nothing is waiting on you"
           detail={
@@ -59,6 +62,7 @@ export function Inbox() {
       sub={`${gates.length} waiting on you. Nothing moves until you answer.`}
       title="Inbox"
     >
+      <Offers offers={offers} />
       {sections.map((section) =>
         section.rows.length === 0 ? null : (
           <section key={section.label}>
