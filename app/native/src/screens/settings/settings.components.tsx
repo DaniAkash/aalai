@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useRef, useState } from 'react'
 
 export function Field({
   label,
@@ -112,6 +113,31 @@ export function ParallelRuns({
   value: number
   onChange: (next: number) => void
 }) {
+  // Seeded once and then owned locally. Reading the server value back on every
+  // render made the control fight the person using it: each press saved, the
+  // save echoed, and the echo reset the number mid-press, so pressing + five
+  // times quickly moved it by one.
+  const [shown, setShown] = useState(value)
+  // The current number lives in a ref as well as in state, because a handler
+  // closes over the value from its own render: two presses before React
+  // re-renders would otherwise both compute from the same starting number and
+  // the second would undo the first.
+  const current = useRef(value)
+  const pending = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const step = (delta: number) => {
+    const next = Math.min(
+      PARALLEL_MAX,
+      Math.max(PARALLEL_MIN, current.current + delta),
+    )
+    current.current = next
+    setShown(next)
+    // Saved once the pressing stops, so holding + is one write rather than
+    // three, and the number never jumps backwards between them.
+    clearTimeout(pending.current)
+    pending.current = setTimeout(() => onChange(next), 350)
+  }
+
   return (
     <div className="flex flex-col items-stretch gap-2">
       <div className="flex items-center gap-2">
@@ -120,8 +146,8 @@ export function ParallelRuns({
             type="button"
             aria-label="fewer runs at the same time"
             data-testid="parallel-down"
-            disabled={value <= PARALLEL_MIN}
-            onClick={() => onChange(Math.max(PARALLEL_MIN, value - 1))}
+            disabled={shown <= PARALLEL_MIN}
+            onClick={() => step(-1)}
             className="h-9 w-9 text-[17px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
             &minus;
@@ -130,14 +156,14 @@ export function ParallelRuns({
             className="w-10 text-center font-heading font-semibold text-[16px] tabular-nums"
             data-testid="parallel-value"
           >
-            {value}
+            {shown}
           </div>
           <button
             type="button"
             aria-label="more runs at the same time"
             data-testid="parallel-up"
-            disabled={value >= PARALLEL_MAX}
-            onClick={() => onChange(Math.min(PARALLEL_MAX, value + 1))}
+            disabled={shown >= PARALLEL_MAX}
+            onClick={() => step(1)}
             className="h-9 w-9 text-[17px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
           >
             +
@@ -148,7 +174,7 @@ export function ParallelRuns({
             <div
               key={i}
               className={
-                i < value
+                i < shown
                   ? 'h-8 flex-1 rounded-md border border-chart-2/45 bg-chart-2/10'
                   : 'h-8 flex-1 rounded-md border border-border border-dashed'
               }
@@ -160,7 +186,7 @@ export function ParallelRuns({
         className="text-[11.5px] text-muted-foreground"
         data-testid="parallel-detail"
       >
-        {PARALLEL_DETAIL[value]}
+        {PARALLEL_DETAIL[shown]}
       </p>
     </div>
   )
