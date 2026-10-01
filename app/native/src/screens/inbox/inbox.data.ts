@@ -16,7 +16,7 @@ export function useInboxData() {
     // What the factory is doing instead, so an empty inbox reads as calm
     // rather than as broken.
     working:
-      runs.data?.runs.filter((run) => run.status === 'claimed').length ?? 0,
+      runs.data?.runs.filter((run) => run.status === 'running').length ?? 0,
     isPending: gates.isPending,
     // Both, because "nothing is waiting" and "0 runs in flight" are claims
     // about two requests, and a screen that makes the second one while the
