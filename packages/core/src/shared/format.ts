@@ -37,6 +37,28 @@ export function waitedFor(openedAt: string, now = Date.now()): string {
   return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
 
+/** `owner/repo#42@1790000000000` is how a run names itself. */
+const RUN_ID = /^(?<repo>[^#]+)#(?<issue>\d+)@\d+$/
+
+/**
+ * Reads the repository and issue back out of a run id.
+ *
+ * Here rather than beside the resume pass that first needed it, because this is
+ * a regex over a string and that module reaches for the database, GitHub and
+ * the whole run pipeline. Anything wanting to name a run had to import all of
+ * it, which is what put the gate conversation and the run pipeline in a cycle.
+ */
+export function parseRunId(
+  runId: string,
+): { repo: string; issueNumber: number } | undefined {
+  const match = RUN_ID.exec(runId)
+  const repo = match?.groups?.repo
+  const issue = match?.groups?.issue
+  return repo === undefined || issue === undefined
+    ? undefined
+    : { repo, issueNumber: Number(issue) }
+}
+
 /** `acme/widgets#7@1790…` is an id. This is the part a person reads. */
 export function subjectOf(runId: string): string {
   return runId.split('@')[0] ?? runId

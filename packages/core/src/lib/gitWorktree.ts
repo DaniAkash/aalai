@@ -1,5 +1,5 @@
+import { assertSafeBranch } from '@/lib/branchName'
 import { githubEnv } from '@/lib/credentials'
-import { assertSafeBranch } from '@/lib/git'
 import { exec, execOrThrow } from '@/lib/proc'
 
 /**
