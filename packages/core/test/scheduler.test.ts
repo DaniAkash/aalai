@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Config } from '@/config'
 import { openDb } from '@/modules/db/db'
-import { enqueueRun, offerRun, readRun, runningCount } from '@/watch/queue'
+import {
+  blockRun,
+  enqueueRun,
+  offerRun,
+  readRun,
+  runningCount,
+} from '@/modules/runs/queue'
 import { promoteQueued } from '@/watch/scheduler'
 import { claimRun, completeRun } from '@/watch/state'
 
@@ -156,5 +162,34 @@ describe('when starting goes wrong', () => {
       throw new Error('no')
     })
     expect(runningCount(db)).toBe(0)
+  })
+})
+
+describe('a gate frees its slot for the next run', () => {
+  test('the run behind a blocked one starts', async () => {
+    // The whole reason `blocked` is a state. Without this, a plan gate left
+    // open overnight holds a slot nothing is using.
+    queueMany(3)
+    await promoteQueued(db, config(), startIt)
+    expect(runningCount(db)).toBe(2)
+
+    blockRun(db, 'acme/app', 'issue', 1)
+    expect(runningCount(db)).toBe(1)
+
+    const after = await promoteQueued(db, config(), startIt)
+    expect(after.started.map((e) => e.number)).toEqual([3])
+    expect(runningCount(db)).toBe(2)
+  })
+
+  test('answering it puts it behind whatever is already waiting', async () => {
+    queueMany(3)
+    await promoteQueued(db, config(), startIt)
+    blockRun(db, 'acme/app', 'issue', 1)
+    // Answered, so it rejoins the queue rather than jumping back into a slot.
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    expect(readRun(db, 'acme/app', 'issue', 1)?.status).toBe('queued')
+    const after = await promoteQueued(db, config(), startIt)
+    // 3 was queued first and is still ahead of the one that just came back.
+    expect(after.started.map((e) => e.number)).toEqual([3])
   })
 })

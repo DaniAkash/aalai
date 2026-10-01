@@ -8,6 +8,7 @@ import {
   subscribeGateAnswered,
   supersedeOpenGates,
 } from '@/modules/gates'
+import { blockRun } from '@/modules/runs/queue'
 import { latestArtifact } from '@/modules/work/artifacts'
 import type { ConversationEntry } from '@/modules/work/conversation'
 import { readConversation } from '@/modules/work/conversation'
@@ -181,6 +182,15 @@ export const gateKeeper = fromCallback<
     if (retired > 0) {
       log.info('retired gates asked about an older version', { retired })
     }
+    // The run releases its slot while it waits. A gate can sit unanswered for
+    // days, so a blocked run that kept its slot would let three questions idle
+    // a three slot factory while it looked busy.
+    blockRun(
+      deps.db,
+      deps.run.subject.repo,
+      deps.run.subject.kind,
+      deps.run.subject.number,
+    )
     sendBack({ type: 'GATE_OPENED', gateId })
     log.info('waiting for a person', {
       gateId,

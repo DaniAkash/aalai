@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite'
 import type { Config } from '@/config'
 import { logger } from '@/lib/log'
-import { nextQueued, type QueueEntry, runningCount } from '@/watch/queue'
+import { nextQueued, type QueueEntry, runningCount } from '@/modules/runs/queue'
 
 const log = logger('scheduler')
 

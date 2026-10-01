@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openDb, setDb } from '@/modules/db/db'
+import { enqueueRun, offerRun, readRun } from '@/modules/runs/queue'
 import { writeDomain } from '@/modules/settings/settings'
 import { app } from '@/server/app'
-import { enqueueRun, offerRun, readRun } from '@/watch/queue'
 import { claimRun } from '@/watch/state'
 
 /**

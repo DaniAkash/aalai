@@ -3,11 +3,11 @@ import type { Config } from '@/config'
 import { getIssue } from '@/lib/gh'
 import { listOpenPullRequests } from '@/lib/ghPr'
 import { logger } from '@/lib/log'
+import { offerRun } from '@/modules/runs/queue'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { driveReview } from '@/run/machines/driveReview'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { holdReviewClaim } from '@/watch/prClaim'
-import { offerRun } from '@/watch/queue'
 import {
   claimedPullRequests,
   claimRun,

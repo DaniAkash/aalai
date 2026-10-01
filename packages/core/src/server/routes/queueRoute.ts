@@ -9,7 +9,7 @@ import {
   listQueue,
   readRun,
   runningCount,
-} from '@/watch/queue'
+} from '@/modules/runs/queue'
 import { promoteQueued } from '@/watch/scheduler'
 import { startQueued } from '@/watch/startRun'
 import { openState } from '@/watch/state'

@@ -13,7 +13,7 @@ import {
   offerRun,
   readRun,
   runningCount,
-} from '@/watch/queue'
+} from '@/modules/runs/queue'
 import { claimRun, completeRun } from '@/watch/state'
 
 /**
