@@ -2,7 +2,12 @@ import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
 import { z } from 'zod'
 import { loadConfig, saveConfig, type WatchedRepo } from '@/config'
-import { ownedRepos } from '@/lib/gh'
+import {
+  accessibleRepos,
+  REPO_PAGE_SIZE,
+  repoOwners,
+  searchRepos,
+} from '@/lib/ghRepos'
 import { type RunPolicy, runPolicySchema } from '@/modules/settings/domains'
 
 const addSchema = z.object({
@@ -10,6 +15,20 @@ const addSchema = z.object({
   requireLabel: z.string().optional(),
   policy: runPolicySchema.optional(),
 })
+
+/**
+ * Paging, coerced because a query string carries numbers as text.
+ *
+ * The ceiling is GitHub's own per-page maximum. Asking for more is not an error
+ * there, it is silently truncated, which would make the client believe it had
+ * reached the end.
+ */
+const pageSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  perPage: z.coerce.number().int().min(1).max(100).default(REPO_PAGE_SIZE),
+})
+
+const searchSchema = pageSchema.extend({ q: z.string().min(1) })
 
 /** Every field optional so changing a policy does not restate the label. */
 const patchSchema = z.object({
@@ -28,10 +47,24 @@ export const reposRoute = new Hono()
     const config = await loadConfig()
     return c.json({ repos: config.watch })
   })
-  .get('/github/repos', async (c) => {
-    // What the signed in gh account can actually act on, so the picker offers
-    // real choices instead of a free text field and a hope.
-    return c.json({ repos: await ownedRepos() })
+  .get('/github/repos', zValidator('query', pageSchema), async (c) => {
+    // What the signed in account can actually act on, one page at a time.
+    // Unpaged, this answered with whatever the first two hundred happened to
+    // be, which on an account in several organizations is a fraction of them.
+    const { page, perPage } = c.req.valid('query')
+    return c.json(await accessibleRepos(page, perPage))
+  })
+  .get('/github/repos/search', zValidator('query', searchSchema), async (c) => {
+    // Searching runs on GitHub rather than over the pages already loaded,
+    // because filtering what has arrived answers a question about the first
+    // page rather than about the account.
+    const { q, page, perPage } = c.req.valid('query')
+    return c.json(await searchRepos(q, page, perPage))
+  })
+  .get('/github/owners', async (c) => {
+    // Asked for separately because the scope selector has to exist before any
+    // page of repositories has arrived.
+    return c.json({ owners: await repoOwners() })
   })
   .post('/repos', zValidator('json', addSchema), async (c) => {
     const body = c.req.valid('json')
