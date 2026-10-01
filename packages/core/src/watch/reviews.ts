@@ -10,7 +10,6 @@ import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { holdReviewClaim } from '@/watch/prClaim'
 import {
   claimedPullRequests,
-  claimRun,
   completeRun,
   deliveredBranch,
 } from '@/watch/state'
@@ -73,17 +72,17 @@ export async function startReview(
   repo: string,
   prNumber: number,
   title: string,
+  /**
+   * The claim this run already holds.
+   *
+   * Taken as an argument rather than made here, because the scheduler claims
+   * the row before it starts anything. Claiming again found the row already
+   * running, returned null, and this function quietly did nothing while the
+   * row said it was working: a dead run that looks like a busy one, holding a
+   * slot forever.
+   */
+  lease: string,
 ): Promise<void> {
-  const lease = claimRun(
-    db,
-    repo,
-    prNumber,
-    config.staleClaimMinutes * 60_000,
-    'pr',
-  )
-  if (lease === null) {
-    return
-  }
   const subject: Subject = { repo, kind: 'pr', number: prNumber }
   const runId = `${repo}#${prNumber}@${Date.now()}`
   const run: RunRef = { subject, runId }

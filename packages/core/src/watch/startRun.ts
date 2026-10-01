@@ -27,7 +27,14 @@ export async function startQueued(
   const db = openState()
   try {
     if (entry.kind === 'pr') {
-      await startReview(db, config, entry.repo, entry.number, entry.title ?? '')
+      await startReview(
+        db,
+        config,
+        entry.repo,
+        entry.number,
+        entry.title ?? '',
+        lease,
+      )
       return
     }
     // Fetched now rather than carried from discovery: something queued this
