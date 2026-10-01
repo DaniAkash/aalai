@@ -1,13 +1,45 @@
 import { sql } from 'drizzle-orm'
-import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from 'drizzle-orm/sqlite-core'
 
+/**
+ * Where a run is, which is also where the work is allowed to be.
+ *
+ * `claimed` used to mean all of queued, running, waiting on a person, and
+ * abandoned by a dead process at once. Those need different answers from the
+ * scheduler, so they are different states.
+ *
+ * `offered` is the one that makes a laptop viable: the watcher may record that
+ * something exists, and that costs one API call and nothing else. No claim, no
+ * worktree, no agent, until a person asks for it.
+ */
 export const RUN_STATUSES = [
-  'claimed',
+  'offered',
+  'queued',
+  'running',
+  'blocked',
+  'stopped',
   'delivered',
   'failed',
   'skipped',
 ] as const
 export type RunStatus = (typeof RUN_STATUSES)[number]
+
+/** The states that consume one of the machine's slots. */
+export const RUNNING_STATUSES: readonly RunStatus[] = ['running']
+
+/**
+ * States a run can leave on its own.
+ *
+ * `blocked` is deliberately absent: a gate can wait for days, so it releases
+ * its slot and rejoins the queue when answered rather than holding one.
+ */
+export const ACTIVE_STATUSES: readonly RunStatus[] = ['queued', 'running']
 
 /**
  * What a run is about.
@@ -33,7 +65,15 @@ export const runs = sqliteTable(
     branch: text('branch'),
     prUrl: text('pr_url'),
     error: text('error'),
+    // What the issue or pull request is called. Stored because an offer has to
+    // be legible in the inbox before anything has been fetched for it, and a
+    // list that shows only numbers is a list nobody can triage.
+    title: text('title'),
     lease: text('lease'),
+    // When the watcher first saw it, and when a person asked for it. The
+    // second is what orders the queue, so first in really is first out.
+    offeredAt: text('offered_at'),
+    queuedAt: text('queued_at'),
     startedAt: text('started_at').notNull().default(sql`(current_timestamp)`),
     finishedAt: text('finished_at'),
   },
@@ -41,6 +81,9 @@ export const runs = sqliteTable(
     primaryKey({
       columns: [table.repo, table.subjectKind, table.subjectNumber],
     }),
+    // The scheduler's only query: the oldest queued row. Without this it is a
+    // table scan on every promotion, which happens on every tick.
+    index('runs_status_queued_at').on(table.status, table.queuedAt),
   ],
 )
 

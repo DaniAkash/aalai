@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { and, desc, eq, lt } from 'drizzle-orm'
+import { and, desc, eq, lt, or } from 'drizzle-orm'
 import { openDb } from '@/modules/db/db'
 import { query } from '@/modules/db/query'
 import { cursor, runs } from '@/modules/db/schema/schema'
@@ -76,16 +76,27 @@ export function claimRun(
       repo,
       subjectKind: kind,
       subjectNumber: issue,
-      status: 'claimed',
+      status: 'running',
       lease,
+      queuedAt: now.toISOString(),
+      offeredAt: now.toISOString(),
       startedAt: now.toISOString(),
     })
     .onConflictDoUpdate({
       target: [runs.repo, runs.subjectKind, runs.subjectNumber],
-      set: { startedAt: now.toISOString(), lease, error: null },
-      setWhere: and(
-        eq(runs.status, 'claimed'),
-        lt(runs.startedAt, staleBefore),
+      set: {
+        status: 'running',
+        startedAt: now.toISOString(),
+        lease,
+        error: null,
+      },
+      // Two ways a row may be claimed. The scheduler promoting something a
+      // person queued is the ordinary one. Taking over a run whose process
+      // died is the other, and it still needs the staleness clause, because
+      // without it every later poll would steal a live worker's run.
+      setWhere: or(
+        eq(runs.status, 'queued'),
+        and(eq(runs.status, 'running'), lt(runs.startedAt, staleBefore)),
       ),
     })
     .returning({ lease: runs.lease })
@@ -108,7 +119,7 @@ export function completeRun(
   repo: string,
   issue: number,
   outcome: {
-    readonly status: Exclude<RunStatus, 'claimed'>
+    readonly status: Exclude<RunStatus, 'running'>
     readonly branch?: string
     readonly prUrl?: string
     readonly error?: string
@@ -197,7 +208,7 @@ export function takeOverRun(
         eq(runs.repo, repo),
         eq(runs.subjectKind, kind),
         eq(runs.subjectNumber, issue),
-        eq(runs.status, 'claimed'),
+        eq(runs.status, 'running'),
         lt(runs.startedAt, staleBefore),
       ),
     )
@@ -251,7 +262,7 @@ export function renewClaim(
         eq(runs.repo, repo),
         eq(runs.subjectKind, kind),
         eq(runs.subjectNumber, number),
-        eq(runs.status, 'claimed'),
+        eq(runs.status, 'running'),
         eq(runs.lease, lease),
       ),
     )
