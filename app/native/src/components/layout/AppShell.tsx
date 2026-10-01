@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
-import { GitBranch, Inbox, Settings2, Workflow } from 'lucide-react'
+import { GitBranch, Inbox, ListChecks, Settings2, Workflow } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { TitleBar } from '@/components/layout/TitleBar'
 import {
@@ -28,6 +28,7 @@ interface NavItem {
 // rather than as nav items that navigate nowhere.
 const NAV: NavItem[] = [
   { to: '/', label: 'Inbox', icon: Inbox },
+  { to: '/queue', label: 'Queue', icon: ListChecks },
   { to: '/runs', label: 'Runs', icon: Workflow },
   { to: '/repos', label: 'Repos', icon: GitBranch },
   { to: '/settings', label: 'Settings', icon: Settings2 },

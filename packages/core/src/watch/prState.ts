@@ -62,7 +62,7 @@ export function abandonedPullRequests(
     .where(
       and(
         eq(runs.subjectKind, 'pr'),
-        eq(runs.status, 'claimed'),
+        eq(runs.status, 'running'),
         lt(runs.startedAt, staleBefore),
       ),
     )

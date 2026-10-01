@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useRef, useState } from 'react'
 
 export function Field({
   label,
@@ -85,5 +86,108 @@ export function Toggle({
         />
       </span>
     </button>
+  )
+}
+
+const PARALLEL_MIN = 1
+const PARALLEL_MAX = 4
+
+/**
+ * What each setting costs, rather than what it is.
+ *
+ * A number between one and four means nothing until you know it buys a coding
+ * agent and a checkout each, on the machine you are also using.
+ */
+const PARALLEL_DETAIL: Record<number, string> = {
+  1: 'One at a time. The safest on a laptop you are also working on.',
+  2: 'Two at a time. One long run cannot block everything behind it.',
+  3: 'Three at a time. Noticeable while you work.',
+  4: 'Four at a time. Expect them to compete for the same disk and network.',
+}
+
+/** The ceiling, drawn as lanes so the number is something you can see. */
+export function ParallelRuns({
+  value,
+  onChange,
+}: {
+  value: number
+  onChange: (next: number) => void
+}) {
+  // Seeded once and then owned locally. Reading the server value back on every
+  // render made the control fight the person using it: each press saved, the
+  // save echoed, and the echo reset the number mid-press, so pressing + five
+  // times quickly moved it by one.
+  const [shown, setShown] = useState(value)
+  // The current number lives in a ref as well as in state, because a handler
+  // closes over the value from its own render: two presses before React
+  // re-renders would otherwise both compute from the same starting number and
+  // the second would undo the first.
+  const current = useRef(value)
+  const pending = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const step = (delta: number) => {
+    const next = Math.min(
+      PARALLEL_MAX,
+      Math.max(PARALLEL_MIN, current.current + delta),
+    )
+    current.current = next
+    setShown(next)
+    // Saved once the pressing stops, so holding + is one write rather than
+    // three, and the number never jumps backwards between them.
+    clearTimeout(pending.current)
+    pending.current = setTimeout(() => onChange(next), 350)
+  }
+
+  return (
+    <div className="flex flex-col items-stretch gap-2">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center overflow-hidden rounded-lg border border-border bg-background">
+          <button
+            type="button"
+            aria-label="fewer runs at the same time"
+            data-testid="parallel-down"
+            disabled={shown <= PARALLEL_MIN}
+            onClick={() => step(-1)}
+            className="h-9 w-9 text-[17px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            &minus;
+          </button>
+          <div
+            className="w-10 text-center font-heading font-semibold text-[16px] tabular-nums"
+            data-testid="parallel-value"
+          >
+            {shown}
+          </div>
+          <button
+            type="button"
+            aria-label="more runs at the same time"
+            data-testid="parallel-up"
+            disabled={shown >= PARALLEL_MAX}
+            onClick={() => step(1)}
+            className="h-9 w-9 text-[17px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
+          >
+            +
+          </button>
+        </div>
+        <div className="flex flex-1 gap-1" aria-hidden="true">
+          {Array.from({ length: PARALLEL_MAX }, (_, i) => i).map((i) => (
+            <div
+              key={i}
+              className={
+                i < shown
+                  ? 'h-8 flex-1 rounded-md border border-chart-2/45 bg-chart-2/10'
+                  : 'h-8 flex-1 rounded-md border border-border border-dashed'
+              }
+            />
+          ))}
+        </div>
+      </div>
+      <p
+        className="text-[11.5px] text-muted-foreground"
+        data-testid="parallel-detail"
+      >
+        {PARALLEL_DETAIL[shown]}
+      </p>
+    </div>
   )
 }

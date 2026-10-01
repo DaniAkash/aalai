@@ -4,12 +4,14 @@ import { emit } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { listIssuesSince } from '@/lib/gh'
 import { logger } from '@/lib/log'
-import { runIssue } from '@/run/pipeline'
+import { offerRun } from '@/modules/runs/queue'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { watchDeliveredPullRequests } from '@/watch/pullRequests'
 import { resumeUnfinished } from '@/watch/resume'
 import { reviewOpenPullRequests } from '@/watch/reviews'
-import { claimRun, completeRun, readCursor, writeCursor } from '@/watch/state'
+import { promoteQueued } from '@/watch/scheduler'
+import { startQueued } from '@/watch/startRun'
+import { completeRun, readCursor, writeCursor } from '@/watch/state'
 
 const log = logger('poll')
 
@@ -33,7 +35,12 @@ export function workableIssues(issues: readonly GhIssue[]): GhIssue[] {
 /** How far back a first-ever poll looks, so a fresh install does not replay the archive. */
 const COLD_START_LOOKBACK_MS = 10 * 60 * 1000
 
-export async function pollOnce(db: Database, config: Config): Promise<number> {
+export async function pollOnce(
+  db: Database,
+  config: Config,
+  /** Waits for what this pass started. The one shot path needs it; the watcher must not. */
+  options: { readonly awaitStarted?: boolean } = {},
+): Promise<number> {
   // Before anything new is claimed. A run whose process went away is still
   // claimed and still has a branch, so picking it up first is what stops a
   // restart looking like an abandoned issue.
@@ -49,6 +56,16 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
   handled += reviewOpenPullRequests(db, config)
   for (const watched of config.watch) {
     handled += await pollRepo(db, config, watched)
+  }
+  // Last, so anything offered this pass can be queued and started on the next
+  // one rather than waiting a whole poll interval. Promotion itself is
+  // synchronous; what it starts is not, and each started run owns its own
+  // connection so this tick may close its own whenever it likes.
+  const promotion = promoteQueued(db, config, (entry, lease) =>
+    startQueued(config, entry, lease),
+  )
+  if (options.awaitStarted === true) {
+    await promotion.settled
   }
   return handled
 }
@@ -88,7 +105,7 @@ async function pollRepo(
     })
   }
 
-  const worked = await workBatch(db, config, watched, batch)
+  const worked = workBatch(db, config, watched, batch)
 
   // The cursor advances only after the batch has been worked, and only as far
   // as the batch actually reached. Advancing it up front would permanently skip
@@ -122,12 +139,12 @@ interface Worked {
  * One issue must never take the tick down with it, or every repository and
  * issue behind it in the pass would go unprocessed.
  */
-async function workBatch(
+function workBatch(
   db: Database,
   config: Config,
   watched: WatchedRepo,
   batch: GhIssue[],
-): Promise<Worked> {
+): Worked {
   const { repo } = watched
   let handled = 0
   let lastProcessed: GhIssue | undefined
@@ -135,7 +152,7 @@ async function workBatch(
 
   for (const issue of batch) {
     try {
-      handled += (await handleIssue(db, config, watched, issue)) ? 1 : 0
+      handled += handleIssue(db, config, watched, issue) ? 1 : 0
       lastProcessed = issue
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -186,12 +203,20 @@ function nextCursor(input: CursorInput): string {
   return [furthest, input.earliestFailure.updated_at].sort()[0] ?? furthest
 }
 
-async function handleIssue(
+/**
+ * Screens an issue and records that it exists. It does not start anything.
+ *
+ * This is the change the queue is for. Discovery used to claim and then run the
+ * whole pipeline inline, so the number of agents the factory spawned was
+ * whatever GitHub happened to return. Now the most a pass can cost is one row
+ * per issue, and a person decides what actually runs.
+ */
+function handleIssue(
   db: Database,
   config: Config,
   watched: WatchedRepo,
   issue: GhIssue,
-): Promise<boolean> {
+): boolean {
   const { repo } = watched
   const screening = screenIssue(issue, intakePolicyFor(config, watched))
   if (!screening.accepted) {
@@ -212,32 +237,14 @@ async function handleIssue(
     })
     return false
   }
-  const lease = claimRun(
-    db,
+  const offered = offerRun(db, {
     repo,
-    issue.number,
-    config.staleClaimMinutes * 60_000,
-  )
-  if (lease === null) {
-    log.debug('already claimed', { repo, issue: issue.number })
-    return false
-  }
-
-  const result = await runIssue(repo, issue, config)
-  const recorded = completeRun(db, repo, issue.number, {
-    status: result.status,
-    branch: result.branch,
-    prUrl: result.prUrl,
-    error: result.error,
-    lease,
+    kind: 'issue',
+    number: issue.number,
+    title: issue.title,
   })
-  if (!recorded) {
-    // The lease expired and another pass took the issue over mid-run.
-    log.warn('result discarded, the claim was taken over', {
-      repo,
-      issue: issue.number,
-    })
+  if (offered) {
+    log.info('offered', { repo, issue: issue.number })
   }
-  log.info('run finished', { repo, issue: issue.number, status: result.status })
-  return true
+  return offered
 }

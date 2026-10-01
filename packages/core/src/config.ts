@@ -104,6 +104,8 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     watch,
     pollSeconds: domains.factory.pollSeconds,
     maxIssuesPerPoll: domains.factory.maxIssuesPerPoll,
+    maxParallelRuns: domains.factory.maxParallelRuns,
+    queuePaused: domains.factory.queuePaused,
     staleClaimMinutes: domains.factory.staleClaimMinutes,
     keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
     defaultPolicy: domains.factory.defaultPolicy,
@@ -134,6 +136,8 @@ function toDomains(config: Config): Domains {
     factory: {
       pollSeconds: config.pollSeconds,
       maxIssuesPerPoll: config.maxIssuesPerPoll,
+      maxParallelRuns: config.maxParallelRuns,
+      queuePaused: config.queuePaused,
       staleClaimMinutes: config.staleClaimMinutes,
       keepWorktreeOnFailure: config.keepWorktreeOnFailure,
       defaultPolicy: config.defaultPolicy,

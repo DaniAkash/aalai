@@ -3,13 +3,13 @@ import type { Config } from '@/config'
 import { getIssue } from '@/lib/gh'
 import { listOpenPullRequests } from '@/lib/ghPr'
 import { logger } from '@/lib/log'
+import { offerRun } from '@/modules/runs/queue'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { driveReview } from '@/run/machines/driveReview'
 import { intakePolicyFor, screenIssue } from '@/watch/intake'
 import { holdReviewClaim } from '@/watch/prClaim'
 import {
   claimedPullRequests,
-  claimRun,
   completeRun,
   deliveredBranch,
 } from '@/watch/state'
@@ -30,7 +30,7 @@ const log = logger('review')
 export function reviewOpenPullRequests(db: Database, config: Config): number {
   let started = 0
   for (const watched of config.watch) {
-    void openOnes(db, config, watched.repo).catch((error: unknown) => {
+    void openOnes(db, watched.repo).catch((error: unknown) => {
       log.debug('could not look for pull requests to review', {
         repo: watched.repo,
         error: error instanceof Error ? error.message : String(error),
@@ -41,17 +41,11 @@ export function reviewOpenPullRequests(db: Database, config: Config): number {
   return started
 }
 
-const inFlight = new Set<string>()
-
-async function openOnes(
-  db: Database,
-  config: Config,
-  repo: string,
-): Promise<void> {
+async function openOnes(db: Database, repo: string): Promise<void> {
   const already = claimedPullRequests(db)
   for (const pr of await listOpenPullRequests(repo)) {
     const key = `${repo}#${pr.number}`
-    if (already.has(key) || inFlight.has(key)) {
+    if (already.has(key)) {
       continue
     }
     // Ours means the factory delivered it, which the claim table knows, rather
@@ -64,30 +58,31 @@ async function openOnes(
     if (deliveredBranch(db, repo, pr.number) !== undefined) {
       continue
     }
-    inFlight.add(key)
-    void start(db, config, repo, pr.number, pr.title).finally(() => {
-      inFlight.delete(key)
-    })
+    // Recorded, not started. This loop is where the flood came from: a
+    // repository with thirty open pull requests meant thirty concurrent runs,
+    // each one claiming, checking out a stranger's commit and spawning an
+    // agent, from a single click on Add.
+    offerRun(db, { repo, kind: 'pr', number: pr.number, title: pr.title })
   }
 }
 
-async function start(
+export async function startReview(
   db: Database,
   config: Config,
   repo: string,
   prNumber: number,
   title: string,
+  /**
+   * The claim this run already holds.
+   *
+   * Taken as an argument rather than made here, because the scheduler claims
+   * the row before it starts anything. Claiming again found the row already
+   * running, returned null, and this function quietly did nothing while the
+   * row said it was working: a dead run that looks like a busy one, holding a
+   * slot forever.
+   */
+  lease: string,
 ): Promise<void> {
-  const lease = claimRun(
-    db,
-    repo,
-    prNumber,
-    config.staleClaimMinutes * 60_000,
-    'pr',
-  )
-  if (lease === null) {
-    return
-  }
   const subject: Subject = { repo, kind: 'pr', number: prNumber }
   const runId = `${repo}#${prNumber}@${Date.now()}`
   const run: RunRef = { subject, runId }
