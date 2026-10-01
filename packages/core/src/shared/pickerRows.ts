@@ -11,6 +11,15 @@ export interface GroupableRepo {
   readonly ownerType: 'user' | 'org'
 }
 
+/**
+ * How many repositories one add may carry.
+ *
+ * Shared because the route enforces it and the picker has to stop short of it
+ * while choosing. Left to drift, the panel invites a selection the route then
+ * rejects, and the only symptom is an Add button that appears to do nothing.
+ */
+export const MAX_REPOS_PER_ADD = 50
+
 export const HEADER_ROW = 34
 export const REPO_ROW = 52
 

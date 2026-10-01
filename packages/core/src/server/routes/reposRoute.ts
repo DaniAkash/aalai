@@ -9,6 +9,7 @@ import {
   searchRepos,
 } from '@/lib/ghRepos'
 import { type RunPolicy, runPolicySchema } from '@/modules/settings/domains'
+import { MAX_REPOS_PER_ADD } from '@/shared/pickerRows'
 
 /**
  * Adding is a batch, and the policy is required rather than optional.
@@ -25,7 +26,7 @@ const addSchema = z.object({
   repos: z
     .array(z.string().regex(/^[\w.-]+\/[\w.-]+$/))
     .min(1)
-    .max(50),
+    .max(MAX_REPOS_PER_ADD),
   requireLabel: z.string().optional(),
   policy: runPolicySchema,
 })
@@ -83,12 +84,17 @@ export const reposRoute = new Hono()
   .post('/repos', zValidator('json', addSchema), async (c) => {
     const { repos, ...rest } = c.req.valid('json')
     const config = await loadConfig()
+    // Deduplicated as well as filtered. The picker holds a set so it cannot
+    // produce a repeat, but this is a route rather than a private helper, and
+    // a repeated name would append the same repository twice and then be
+    // worked on twice.
+    const wanted = [...new Set(repos)]
     const known = new Set(config.watch.map((w) => w.repo))
     // Already watched ones are skipped rather than rejected. The picker marks
     // them and disables the row, so the only way to send one is a list that
     // went stale mid-pick, and failing the whole batch for that would lose the
     // other nine choices.
-    const added = repos
+    const added = wanted
       .filter((repo) => !known.has(repo))
       .map((repo) => ({ repo, ...rest }))
     if (added.length === 0) {

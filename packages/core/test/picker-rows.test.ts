@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   flattenRows,
+  MAX_REPOS_PER_ADD,
   pinnedHeader,
   pushedLabel,
   rowHeight,
@@ -132,5 +133,14 @@ describe('the labels on a row', () => {
   test('a missing or unparseable date renders nothing, not Invalid Date', () => {
     expect(pushedLabel('')).toBe('')
     expect(pushedLabel('not a date')).toBe('')
+  })
+})
+
+describe('the batch cap', () => {
+  test('is a real number the route and the picker both read', () => {
+    // Shared rather than written twice. When these drifted, the panel invited
+    // a selection the route rejected and Add looked like it did nothing.
+    expect(MAX_REPOS_PER_ADD).toBeGreaterThan(0)
+    expect(Number.isInteger(MAX_REPOS_PER_ADD)).toBe(true)
   })
 })

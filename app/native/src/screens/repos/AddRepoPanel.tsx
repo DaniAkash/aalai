@@ -78,6 +78,30 @@ export function AddRepoPanel({
 
       <PolicyChoice value={picker.policy} onChange={picker.setPolicy} />
 
+      {watch.isError ? (
+        <div className="px-4 pt-3" data-testid="add-error">
+          <ErrorNote
+            message={watch.error.message}
+            onRetry={() =>
+              watch.mutate({
+                repos: [...picker.selected],
+                policy: picker.policy,
+              })
+            }
+          />
+        </div>
+      ) : null}
+
+      {picker.atLimit ? (
+        <p
+          className="px-4 pt-2 text-[11.5px] text-muted-foreground"
+          data-testid="add-limit"
+        >
+          That is the most that can be added at once ({picker.limit}). Add these
+          first, then pick the rest.
+        </p>
+      ) : null}
+
       <div className="flex items-center gap-2 px-4 pt-3 pb-4">
         {picker.selected.size > 0 ? (
           <button

@@ -1,5 +1,6 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
+  MAX_REPOS_PER_ADD,
   type PickerRow,
   pinnedHeader,
   type RunPolicy,
@@ -57,6 +58,8 @@ export function useRepoPicker(watched: readonly string[]) {
   const items = virtual.getVirtualItems()
   const lastIndex = items[items.length - 1]?.index ?? 0
   const rowCount = rows.length
+  const topIndex =
+    virtual.getVirtualItemForOffset(virtual.scrollOffset ?? 0)?.index ?? 0
 
   // Driven by what is rendered rather than by a scroll handler, so it follows
   // the window instead of a pixel threshold that has to be kept in step with
@@ -85,11 +88,16 @@ export function useRepoPicker(watched: readonly string[]) {
     setPolicy,
     selected,
     toggle: (repo: string) => setSelected((prev) => flip(prev, repo)),
+    atLimit: selected.size >= MAX_REPOS_PER_ADD,
+    limit: MAX_REPOS_PER_ADD,
     clear: () => setSelected(new Set()),
     virtual,
     items,
     scrollRef,
-    pinned: pinnedHeader(rows, items[0]?.index ?? 0) as PickerRow | undefined,
+    // The index at the scroll offset, NOT items[0]. The rendered window starts
+    // an overscan above the viewport, so items[0] is up to six rows higher and
+    // the pinned header lags a whole section behind what is on screen.
+    pinned: pinnedHeader(rows, topIndex) as PickerRow | undefined,
     watchedSet,
   }
 }
@@ -98,8 +106,13 @@ function flip(set: ReadonlySet<string>, value: string): ReadonlySet<string> {
   const next = new Set(set)
   if (next.has(value)) {
     next.delete(value)
-  } else {
-    next.add(value)
+    return next
   }
+  // Stops at the same number the route accepts. Past it the request is
+  // rejected as a whole, so the choice would be silently discarded.
+  if (next.size >= MAX_REPOS_PER_ADD) {
+    return set
+  }
+  next.add(value)
   return next
 }

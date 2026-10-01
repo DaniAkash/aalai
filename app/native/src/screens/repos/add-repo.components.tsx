@@ -1,6 +1,7 @@
 import { type PickerRow, pushedLabel, starsLabel } from 'aalai/shared'
 import { Building2, Check, Lock, User } from 'lucide-react'
-import { Checkbox } from '@/components/motion/checkbox'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { SPRING_PRESS } from '@/lib/ease'
 import { cn } from '@/lib/utils'
 import type { AccessibleRepo } from '@/modules/api/repos.infinite'
 
@@ -53,12 +54,7 @@ function RepoRow({
         already ? 'opacity-45' : 'hover:bg-muted/60',
       )}
     >
-      <Checkbox
-        checked={selected}
-        onCheckedChange={onToggle}
-        disabled={already}
-        aria-label={repo.repo}
-      />
+      <TickBox checked={selected} />
       <span className="min-w-0 flex-1">
         <span className="block truncate font-mono text-[13px]">
           <span className="text-muted-foreground">{owner}/</span>
@@ -77,6 +73,51 @@ function RepoRow({
         </span>
       ) : null}
     </button>
+  )
+}
+
+/**
+ * The selected mark, drawn rather than clickable.
+ *
+ * It looks like a checkbox and deliberately is not one. The whole row is the
+ * button, and a real checkbox inside it nests one interactive element in
+ * another: invalid, and worse, a click on the box toggles it and then bubbles
+ * to the row and toggles it back, so pressing the obvious target did nothing
+ * at all.
+ */
+function TickBox({ checked }: { checked: boolean }) {
+  const reduce = useReducedMotion()
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        'inline-flex size-[18px] shrink-0 items-center justify-center rounded-md border-2 transition-colors duration-200',
+        checked
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-muted-foreground/50 bg-background',
+      )}
+    >
+      <AnimatePresence initial={false}>
+        {checked ? (
+          <motion.svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3.2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-3"
+            initial={reduce ? false : { scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={reduce ? { opacity: 0 } : { scale: 0.5, opacity: 0 }}
+            transition={SPRING_PRESS}
+          >
+            <title>selected</title>
+            <path d="M5 13l4 4L19 7" />
+          </motion.svg>
+        ) : null}
+      </AnimatePresence>
+    </span>
   )
 }
 

@@ -88,21 +88,54 @@ export async function searchRepos(
 }
 
 /**
- * The account, then the organizations it belongs to.
+ * Every owner that actually has a repository this account can reach.
  *
- * The account goes first rather than sorting alphabetically, because its own
- * repositories are the ones being looked for most of the time and an
- * alphabetical list buries them among the organizations.
+ * Read from the repository list rather than from `/user/orgs`, because
+ * membership is not the only way to reach one: a repository shared through a
+ * team, or one the account is a collaborator on, has an owner that appears in
+ * no organization list. Scoping a search to membership alone makes those
+ * repositories browsable but permanently unfindable.
+ *
+ * It also stops the selector offering organizations that have nothing in them.
  */
 export async function repoOwners(): Promise<RepoOwner[]> {
-  const [user, orgs] = await Promise.all([
+  const [viewer, repos] = await Promise.all([
     ghJson<{ login: string }>(['api', 'user']),
-    ghJson<{ login: string }[]>(['api', '/user/orgs?per_page=100']),
+    allAccessibleOwners(),
   ])
-  return [
-    { login: user.login, type: 'user' as const },
-    ...orgs.map((o) => ({ login: o.login, type: 'org' as const })),
-  ]
+  const others = repos.filter((o) => o.login !== viewer.login)
+  return [{ login: viewer.login, type: 'user' }, ...others]
+}
+
+async function allAccessibleOwners(): Promise<RepoOwner[]> {
+  const query = new URLSearchParams({
+    affiliation: 'owner,collaborator,organization_member',
+    per_page: '100',
+  })
+  // One paginated sweep rather than a page at a time: the owner list has to be
+  // complete to be useful, and it is asked for once and cached rather than per
+  // keystroke.
+  const out = await gh([
+    'api',
+    '--paginate',
+    '--jq',
+    '.[] | [.owner.login, .owner.type] | @tsv',
+    `/user/repos?${query.toString()}`,
+  ])
+  const seen = new Map<string, RepoOwner>()
+  for (const line of out.split('\n')) {
+    const [login, type] = line.split('\t')
+    if (login === undefined || login === '') {
+      continue
+    }
+    if (!seen.has(login)) {
+      seen.set(login, {
+        login,
+        type: type === 'Organization' ? 'org' : 'user',
+      })
+    }
+  }
+  return [...seen.values()]
 }
 
 function page1(items: RestRepo[], link: string | undefined): RepoPage {
