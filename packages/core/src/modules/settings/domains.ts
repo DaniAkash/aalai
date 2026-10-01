@@ -31,6 +31,17 @@ const factoryDomain = z.object({
    * How long a run may hold its claim before another poll may take it over.
    * A process killed mid-run would otherwise leave the issue claimed forever.
    */
+  /**
+   * How many runs may hold a slot at once.
+   *
+   * Each one drives a coding agent and a checkout, and this is a laptop. Two
+   * rather than one by default, because one long run would otherwise block
+   * everything behind it. Four is the ceiling: past that they compete for the
+   * same disk and network rather than going faster.
+   */
+  maxParallelRuns: z.number().int().min(1).max(4).default(2),
+  /** Stops promotion without stopping what is already running. */
+  queuePaused: z.boolean().default(false),
   staleClaimMinutes: z.number().int().min(1).default(30),
   keepWorktreeOnFailure: z.boolean().default(true),
   /** The default a watched repository inherits when it sets no policy. */

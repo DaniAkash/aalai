@@ -32,6 +32,8 @@ describe('settings domains', () => {
     writeDomain(sqlite, 'factory', {
       pollSeconds: 120,
       maxIssuesPerPoll: 5,
+      maxParallelRuns: 2,
+      queuePaused: false,
       staleClaimMinutes: 15,
       keepWorktreeOnFailure: false,
       defaultPolicy: 'automatic' as const,
@@ -41,6 +43,8 @@ describe('settings domains', () => {
     expect(readDomain(sqlite, 'factory')).toEqual({
       pollSeconds: 120,
       maxIssuesPerPoll: 5,
+      maxParallelRuns: 2,
+      queuePaused: false,
       staleClaimMinutes: 15,
       keepWorktreeOnFailure: false,
       defaultPolicy: 'automatic' as const,
@@ -75,6 +79,8 @@ describe('settings domains', () => {
     writeDomain(sqlite, 'factory', {
       pollSeconds: 90,
       maxIssuesPerPoll: 25,
+      maxParallelRuns: 2,
+      queuePaused: false,
       staleClaimMinutes: 30,
       keepWorktreeOnFailure: true,
       defaultPolicy: 'automatic' as const,
