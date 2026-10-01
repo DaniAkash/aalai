@@ -31,48 +31,54 @@ export function ScopeStrip({
   const reduce = useReducedMotion()
   const options = [{ login: 'all', type: 'user' as const }, ...owners]
   return (
-    <div
-      className="mt-3 flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]"
-      role="tablist"
-      aria-label="Owner"
-    >
-      {options.map((owner) => {
-        const active = owner.login === value
-        const Glyph = owner.type === 'org' ? Building2 : User
-        return (
-          <button
-            key={owner.login}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            data-testid={`scope-${owner.login}`}
-            onClick={() => onChange(owner.login)}
-            className={cn(
-              'relative inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] transition-colors',
-              active
-                ? 'font-semibold text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {active && !reduce ? (
-              <motion.span
-                layoutId={layoutId}
-                transition={GLIDE}
-                className="absolute inset-0 rounded-full bg-accent"
-              />
-            ) : null}
-            {active && reduce ? (
-              <span className="absolute inset-0 rounded-full bg-accent" />
-            ) : null}
-            {owner.login === 'all' ? null : (
-              <Glyph className="relative size-3" />
-            )}
-            <span className="relative">
-              {owner.login === 'all' ? 'All' : owner.login}
-            </span>
-          </button>
-        )
-      })}
+    // Ten owners do not fit, so the strip scrolls. The fade on the trailing
+    // edge is the only thing that says so: a row that simply ends at the panel
+    // border reads as the whole list.
+    <div className="relative mt-3">
+      <div
+        className="flex gap-1 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]"
+        role="tablist"
+        aria-label="Owner"
+      >
+        {options.map((owner) => {
+          const active = owner.login === value
+          const Glyph = owner.type === 'org' ? Building2 : User
+          return (
+            <button
+              key={owner.login}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`scope-${owner.login}`}
+              onClick={() => onChange(owner.login)}
+              className={cn(
+                'relative inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[12px] transition-colors',
+                active
+                  ? 'font-semibold text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {active && !reduce ? (
+                <motion.span
+                  layoutId={layoutId}
+                  transition={GLIDE}
+                  className="absolute inset-0 rounded-full bg-accent"
+                />
+              ) : null}
+              {active && reduce ? (
+                <span className="absolute inset-0 rounded-full bg-accent" />
+              ) : null}
+              {owner.login === 'all' ? null : (
+                <Glyph className="relative size-3" />
+              )}
+              <span className="relative">
+                {owner.login === 'all' ? 'All' : owner.login}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-popover to-transparent" />
     </div>
   )
 }
