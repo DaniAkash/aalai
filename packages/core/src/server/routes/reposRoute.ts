@@ -10,10 +10,24 @@ import {
 } from '@/lib/ghRepos'
 import { type RunPolicy, runPolicySchema } from '@/modules/settings/domains'
 
+/**
+ * Adding is a batch, and the policy is required rather than optional.
+ *
+ * A batch because the picker can select several at once, and one request keeps
+ * them a single all or nothing change to the config rather than a half applied
+ * list if the third one collides.
+ *
+ * Required because an omitted policy used to mean "inherit the factory
+ * default", which is automatic, so a repository could be signed up for
+ * unattended pull requests by a decision nobody made or saw.
+ */
 const addSchema = z.object({
-  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  repos: z
+    .array(z.string().regex(/^[\w.-]+\/[\w.-]+$/))
+    .min(1)
+    .max(50),
   requireLabel: z.string().optional(),
-  policy: runPolicySchema.optional(),
+  policy: runPolicySchema,
 })
 
 /**
@@ -67,12 +81,20 @@ export const reposRoute = new Hono()
     return c.json({ owners: await repoOwners() })
   })
   .post('/repos', zValidator('json', addSchema), async (c) => {
-    const body = c.req.valid('json')
+    const { repos, ...rest } = c.req.valid('json')
     const config = await loadConfig()
-    if (config.watch.some((w) => w.repo === body.repo)) {
+    const known = new Set(config.watch.map((w) => w.repo))
+    // Already watched ones are skipped rather than rejected. The picker marks
+    // them and disables the row, so the only way to send one is a list that
+    // went stale mid-pick, and failing the whole batch for that would lose the
+    // other nine choices.
+    const added = repos
+      .filter((repo) => !known.has(repo))
+      .map((repo) => ({ repo, ...rest }))
+    if (added.length === 0) {
       return c.json({ error: 'already watched' }, 409)
     }
-    const next = { ...config, watch: [...config.watch, body] }
+    const next = { ...config, watch: [...config.watch, ...added] }
     await saveConfig(next)
     return c.json({ repos: next.watch })
   })

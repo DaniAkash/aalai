@@ -42,10 +42,7 @@ export function headerValue(head: string, name: string): string | undefined {
  * tell a short page from the last page, and either stops one page early or asks
  * for a page that does not exist.
  */
-export function linkPage(
-  link: string | undefined,
-  rel: string,
-): number | null {
+export function linkPage(link: string | undefined, rel: string): number | null {
   if (link === undefined || link === '') {
     return null
   }

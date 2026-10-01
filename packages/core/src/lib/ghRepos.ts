@@ -134,6 +134,8 @@ function toOwnedRepo(r: RestRepo): OwnedRepo {
 async function ghWithHeaders(
   path: string,
 ): Promise<{ body: string; link: string | undefined }> {
-  const { head, body } = splitResponse(await gh(['api', '-i', '-X', 'GET', path]))
+  const { head, body } = splitResponse(
+    await gh(['api', '-i', '-X', 'GET', path]),
+  )
   return { body, link: headerValue(head, 'link') }
 }

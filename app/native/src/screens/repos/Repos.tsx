@@ -1,14 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Check, Lock, Plus, Search, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useState } from 'react'
 import { Empty, ErrorNote, Loading } from '@/components/state'
 import {
-  useOwnedRepos,
   useSetRepoPolicy,
   useUnwatchRepo,
   useWatchedRepos,
-  useWatchRepo,
 } from '@/modules/api/repos.hooks'
+import { AddRepoPanel } from './AddRepoPanel'
 import { PolicyPicker } from './repos.components'
 
 /**
@@ -50,7 +49,7 @@ export function Repos() {
     <>
       <Head onAdd={() => setPicking(true)} />
       {picking ? (
-        <Picker
+        <AddRepoPanel
           onDone={() => {
             setPicking(false)
             refresh()
@@ -109,82 +108,6 @@ export function Repos() {
         </div>
       ))}
     </>
-  )
-}
-
-function Picker({
-  watched,
-  onDone,
-}: {
-  watched: string[]
-  onDone: () => void
-}) {
-  const [filter, setFilter] = useState('')
-  const owned = useOwnedRepos()
-  const watch = useWatchRepo({ onSuccess: onDone })
-
-  return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-border bg-card">
-      <div className="flex items-center gap-2.5 border-border border-b px-3.5 py-2.5">
-        <Search className="size-4 text-muted-foreground" />
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter repositories you own"
-          className="flex-1 bg-transparent text-[13.5px] outline-none"
-        />
-        <button
-          type="button"
-          aria-label="Close the repository picker"
-          onClick={onDone}
-          className="text-muted-foreground hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-
-      {owned.isPending ? (
-        <div className="p-3">
-          <Loading rows={3} />
-        </div>
-      ) : null}
-      {owned.isError ? (
-        <div className="p-3">
-          <ErrorNote
-            message={owned.error.message}
-            onRetry={() => owned.refetch()}
-          />
-        </div>
-      ) : null}
-
-      <div className="max-h-72 overflow-y-auto">
-        {owned.data?.repos
-          .filter((r) => r.repo.toLowerCase().includes(filter.toLowerCase()))
-          .slice(0, 50)
-          .map((r) => {
-            const already = watched.includes(r.repo)
-            return (
-              <button
-                key={r.repo}
-                type="button"
-                disabled={already || watch.isPending}
-                onClick={() => watch.mutate({ repo: r.repo })}
-                className="flex w-full items-center gap-2.5 border-border border-b px-3.5 py-2.5 text-left last:border-b-0 hover:bg-muted/50 disabled:opacity-40"
-              >
-                {already ? (
-                  <Check className="size-3.5 text-chart-2" />
-                ) : (
-                  <Plus className="size-3.5 text-muted-foreground" />
-                )}
-                <span className="font-mono text-[12.5px]">{r.repo}</span>
-                {r.isPrivate ? (
-                  <Lock className="ml-auto size-3 text-muted-foreground" />
-                ) : null}
-              </button>
-            )
-          })}
-      </div>
-    </div>
   )
 }
 
