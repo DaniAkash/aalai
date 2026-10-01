@@ -116,7 +116,10 @@ function withToolSurface<T>(work: () => Promise<T>): Promise<T> {
 async function once(config: Config): Promise<void> {
   await withToolSurface(async () => {
     const db = openState()
-    const handled = await pollOnce(db, config)
+    // Waits for what it started, because a one shot pass that returns while
+    // its runs are still going is a pass that reports a number and then kills
+    // the work behind it.
+    const handled = await pollOnce(db, config, { awaitStarted: true })
     log.info('single pass complete', { handled })
     db.close()
   })

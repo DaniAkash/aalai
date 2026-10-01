@@ -34,10 +34,9 @@ export function Inbox() {
     )
   }
 
-  if (gates.length === 0) {
+  if (gates.length === 0 && offers.length === 0) {
     return (
       <Screen title="Inbox" sub="Nothing is waiting on you.">
-        <Offers offers={offers} />
         <Empty
           title="Nothing is waiting on you"
           detail={
@@ -59,7 +58,11 @@ export function Inbox() {
 
   return (
     <Screen
-      sub={`${gates.length} waiting on you. Nothing moves until you answer.`}
+      sub={
+        gates.length === 0
+          ? `${offers.length} new, waiting on your call.`
+          : `${gates.length} waiting on you. Nothing moves until you answer.`
+      }
       title="Inbox"
     >
       <Offers offers={offers} />

@@ -12,7 +12,7 @@ import {
   runningCount,
 } from '@/modules/runs/queue'
 import { promoteQueued } from '@/watch/scheduler'
-import { claimRun, completeRun } from '@/watch/state'
+import { completeRun } from '@/watch/state'
 
 /**
  * The ceiling is the only thing between a queue of thirty and a laptop that
@@ -31,9 +31,16 @@ const config = (over: Partial<Config> = {}): Config =>
     ...over,
   }) as Config
 
-/** Stands in for the pipeline: claims the run, which is what makes it running. */
-const startIt = (entry: { repo: string; number: number }) => {
-  claimRun(db, entry.repo, entry.number)
+/**
+ * Stands in for the pipeline, and deliberately takes time.
+ *
+ * The first version of this stub claimed synchronously and returned, which is
+ * exactly what hid the bug it was supposed to catch: the scheduler awaited the
+ * work, so a capacity of four still started one run per pass, and a stub that
+ * finished instantly made that look correct.
+ */
+const startIt = async () => {
+  await Bun.sleep(50)
 }
 
 beforeEach(() => {
@@ -56,7 +63,7 @@ function queueMany(n: number): void {
 describe('the ceiling', () => {
   test('ten queued and a ceiling of two starts exactly two', async () => {
     queueMany(10)
-    const result = await promoteQueued(db, config(), startIt)
+    const result = promoteQueued(db, config(), startIt)
     expect(result.started).toHaveLength(2)
     expect(runningCount(db)).toBe(2)
   })
@@ -69,7 +76,7 @@ describe('the ceiling', () => {
 
   test('four is the ceiling and it is honoured', async () => {
     queueMany(10)
-    await promoteQueued(db, config({ maxParallelRuns: 4 }), startIt)
+    promoteQueued(db, config({ maxParallelRuns: 4 }), startIt)
     expect(runningCount(db)).toBe(4)
   })
 
@@ -77,30 +84,30 @@ describe('the ceiling', () => {
     // The pass runs on every tick, so running it again must be a no-op rather
     // than another two runs.
     queueMany(10)
-    await promoteQueued(db, config(), startIt)
-    await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
     expect(runningCount(db)).toBe(2)
   })
 
   test('nothing queued starts nothing', async () => {
-    const result = await promoteQueued(db, config(), startIt)
+    const result = promoteQueued(db, config(), startIt)
     expect(result.started).toHaveLength(0)
   })
 
   test('a freed slot is taken by the next in line', async () => {
     queueMany(4)
-    await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
     expect(runningCount(db)).toBe(2)
     completeRun(db, 'acme/app', 1, { status: 'delivered' })
     expect(runningCount(db)).toBe(1)
-    const again = await promoteQueued(db, config(), startIt)
+    const again = promoteQueued(db, config(), startIt)
     expect(again.started).toHaveLength(1)
     expect(runningCount(db)).toBe(2)
   })
 
   test('lowering the ceiling below what is running kills nothing', async () => {
     queueMany(6)
-    await promoteQueued(db, config({ maxParallelRuns: 4 }), startIt)
+    promoteQueued(db, config({ maxParallelRuns: 4 }), startIt)
     expect(runningCount(db)).toBe(4)
     // The running set drains on its own; promotion simply stops.
     const after = await promoteQueued(
@@ -128,40 +135,43 @@ describe('pausing', () => {
 
   test('never kills what is already running', async () => {
     queueMany(5)
-    await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
     expect(runningCount(db)).toBe(2)
-    await promoteQueued(db, config({ queuePaused: true }), startIt)
+    promoteQueued(db, config({ queuePaused: true }), startIt)
     expect(runningCount(db)).toBe(2)
   })
 
   test('resuming picks up where it left off, in order', async () => {
     queueMany(4)
-    await promoteQueued(db, config({ queuePaused: true }), startIt)
-    const resumed = await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config({ queuePaused: true }), startIt)
+    const resumed = promoteQueued(db, config(), startIt)
     expect(resumed.started.map((e) => e.number)).toEqual([1, 2])
   })
 })
 
 describe('when starting goes wrong', () => {
-  test('one unstartable run does not spin the loop forever', async () => {
+  test('a throw from the work does not take the promotion down with it', async () => {
+    // Synchronous, which is the dangerous shape: it escapes before there is a
+    // promise to catch it on unless the call is wrapped.
     queueMany(3)
-    let calls = 0
-    const result = await promoteQueued(db, config(), () => {
-      calls += 1
-      throw new Error('could not start')
-    })
-    expect(calls).toBe(1)
-    expect(result.started).toHaveLength(0)
-    // Still queued, so the next pass can try it again.
-    expect(readRun(db, 'acme/app', 'issue', 1)?.status).toBe('queued')
+    expect(() =>
+      promoteQueued(db, config(), () => {
+        throw new Error('could not start')
+      }),
+    ).not.toThrow()
+    await Bun.sleep(10)
   })
 
-  test('a start that fails does not consume a slot', async () => {
+  test('the slot stays taken until the work settles its own row', async () => {
+    // The contract moved with the atomic claim: by the time the work runs, the
+    // row is already `running`. Releasing it is the work's job, which is why
+    // startQueued settles on every path including a throw.
     queueMany(2)
-    await promoteQueued(db, config(), () => {
+    promoteQueued(db, config(), () => {
       throw new Error('no')
     })
-    expect(runningCount(db)).toBe(0)
+    await Bun.sleep(10)
+    expect(runningCount(db)).toBe(2)
   })
 })
 
@@ -170,25 +180,29 @@ describe('a gate frees its slot for the next run', () => {
     // The whole reason `blocked` is a state. Without this, a plan gate left
     // open overnight holds a slot nothing is using.
     queueMany(3)
-    await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
     expect(runningCount(db)).toBe(2)
 
     blockRun(db, 'acme/app', 'issue', 1)
     expect(runningCount(db)).toBe(1)
 
-    const after = await promoteQueued(db, config(), startIt)
+    const after = promoteQueued(db, config(), startIt)
     expect(after.started.map((e) => e.number)).toEqual([3])
     expect(runningCount(db)).toBe(2)
   })
 
   test('answering it puts it behind whatever is already waiting', async () => {
     queueMany(3)
-    await promoteQueued(db, config(), startIt)
+    promoteQueued(db, config(), startIt)
     blockRun(db, 'acme/app', 'issue', 1)
     // Answered, so it rejoins the queue rather than jumping back into a slot.
+    // The pause is the point rather than a flake guard: "goes to the back"
+    // only means anything if its new position is later than what is already
+    // waiting, and these timestamps are milliseconds.
+    await Bun.sleep(5)
     enqueueRun(db, 'acme/app', 'issue', 1)
     expect(readRun(db, 'acme/app', 'issue', 1)?.status).toBe('queued')
-    const after = await promoteQueued(db, config(), startIt)
+    const after = promoteQueued(db, config(), startIt)
     // 3 was queued first and is still ahead of the one that just came back.
     expect(after.started.map((e) => e.number)).toEqual([3])
   })

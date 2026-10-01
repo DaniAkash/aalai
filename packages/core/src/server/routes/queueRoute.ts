@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { loadConfig, saveConfig } from '@/config'
 import { RUN_STATUSES, SUBJECT_KINDS } from '@/modules/db/schema/schema'
 import {
+  claimQueuedSubject,
   dismissRun,
   enqueueRun,
   listQueue,
@@ -77,16 +78,6 @@ export const queueRoute = new Hono()
       const config = await loadConfig()
       const db = openState()
       try {
-        // Refused rather than silently queued behind everything else. A Start
-        // button that quietly means "eventually" is a broken button.
-        if (runningCount(db) >= config.maxParallelRuns) {
-          return c.json(
-            {
-              error: `no free slot, ${config.maxParallelRuns} already running`,
-            },
-            409,
-          )
-        }
         if (!enqueueRun(db, repo, kind, number)) {
           const current = readRun(db, repo, kind, number)
           if (current?.status !== 'queued') {
@@ -96,13 +87,30 @@ export const queueRoute = new Hono()
             )
           }
         }
-        const entry = readRun(db, repo, kind, number)
-        if (entry === undefined) {
-          return c.json({ error: 'not found' }, 404)
+        // Claimed through the same capacity bounded statement the scheduler
+        // uses, so two Start presses and a poll cannot each believe they have
+        // the last free slot. Refused rather than silently queued behind
+        // everything else: a Start button that quietly means "eventually" is a
+        // broken button.
+        const claimed = claimQueuedSubject(
+          db,
+          repo,
+          kind,
+          number,
+          config.maxParallelRuns,
+        )
+        if (claimed === undefined) {
+          return c.json(
+            {
+              error: `no free slot, ${config.maxParallelRuns} already running`,
+            },
+            409,
+          )
         }
-        // Started, not awaited: a run takes minutes and the request should not.
-        void startQueued(db, config, entry)
-        return c.json({ entry })
+        // Detached, and it opens its own connection, so closing this one in
+        // the finally below cannot pull the floor out from under it.
+        void startQueued(config, claimed.entry, claimed.lease)
+        return c.json({ entry: claimed.entry })
       } finally {
         db.close()
       }
@@ -119,7 +127,11 @@ export const queueRoute = new Hono()
       try {
         if (!paused) {
           const next = await loadConfig()
-          void promoteQueued(db, next, (entry) => startQueued(db, next, entry))
+          // Resuming fills whatever is free immediately rather than waiting a
+          // whole poll interval to look like it did anything.
+          promoteQueued(db, next, (entry, lease) =>
+            startQueued(next, entry, lease),
+          )
         }
         return c.json({ paused })
       } finally {

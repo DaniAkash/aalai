@@ -174,6 +174,132 @@ export function readRun(
 }
 
 /**
+ * Promotes the oldest queued run, but only if a slot is genuinely free.
+ *
+ * One statement, because a read of the running count followed by a separate
+ * claim is a race: two pollers, or a poll and a Start button, can both see the
+ * last free slot and both take it. The count is a subquery here so the check
+ * and the claim cannot be interleaved.
+ */
+export function claimNextQueued(
+  db: Database,
+  capacity: number,
+): { entry: QueueEntry; lease: string } | undefined {
+  const lease = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const promoted = db
+    .query<
+      { repo: string; subject_kind: SubjectKind; subject_number: number },
+      [string, string, number]
+    >(
+      `UPDATE runs
+          SET status = 'running', lease = ?, started_at = ?
+        WHERE rowid = (
+                SELECT rowid FROM runs
+                 WHERE status = 'queued'
+                 ORDER BY queued_at ASC
+                 LIMIT 1
+              )
+          AND (SELECT COUNT(*) FROM runs WHERE status = 'running') < ?
+      RETURNING repo, subject_kind, subject_number`,
+    )
+    .get(lease, now, capacity)
+  if (promoted === null) {
+    return undefined
+  }
+  const entry = readRun(
+    db,
+    promoted.repo,
+    promoted.subject_kind,
+    promoted.subject_number,
+  )
+  return entry === undefined ? undefined : { entry, lease }
+}
+
+/**
+ * Claims one named queued run, if a slot is free.
+ *
+ * The Start button's path. Same ceiling, same single statement, so it cannot
+ * race the scheduler for the last slot.
+ */
+export function claimQueuedSubject(
+  db: Database,
+  repo: string,
+  kind: SubjectKind,
+  number: number,
+  capacity: number,
+): { entry: QueueEntry; lease: string } | undefined {
+  const lease = crypto.randomUUID()
+  const now = new Date().toISOString()
+  const promoted = db
+    .query<
+      { repo: string },
+      [string, string, string, SubjectKind, number, number]
+    >(
+      `UPDATE runs
+          SET status = 'running', lease = ?, started_at = ?
+        WHERE repo = ? AND subject_kind = ? AND subject_number = ?
+          AND status = 'queued'
+          AND (SELECT COUNT(*) FROM runs WHERE status = 'running') < ?
+      RETURNING repo`,
+    )
+    .get(lease, now, repo, kind, number, capacity)
+  if (promoted === null) {
+    return undefined
+  }
+  const entry = readRun(db, repo, kind, number)
+  return entry === undefined ? undefined : { entry, lease }
+}
+
+/**
+ * Lets a run that was waiting on a person back into the running set.
+ *
+ * Capacity bounded for the same reason as promotion: answering three gates at
+ * once must not start three runs on a machine that allows two.
+ */
+export function readmitRun(
+  db: Database,
+  repo: string,
+  kind: SubjectKind,
+  number: number,
+  capacity: number,
+): boolean {
+  const changed = db
+    .query<{ repo: string }, [string, SubjectKind, number, number]>(
+      `UPDATE runs
+          SET status = 'running'
+        WHERE repo = ? AND subject_kind = ? AND subject_number = ?
+          AND status = 'blocked'
+          AND (SELECT COUNT(*) FROM runs WHERE status = 'running') < ?
+      RETURNING repo`,
+    )
+    .get(repo, kind, number, capacity)
+  return changed !== null
+}
+
+/**
+ * Whether a run that was waiting on a person may carry on now.
+ *
+ * A run only needs a slot back if it gave one up. Anything that is not blocked
+ * never left the running set, so there is nothing to readmit and saying no
+ * would strand it: the gate would be answered and the machine would never be
+ * told. Only a genuinely blocked run on a full machine waits.
+ */
+export function resumeAfterGate(
+  db: Database,
+  repo: string,
+  kind: SubjectKind,
+  number: number,
+  capacity: number,
+): boolean {
+  const row = readRun(db, repo, kind, number)
+  if (row?.status !== 'blocked') {
+    return true
+  }
+  return readmitRun(db, repo, kind, number, capacity)
+}
+
+/**
  * Releases a run's slot while it waits for a person.
  *
  * A gate can wait for days. If a blocked run kept its slot, a factory with
@@ -188,7 +314,10 @@ export function blockRun(
 ): boolean {
   const changed = query(db)
     .update(runs)
-    .set({ status: 'blocked', lease: null })
+    // The lease is kept. The machine that opened this gate is still holding
+    // the run and will settle it with that token when the gate is answered;
+    // clearing it here would make its own completion silently discarded.
+    .set({ status: 'blocked' })
     .where(and(subjectOf(repo, kind, number), eq(runs.status, 'running')))
     .returning({ repo: runs.repo })
     .all()

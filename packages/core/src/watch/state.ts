@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { and, desc, eq, lt, or } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt, or } from 'drizzle-orm'
 import { openDb } from '@/modules/db/db'
 import { query } from '@/modules/db/query'
 import { cursor, runs } from '@/modules/db/schema/schema'
@@ -208,7 +208,11 @@ export function takeOverRun(
         eq(runs.repo, repo),
         eq(runs.subjectKind, kind),
         eq(runs.subjectNumber, issue),
-        eq(runs.status, 'running'),
+        // Blocked as well as running. A run waiting at a gate holds no slot,
+        // but it is still a live run; if the process that opened the gate went
+        // away, nothing else could ever claim it and the gate would sit in the
+        // inbox forever as something nobody can act on.
+        inArray(runs.status, ['running', 'blocked']),
         lt(runs.startedAt, staleBefore),
       ),
     )

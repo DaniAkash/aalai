@@ -35,7 +35,12 @@ export function workableIssues(issues: readonly GhIssue[]): GhIssue[] {
 /** How far back a first-ever poll looks, so a fresh install does not replay the archive. */
 const COLD_START_LOOKBACK_MS = 10 * 60 * 1000
 
-export async function pollOnce(db: Database, config: Config): Promise<number> {
+export async function pollOnce(
+  db: Database,
+  config: Config,
+  /** Waits for what this pass started. The one shot path needs it; the watcher must not. */
+  options: { readonly awaitStarted?: boolean } = {},
+): Promise<number> {
   // Before anything new is claimed. A run whose process went away is still
   // claimed and still has a branch, so picking it up first is what stops a
   // restart looking like an abandoned issue.
@@ -53,15 +58,15 @@ export async function pollOnce(db: Database, config: Config): Promise<number> {
     handled += await pollRepo(db, config, watched)
   }
   // Last, so anything offered this pass can be queued and started on the next
-  // one rather than waiting a whole poll interval. Started rather than awaited:
-  // a run takes minutes and the poller has to keep going.
-  void promoteQueued(db, config, (entry) =>
-    startQueued(db, config, entry),
-  ).catch((error: unknown) => {
-    log.error('promotion failed', {
-      error: error instanceof Error ? error.message : String(error),
-    })
-  })
+  // one rather than waiting a whole poll interval. Promotion itself is
+  // synchronous; what it starts is not, and each started run owns its own
+  // connection so this tick may close its own whenever it likes.
+  const promotion = promoteQueued(db, config, (entry, lease) =>
+    startQueued(config, entry, lease),
+  )
+  if (options.awaitStarted === true) {
+    await promotion.settled
+  }
   return handled
 }
 

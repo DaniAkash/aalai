@@ -5,12 +5,15 @@ import { join } from 'node:path'
 import { openDb } from '@/modules/db/db'
 import {
   blockRun,
+  claimNextQueued,
+  claimQueuedSubject,
   dismissRun,
   enqueueRun,
   listQueue,
   liveQueue,
   nextQueued,
   offerRun,
+  readmitRun,
   readRun,
   runningCount,
 } from '@/modules/runs/queue'
@@ -227,5 +230,102 @@ describe('what the interface reads', () => {
     offerRun(db, { repo: 'acme/app', kind: 'pr', number: 7 })
     expect(listQueue(db, 'offered')).toHaveLength(2)
     expect(readRun(db, 'acme/app', 'pr', 7)?.kind).toBe('pr')
+  })
+})
+
+describe('the ceiling is enforced by the claim, not by a count read before it', () => {
+  test('a claim past the ceiling is refused', () => {
+    // The race the single statement exists to close: two promoters can both
+    // read "one slot free" and then both claim. Here the second claim is made
+    // while the first is still running, which is the same situation.
+    for (const n of [1, 2, 3]) {
+      offer('acme/app', n)
+      enqueueRun(db, 'acme/app', 'issue', n)
+    }
+    expect(claimNextQueued(db, 2)).toBeDefined()
+    expect(claimNextQueued(db, 2)).toBeDefined()
+    expect(claimNextQueued(db, 2)).toBeUndefined()
+    expect(runningCount(db)).toBe(2)
+  })
+
+  test('it takes the oldest, so the queue is a queue', async () => {
+    offer('acme/app', 1)
+    offer('acme/app', 2)
+    enqueueRun(db, 'acme/app', 'issue', 2)
+    await Bun.sleep(5)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    expect(claimNextQueued(db, 4)?.entry.number).toBe(2)
+  })
+
+  test('a claim hands back a lease, so the run can settle itself later', () => {
+    offer('acme/app', 1)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    const claimed = claimNextQueued(db, 1)
+    expect(claimed?.lease).toBeTruthy()
+    expect(
+      completeRun(db, 'acme/app', 1, {
+        status: 'delivered',
+        lease: claimed?.lease,
+      }),
+    ).toBe(true)
+  })
+
+  test('nothing queued claims nothing', () => {
+    expect(claimNextQueued(db, 4)).toBeUndefined()
+  })
+
+  test('starting one by name obeys the same ceiling', () => {
+    for (const n of [1, 2]) {
+      offer('acme/app', n)
+      enqueueRun(db, 'acme/app', 'issue', n)
+    }
+    expect(claimQueuedSubject(db, 'acme/app', 'issue', 1, 1)).toBeDefined()
+    // The Start button, with the only slot now busy.
+    expect(claimQueuedSubject(db, 'acme/app', 'issue', 2, 1)).toBeUndefined()
+  })
+})
+
+describe('coming back from a gate', () => {
+  test('the lease survives being blocked, so the run can still settle itself', () => {
+    offer('acme/app', 1)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    const claimed = claimNextQueued(db, 1)
+    blockRun(db, 'acme/app', 'issue', 1)
+    // The machine that opened the gate is still holding this run. Clearing the
+    // lease here would make its own completion silently discarded.
+    expect(
+      completeRun(db, 'acme/app', 1, {
+        status: 'delivered',
+        lease: claimed?.lease,
+      }),
+    ).toBe(true)
+  })
+
+  test('readmission is refused when the machine is full', () => {
+    offer('acme/app', 1)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    claimNextQueued(db, 1)
+    blockRun(db, 'acme/app', 'issue', 1)
+    // Something else took the freed slot while the gate was open.
+    offer('acme/app', 2)
+    enqueueRun(db, 'acme/app', 'issue', 2)
+    claimNextQueued(db, 1)
+    expect(readmitRun(db, 'acme/app', 'issue', 1, 1)).toBe(false)
+    expect(readRun(db, 'acme/app', 'issue', 1)?.status).toBe('blocked')
+  })
+
+  test('readmission succeeds once there is room', () => {
+    offer('acme/app', 1)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    claimNextQueued(db, 1)
+    blockRun(db, 'acme/app', 'issue', 1)
+    expect(readmitRun(db, 'acme/app', 'issue', 1, 1)).toBe(true)
+    expect(runningCount(db)).toBe(1)
+  })
+
+  test('only a blocked run can be readmitted', () => {
+    offer('acme/app', 1)
+    enqueueRun(db, 'acme/app', 'issue', 1)
+    expect(readmitRun(db, 'acme/app', 'issue', 1, 4)).toBe(false)
   })
 })

@@ -67,7 +67,14 @@ export function restoreLegacyRows(db: Database): void {
     db.exec(
       `INSERT OR IGNORE INTO runs
          (repo, subject_kind, subject_number, status, branch, pr_url, error, lease, started_at, finished_at)
-       SELECT repo, 'issue', issue, status, branch, pr_url, error, ${lease}, started_at, finished_at
+       SELECT repo, 'issue', issue,
+              -- Normalised on the way back in. These rows are restored after
+              -- the migrations have run, so the migration that renames the
+              -- status never sees them, and a row left saying 'claimed' is a
+              -- status nothing recognises: not counted as running, not in the
+              -- queue, and able to be picked up a second time.
+              CASE status WHEN 'claimed' THEN 'running' ELSE status END,
+              branch, pr_url, error, ${lease}, started_at, finished_at
        FROM runs_pre_migrations`,
     )
     db.exec('DROP TABLE runs_pre_migrations')

@@ -8,7 +8,7 @@ import {
   subscribeGateAnswered,
   supersedeOpenGates,
 } from '@/modules/gates'
-import { blockRun } from '@/modules/runs/queue'
+import { blockRun, resumeAfterGate } from '@/modules/runs/queue'
 import { latestArtifact } from '@/modules/work/artifacts'
 import type { ConversationEntry } from '@/modules/work/conversation'
 import { readConversation } from '@/modules/work/conversation'
@@ -143,6 +143,28 @@ export const gateKeeper = fromCallback<
         answeredOn: gate.answeredOn ?? 'unknown',
         at: Date.now(),
       })
+    }
+    // Back into the running set before the machine carries on, and only if
+    // there is room. The run gave up its slot when it started waiting, so
+    // resuming without taking one back would let it work outside the ceiling,
+    // and answering three gates at once would start three runs on a machine
+    // that allows two. A refusal is not an error: the run stays blocked and
+    // the next poll tries again.
+    const readmitted = resumeAfterGate(
+      deps.db,
+      deps.run.subject.repo,
+      deps.run.subject.kind,
+      deps.run.subject.number,
+      // Unbounded when there is no config to read one from. A gate actor
+      // driven directly, without the scheduler that owns the ceiling, has no
+      // slot to take back and must not be stranded waiting for one.
+      deps.config?.maxParallelRuns ?? Number.MAX_SAFE_INTEGER,
+    )
+    if (!readmitted) {
+      log.info('answered, waiting for a free slot before resuming', {
+        gateId: gate.id,
+      })
+      return false
     }
     sendBack({
       type: 'GATE_ANSWERED',
