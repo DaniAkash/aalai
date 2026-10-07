@@ -220,9 +220,12 @@ export function MessageBubbleContent({
       ) : null}
       <MessageBubbleLayoutContext.Provider value={notifyLayout}>
         <motion.div
-          initial={
-            animateIn ? (reduce ? { opacity: 0 } : { opacity: 0 }) : false
-          }
+          // Diverges from the registry, which branches on `reduce` here to
+          // two identical values. The content layer animates opacity only, so
+          // the starting point is the same either way and the reduced motion
+          // difference is carried by `transition` below. Re-adding this
+          // component from the registry will bring the redundancy back.
+          initial={animateIn ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={
             reduce ? { duration: 0.12, ease: EASE_OUT } : BUBBLE_CONTENT_REVEAL
