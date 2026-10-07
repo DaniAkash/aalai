@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { LANE_COPY, type Lane as LaneKey } from 'aalai/shared'
 import { useState } from 'react'
 import { Screen } from '@/components/layout/Screen'
+import { useToast } from '@/components/providers/ToastProvider'
 import { ErrorNote } from '@/components/state'
 import { useStartRun } from '@/modules/api/queue.hooks'
 import { useWork, type WorkItem } from '@/modules/api/work.hooks'
@@ -24,7 +25,10 @@ export function WorkList() {
   const [filter, setFilter] = useState<FilterKey>('all')
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set())
   const work = useWork({ variables: {} })
-  const start = useStartRun()
+  const toast = useToast()
+  const start = useStartRun({
+    onError: (error) => toast.failed('Could not start that work', error),
+  })
   const navigate = useNavigate()
 
   if (work.isPending) {
@@ -114,9 +118,12 @@ function startProps(
     return {}
   }
   const subject = { repo: item.repo, kind: item.kind, number: item.number }
+  const mine =
+    start.variables?.repo === item.repo &&
+    start.variables?.number === item.number
   return {
     onStart: () => start.mutate(subject),
-    starting: start.isPending && start.variables?.number === item.number,
+    starting: start.isPending && mine,
   }
 }
 

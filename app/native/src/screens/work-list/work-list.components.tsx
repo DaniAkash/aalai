@@ -105,39 +105,41 @@ export function WorkRow({
   return (
     <div
       className={cn(
-        'rounded-[var(--radius)] border bg-card transition-colors',
+        'relative rounded-[var(--radius)] border bg-card transition-colors',
         live
           ? 'border-[color-mix(in_oklab,var(--chart-2)_28%,var(--card))]'
           : 'border-border hover:border-ring',
       )}
     >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left"
-      >
+      <div className="flex items-start gap-3 px-4 py-3">
         <Avatar station={item.station} lane={item.lane} />
-        <span className="min-w-0 flex-1">
+        {/*
+          The title stretches its hit area over the whole card rather than the
+          card being a button, so Start can sit beside it. A button inside a
+          button is invalid and the inner one stops receiving its own clicks.
+        */}
+        <button
+          type="button"
+          onClick={onOpen}
+          className="min-w-0 flex-1 text-left after:absolute after:inset-0 after:content-['']"
+        >
           <span className="block font-medium leading-snug">{item.title}</span>
           <Meta item={item} />
-        </span>
-        {onStart ? null : (
-          <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        )}
-      </button>
-      {onStart ? (
-        <div className="flex justify-end px-4 pb-3">
+        </button>
+        {onStart ? (
           <button
             type="button"
             onClick={onStart}
             disabled={starting}
-            className="inline-flex items-center gap-1.5 rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3 py-1.5 font-medium text-[13px] transition-colors hover:bg-secondary active:translate-y-px disabled:opacity-60"
+            className="relative z-10 inline-flex shrink-0 items-center gap-1.5 rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3 py-1.5 font-medium text-[13px] transition-colors hover:bg-secondary active:translate-y-px disabled:opacity-60"
           >
             <Play className="size-3.5" />
             {starting ? 'Starting' : 'Start'}
           </button>
-        </div>
-      ) : null}
+        ) : (
+          <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        )}
+      </div>
       {live ? <Progress label={item.station ?? 'working'} /> : null}
     </div>
   )
