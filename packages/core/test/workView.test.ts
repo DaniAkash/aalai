@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { laneOf, parseWorkId, workId } from '@/shared/workView'
+import { RUN_STATUSES } from '@/modules/db/schema/schema'
+import { LANES, laneOf, parseWorkId, workId } from '@/shared/workView'
 
 /**
  * A work id goes into a url and comes back as a route param, so the only
@@ -54,11 +55,22 @@ describe('laneOf', () => {
     expect(laneOf('queued')).toBe('queued')
   })
 
-  test('sends every ending that is not delivery to one lane', () => {
+  test('separates an ending that went wrong from one that did not', () => {
     expect(laneOf('delivered')).toBe('done')
     expect(laneOf('failed')).toBe('failed')
     expect(laneOf('stopped')).toBe('failed')
-    expect(laneOf('skipped')).toBe('failed')
+  })
+
+  test('work turned down on purpose is not a failure', () => {
+    // Dismissing an offer sets `skipped`. Under failures it reads as an error
+    // a person cannot act on, because nothing offers to start it again.
+    expect(laneOf('skipped')).toBe('dismissed')
+  })
+
+  test('every status has a lane', () => {
+    for (const status of RUN_STATUSES) {
+      expect(LANES).toContain(laneOf(status))
+    }
   })
 
   test('a blocked run is waiting on a person, not on the machine', () => {

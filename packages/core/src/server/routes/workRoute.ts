@@ -28,7 +28,6 @@ export const workRoute = new Hono().get('/work', async (c) => {
     const items = listQueue(db)
       .filter((entry) => repo === undefined || entry.repo === repo)
       .map((entry): WorkItem => {
-        const subject = `${entry.repo}#${entry.number}`
         return {
           id: workId(entry),
           repo: entry.repo,
@@ -39,7 +38,13 @@ export const workRoute = new Hono().get('/work', async (c) => {
           title: entry.title ?? `${entry.kind} #${entry.number}`,
           status: entry.status,
           lane: laneOf(entry.status),
-          station: stations.get(subject) ?? null,
+          // Only a running row has a station. The event buffer retains
+          // finished runs, so without this a delivered row would show the
+          // last stage it passed through as though it were happening now.
+          station:
+            entry.status === 'running'
+              ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
+              : null,
           branch: entry.branch,
           prUrl: entry.prUrl,
           error: entry.error,
@@ -85,17 +90,32 @@ function countByLane(items: readonly WorkItem[]): Record<Lane, number> {
  * be a database round trip per stage for a fact nothing durable needs. The
  * buffer already has it, keyed per run, so this reads the last stage entered.
  *
- * Keyed by subject rather than run id: a row is addressed by repository and
- * number, and a run id carries a start timestamp the list never sees.
+ * A run id is `repo#number@timestamp` and carries no subject kind, while the
+ * database allows an issue and a pull request to share a number in one
+ * repository. Two runs that collide on a key are therefore indistinguishable
+ * from here, and the entry is dropped rather than guessed: no avatar letter is
+ * better than the wrong station on both rows. The step events that arrive with
+ * the thread carry their own station and this stops being inferred.
  */
 function runningStations(): Map<string, string> {
   const bySubject = new Map<string, string>()
+  const ambiguous = new Set<string>()
   for (const { runId } of activeRuns()) {
     const subject = runId.split('@')[0]
-    const stage = subject === undefined ? undefined : lastStage(replay(runId))
-    if (subject !== undefined && stage !== undefined) {
+    if (subject === undefined) {
+      continue
+    }
+    if (bySubject.has(subject)) {
+      ambiguous.add(subject)
+      continue
+    }
+    const stage = lastStage(replay(runId))
+    if (stage !== undefined) {
       bySubject.set(subject, stage)
     }
+  }
+  for (const subject of ambiguous) {
+    bySubject.delete(subject)
   }
   return bySubject
 }

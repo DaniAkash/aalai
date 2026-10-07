@@ -33,6 +33,7 @@ export const LANES = [
   'offered',
   'done',
   'failed',
+  'dismissed',
 ] as const
 export type Lane = (typeof LANES)[number]
 
@@ -65,6 +66,10 @@ export const LANE_COPY: Record<Lane, { label: string; empty: string }> = {
     label: 'Needs another look',
     empty: 'Work that stopped or failed appears here.',
   },
+  dismissed: {
+    label: 'Dismissed',
+    empty: 'Work you turned down appears here.',
+  },
 }
 
 /**
@@ -75,6 +80,14 @@ export const LANE_COPY: Record<Lane, { label: string; empty: string }> = {
  * the person already decided and the machine is the one holding it up. Telling
  * a person their laptop is busy when actually nobody has said go would be the
  * worse of the two mistakes.
+ *
+ * `skipped` is its own lane for the same reason. Dismissing an offer sets it,
+ * and a thing a person turned down on purpose is not a thing that went wrong.
+ * Filed under failures it would read as an un-actionable error, since nothing
+ * on the screen offers to start it again.
+ *
+ * Every status is named rather than defaulted, so adding one to the enum is a
+ * type error here instead of a silent arrival in the failure lane.
  */
 export function laneOf(status: RunStatus): Lane {
   switch (status) {
@@ -88,7 +101,10 @@ export function laneOf(status: RunStatus): Lane {
       return 'offered'
     case 'delivered':
       return 'done'
-    default:
+    case 'skipped':
+      return 'dismissed'
+    case 'failed':
+    case 'stopped':
       return 'failed'
   }
 }

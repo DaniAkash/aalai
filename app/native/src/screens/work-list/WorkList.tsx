@@ -118,8 +118,12 @@ function startProps(
     return {}
   }
   const subject = { repo: item.repo, kind: item.kind, number: item.number }
+  // Kind is part of the match because an issue and a pull request may share a
+  // number in one repository, and without it starting either one puts both
+  // rows into the pending state.
   const mine =
     start.variables?.repo === item.repo &&
+    start.variables?.kind === item.kind &&
     start.variables?.number === item.number
   return {
     onStart: () => start.mutate(subject),
@@ -130,9 +134,11 @@ function startProps(
 /**
  * Where a row goes when it is opened.
  *
- * The thread is not built yet, so this lands on the run it came from rather
- * than pretending a route exists. The id is the subject, which is what the
- * thread will take when it arrives.
+ * A row with a pull request opens it, which is the one destination that is
+ * genuinely about this subject. Everything else lands on the run history,
+ * which is the whole list rather than this row's own run: the projection
+ * carries no run id, so there is nothing to select on. That is a placeholder
+ * until the thread exists, and the thread is what this should open.
  */
 function openWork(
   item: WorkItem,
