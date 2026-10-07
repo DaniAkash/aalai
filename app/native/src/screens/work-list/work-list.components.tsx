@@ -6,6 +6,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/motion/collapsible'
+import { Skeleton } from '@/components/ui/skeleton'
 import { GithubMark } from '@/components/ui/svgs/github'
 import { cn } from '@/lib/utils'
 import type { WorkItem } from '@/modules/api/work.hooks'
@@ -229,8 +230,8 @@ function Avatar({
 export function RowSkeleton() {
   return (
     <div className="rounded-[var(--radius)] border border-border bg-card px-4 py-3">
-      <div className="h-3.5 w-[62%] animate-pulse rounded-md bg-muted" />
-      <div className="mt-2.5 h-3 w-[38%] animate-pulse rounded-md bg-muted" />
+      <Skeleton className="h-3.5 w-[62%]" />
+      <Skeleton className="mt-2.5 h-3 w-[38%]" />
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useAnimatedSidebar } from '@/components/motion/animated-sidebar'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { useQueue } from '@/modules/api/queue.hooks'
 
@@ -109,12 +110,12 @@ function note(running: number, capacity: number): string {
 
 function MeterSkeleton({ collapsed }: { collapsed: boolean }) {
   if (collapsed) {
-    return <div className="h-4 animate-pulse rounded-md bg-muted" />
+    return <Skeleton className="h-4" />
   }
   return (
     <div className="rounded-[var(--radius)] border border-border bg-background p-3">
-      <div className="mb-2 h-4 w-32 animate-pulse rounded-md bg-muted" />
-      <div className="h-1.5 w-full animate-pulse rounded-full bg-muted" />
+      <Skeleton className="mb-2 h-4 w-32" />
+      <Skeleton className="h-1.5 w-full rounded-full" />
     </div>
   )
 }
