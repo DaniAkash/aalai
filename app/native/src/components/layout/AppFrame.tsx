@@ -9,6 +9,7 @@ import {
   AnimatedSidebarHeader,
   AnimatedSidebarInset,
   AnimatedSidebarProvider,
+  useAnimatedSidebar,
 } from '@/components/motion/animated-sidebar'
 import { useLiveEvents } from '@/modules/api/live.hooks'
 import { useGateOnActivation } from '@/modules/notify/useGateOnActivation'
@@ -38,14 +39,7 @@ export function AppFrame() {
     >
       <AnimatedSidebar collapsible="icon" ariaLabel="Sections">
         <AnimatedSidebarHeader>
-          <span className="flex items-baseline gap-2">
-            <span className="font-heading font-semibold text-[15px] tracking-tight">
-              aalai
-            </span>
-            <span className="font-medium text-[10.5px] text-muted-foreground uppercase tracking-wider">
-              factory
-            </span>
-          </span>
+          <Brand />
         </AnimatedSidebarHeader>
 
         <AnimatedSidebarContent>
@@ -86,4 +80,26 @@ function crumbFor(path: string): string {
     return `aalai / ${section}`
   }
   return `aalai / ${section} / ${section === 'gates' ? 'one gate' : 'one run'}`
+}
+
+/**
+ * The name, and what it is, when the second one fits.
+ *
+ * Collapsed the sidebar is 68px, which the suffix does not fit inside and
+ * would otherwise be clipped mid word against the title bar.
+ */
+function Brand() {
+  const { state } = useAnimatedSidebar()
+  return (
+    <span className="flex min-w-0 items-baseline gap-2">
+      <span className="font-heading font-semibold text-[15px] tracking-tight">
+        aalai
+      </span>
+      {state === 'collapsed' ? null : (
+        <span className="truncate font-medium text-[10.5px] text-muted-foreground uppercase tracking-wider">
+          factory
+        </span>
+      )}
+    </span>
+  )
 }

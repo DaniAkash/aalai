@@ -13,6 +13,7 @@ import {
   AnimatedSidebarMenu,
   AnimatedSidebarMenuButton,
   AnimatedSidebarMenuItem,
+  useAnimatedSidebar,
 } from '@/components/motion/animated-sidebar'
 import { Input } from '@/components/motion/input'
 import { GithubMark } from '@/components/ui/svgs/github'
@@ -34,6 +35,8 @@ export function SideNav() {
   const work = useWork({ variables: {} })
   const repos = useWatchedRepos()
   const navigate = useNavigate()
+  const { state, setOpen } = useAnimatedSidebar()
+  const collapsed = state === 'collapsed'
 
   const items = work.data?.lanes.flatMap((lane) => lane.items) ?? []
   const match = filter.trim().toLowerCase()
@@ -55,53 +58,63 @@ export function SideNav() {
   return (
     <>
       <AnimatedSidebarGroup>
-        <Input
+        <Search_
+          collapsed={collapsed}
           value={filter}
           onChange={setFilter}
-          placeholder="Find work or a repository"
-          aria-label="Find work or a repository"
-          leftIcon={<Search className="size-3.5" />}
-          className="h-8 text-[13px]"
+          onExpand={() => setOpen(true)}
         />
       </AnimatedSidebarGroup>
 
-      <Section label="Needs you">
+      <Section
+        label="Needs you"
+        empty="Nothing is waiting on you."
+        collapsed={collapsed}
+      >
         {needsYou.map((item) => (
           <Entry
             key={item.id}
             icon={<KindIcon kind={item.kind} />}
+            label={item.title}
+            collapsed={collapsed}
             onSelect={toWork}
           >
             {item.title}
           </Entry>
         ))}
-        {needsYou.length === 0 ? (
-          <Quiet>Nothing is waiting on you.</Quiet>
-        ) : null}
       </Section>
 
-      <Section label="Recent work">
+      <Section
+        label="Recent work"
+        empty="Work you start appears here."
+        collapsed={collapsed}
+      >
         {recent.map((item) => (
           <Entry
             key={item.id}
             icon={
               <Initial station={item.station} live={item.lane === 'running'} />
             }
+            label={item.title}
+            collapsed={collapsed}
             onSelect={toWork}
           >
             {item.title}
           </Entry>
         ))}
-        {recent.length === 0 ? (
-          <Quiet>Work you start appears here.</Quiet>
-        ) : null}
       </Section>
 
-      <Section label="Repositories">
+      <Section
+        label="Repositories"
+        empty="Add a repository and aalai will watch it."
+        collapsed={collapsed}
+      >
         {watched.map((repo) => (
           <Entry
             key={repo}
             icon={<GithubMark className="size-3.5" />}
+            label={repo}
+            collapsed={collapsed}
             badge={
               items.filter((item) => item.repo === repo).length || undefined
             }
@@ -110,49 +123,138 @@ export function SideNav() {
             <span className="font-mono text-[12px]">{repo}</span>
           </Entry>
         ))}
-        {watched.length === 0 ? (
-          <Quiet>Add a repository and aalai will watch it.</Quiet>
-        ) : null}
       </Section>
     </>
   )
 }
 
-function Section({ label, children }: { label: string; children: ReactNode }) {
+/**
+ * A heading, the rows, and what to say when there are none.
+ *
+ * The empty line sits outside the menu list rather than among its items. The
+ * menu wraps each child in its own element, so a paragraph placed in there
+ * ends up containing a div, which is invalid and which React refuses to nest.
+ */
+/**
+ * A search field that becomes a button when there is no room for one.
+ *
+ * At 68px a text input is a box a person cannot read, type into or recognise.
+ * Collapsed it is the icon alone, and pressing it opens the sidebar and puts
+ * the cursor in the field, so the control still does what its icon promises.
+ */
+function Search_({
+  collapsed,
+  value,
+  onChange,
+  onExpand,
+}: {
+  collapsed: boolean
+  value: string
+  onChange: (next: string) => void
+  onExpand: () => void
+}) {
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-label="Find work or a repository"
+        className="grid size-8 w-full place-items-center rounded-[calc(var(--radius)-2px)] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      >
+        <Search className="size-4" />
+      </button>
+    )
+  }
+  return (
+    <Input
+      value={value}
+      onChange={onChange}
+      placeholder="Find work or a repository"
+      aria-label="Find work or a repository"
+      leftIcon={<Search className="size-3.5" />}
+      className="h-8 text-[13px]"
+    />
+  )
+}
+
+/**
+ * A heading, the rows, and what to say when there are none.
+ *
+ * The empty line sits outside the menu list rather than among its items. The
+ * menu wraps each child in its own element, so a paragraph placed in there
+ * ends up containing a div, which is invalid and which React refuses to nest.
+ *
+ * Collapsed, the line is dropped rather than wrapped: a sentence reflowed into
+ * a 68px column is four words of nonsense stacked vertically, and the heading
+ * it belonged to has already faded out.
+ */
+function Section({
+  label,
+  empty,
+  collapsed,
+  children,
+}: {
+  label: string
+  empty: string
+  collapsed: boolean
+  children: ReactNode[]
+}) {
   return (
     <AnimatedSidebarGroup>
       <AnimatedSidebarGroupLabel>{label}</AnimatedSidebarGroupLabel>
       <AnimatedSidebarGroupContent>
-        <AnimatedSidebarMenu>{children}</AnimatedSidebarMenu>
+        {children.length === 0 ? (
+          collapsed ? null : (
+            <p className="px-2 py-1 text-[12px] text-muted-foreground">
+              {empty}
+            </p>
+          )
+        ) : (
+          <AnimatedSidebarMenu>{children}</AnimatedSidebarMenu>
+        )}
       </AnimatedSidebarGroupContent>
     </AnimatedSidebarGroup>
   )
 }
 
+/**
+ * One row, with its name reachable when the sidebar has hidden it.
+ *
+ * Collapsed, every row in a section is the same glyph, so the label has to be
+ * available some other way or the rail is four identical marks.
+ */
 function Entry({
   icon,
   badge,
+  label,
+  collapsed,
   onSelect,
   children,
 }: {
   icon: ReactNode
   badge?: number
+  label: string
+  collapsed: boolean
   onSelect: () => void
   children: ReactNode
 }) {
+  // A native title rather than the registry tooltip. That component drives its
+  // child by cloning it, and the menu button declares an explicit prop list
+  // with no rest spread, so the handlers it clones in are dropped and nothing
+  // ever opens. The title bar uses the real tooltip, where the child is a
+  // plain button and the cloning lands.
   return (
     <AnimatedSidebarMenuItem>
-      <AnimatedSidebarMenuButton icon={icon} badge={badge} onSelect={onSelect}>
-        {children}
-      </AnimatedSidebarMenuButton>
+      <span className="block" title={collapsed ? label : undefined}>
+        <AnimatedSidebarMenuButton
+          icon={icon}
+          badge={badge}
+          onSelect={onSelect}
+        >
+          {children}
+        </AnimatedSidebarMenuButton>
+      </span>
     </AnimatedSidebarMenuItem>
-  )
-}
-
-/** Says the section is empty by saying what will fill it. */
-function Quiet({ children }: { children: ReactNode }) {
-  return (
-    <p className="px-2 py-1 text-[12px] text-muted-foreground">{children}</p>
   )
 }
 
