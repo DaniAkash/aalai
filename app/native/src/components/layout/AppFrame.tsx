@@ -38,8 +38,13 @@ export function AppFrame() {
     >
       <AnimatedSidebar collapsible="icon" ariaLabel="Sections">
         <AnimatedSidebarHeader>
-          <span className="font-heading font-semibold text-[15px] tracking-tight">
-            aalai
+          <span className="flex items-baseline gap-2">
+            <span className="font-heading font-semibold text-[15px] tracking-tight">
+              aalai
+            </span>
+            <span className="font-medium text-[10.5px] text-muted-foreground uppercase tracking-wider">
+              factory
+            </span>
           </span>
         </AnimatedSidebarHeader>
 
