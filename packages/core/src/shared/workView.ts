@@ -94,22 +94,28 @@ export function laneOf(status: RunStatus): Lane {
 }
 
 /**
- * A url safe name for a subject.
+ * A url safe name for a subject, which has to survive being a route param.
  *
  * A repository has a slash in it and an issue number alone is not unique
- * across repositories, so the four parts are joined with a separator that
- * appears in none of them.
+ * across repositories, so all four parts are joined. The separator is a tilde
+ * because GitHub allows neither owners nor repositories to contain one: owners
+ * are alphanumeric and hyphens, repositories add underscore and period. An
+ * underscore would have looked like the obvious choice and `my_repo` would
+ * have stopped parsing.
  */
+const SEPARATOR = '~'
+
 export function workId(subject: {
   repo: string
   kind: SubjectKind
   number: number
 }): string {
-  return `${subject.repo.replace('/', '__')}__${subject.kind}__${subject.number}`
+  const [owner = '', name = ''] = subject.repo.split('/')
+  return [owner, name, subject.kind, String(subject.number)].join(SEPARATOR)
 }
 
 const WORK_ID =
-  /^(?<owner>[^_]+)__(?<name>[^_]+)__(?<kind>issue|pr)__(?<number>\d+)$/
+  /^(?<owner>[A-Za-z0-9-]+)~(?<name>[A-Za-z0-9._-]+)~(?<kind>issue|pr)~(?<number>\d+)$/
 
 export function parseWorkId(
   id: string,
