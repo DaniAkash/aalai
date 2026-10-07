@@ -7,6 +7,7 @@ export type { RunPolicy } from '@/modules/settings/domains'
 export * from './pickerRows'
 export * from './queueView'
 export * from './triageView'
+export * from './workView'
 
 /**
  * Formatting both the terminal and the interface need.

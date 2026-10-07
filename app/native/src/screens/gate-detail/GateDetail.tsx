@@ -33,7 +33,7 @@ function openedAgo(openedAt: string): string {
 }
 
 export function GateDetail() {
-  const { gateId } = useParams({ from: '/gates/$gateId' })
+  const { gateId } = useParams({ from: '/_app/gates/$gateId' })
   const gate = useGate({ variables: { id: gateId } })
   const thread = useThread({ variables: { id: gateId } })
   const answer = useAnswerGate()

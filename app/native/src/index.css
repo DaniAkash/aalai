@@ -139,3 +139,30 @@
     @apply font-sans;
   }
 }
+
+/*
+  The two motions the work list uses to say something is happening.
+
+  Indeterminate on purpose: a determinate bar needs a step index, which arrives
+  with the tools that report one. A sweep says the machine is alive without
+  claiming a percentage nothing has measured.
+*/
+@keyframes work-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes work-wave {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+  30% {
+    opacity: 1;
+  }
+}

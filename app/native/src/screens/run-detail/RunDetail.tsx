@@ -18,7 +18,7 @@ import {
  * still working has no summary yet and the interesting case is watching it.
  */
 export function RunDetail() {
-  const { runId } = useParams({ from: '/runs/$runId' })
+  const { runId } = useParams({ from: '/_app/runs/$runId' })
   const live = useRunEvents({ variables: { runId } })
 
   if (live.isPending) {

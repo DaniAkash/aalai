@@ -6,6 +6,7 @@ import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
 import { settingsRoute } from '@/server/routes/settingsRoute'
 import { toolsRoute } from '@/server/routes/toolsRoute'
+import { workRoute } from '@/server/routes/workRoute'
 
 /**
  * The service's own HTTP surface.
@@ -22,6 +23,7 @@ export const app = new Hono()
   .route('/api', gatesRoute)
   .route('/api', queueRoute)
   .route('/api', settingsRoute)
+  .route('/api', workRoute)
   .route('/api', toolsRoute)
 
 /** The contract the UI's typed client is generated from. */
