@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { AnimatedSidebarTrigger } from '@/components/motion/animated-sidebar'
+import { Tooltip } from '@/components/motion/tooltip'
 import { cn } from '@/lib/utils'
 import type { StreamState } from '@/modules/api/events'
 import { TauriOnly } from '@/modules/host/TauriOnly'
@@ -91,22 +92,22 @@ function Destinations() {
         const Icon = item.icon
         const active = path.startsWith(item.to)
         return (
-          <button
-            key={item.to}
-            type="button"
-            title={item.label}
-            aria-label={item.label}
-            aria-current={active ? 'page' : undefined}
-            onClick={() => void navigate({ to: item.to })}
-            className={cn(
-              'grid size-7 place-items-center rounded-[calc(var(--radius)-4px)] transition-colors',
-              active
-                ? 'bg-secondary text-foreground'
-                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-            )}
-          >
-            <Icon className="size-3.5" />
-          </button>
+          <Tooltip key={item.to} content={item.label} side="bottom">
+            <button
+              type="button"
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              onClick={() => void navigate({ to: item.to })}
+              className={cn(
+                'grid size-7 place-items-center rounded-[calc(var(--radius)-4px)] transition-colors',
+                active
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          </Tooltip>
         )
       })}
     </nav>
