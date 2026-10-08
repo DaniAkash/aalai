@@ -1,5 +1,14 @@
-import { PanelLeft } from 'lucide-react'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
+import {
+  GitBranch,
+  Inbox,
+  PanelLeft,
+  Settings2,
+  SlidersHorizontal,
+} from 'lucide-react'
+import type { ComponentType } from 'react'
 import { AnimatedSidebarTrigger } from '@/components/motion/animated-sidebar'
+import { Tooltip } from '@/components/motion/tooltip'
 import { cn } from '@/lib/utils'
 import type { StreamState } from '@/modules/api/events'
 import { TauriOnly } from '@/modules/host/TauriOnly'
@@ -38,6 +47,7 @@ export function TitleBar({
         {crumb}
       </span>
       <StreamDot state={stream} />
+      <Destinations />
     </div>
   )
 }
@@ -53,6 +63,55 @@ export function TitleBar({
  */
 function DragSurface() {
   return <div data-tauri-drag-region className="absolute inset-0" />
+}
+
+/**
+ * The screens that are genuinely somewhere else.
+ *
+ * Here rather than in the sidebar, because the sidebar is an index of the
+ * work. These are small, rarely visited, and the same three on every screen,
+ * which is what a toolbar is for.
+ */
+const DESTINATIONS: {
+  to: string
+  label: string
+  icon: ComponentType<{ className?: string }>
+}[] = [
+  { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/queue', label: 'Queue', icon: SlidersHorizontal },
+  { to: '/repos', label: 'Repositories', icon: GitBranch },
+  { to: '/settings', label: 'Settings', icon: Settings2 },
+]
+
+function Destinations() {
+  const path = useRouterState({ select: (s) => s.location.pathname })
+  const navigate = useNavigate()
+  return (
+    <nav className="relative ml-auto flex items-center gap-0.5 pl-2">
+      {DESTINATIONS.map((item) => {
+        const Icon = item.icon
+        const active = path.startsWith(item.to)
+        return (
+          <Tooltip key={item.to} content={item.label} side="bottom">
+            <button
+              type="button"
+              aria-label={item.label}
+              aria-current={active ? 'page' : undefined}
+              onClick={() => void navigate({ to: item.to })}
+              className={cn(
+                'grid size-7 place-items-center rounded-[calc(var(--radius)-4px)] transition-colors',
+                active
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+              )}
+            >
+              <Icon className="size-3.5" />
+            </button>
+          </Tooltip>
+        )
+      })}
+    </nav>
+  )
 }
 
 /**

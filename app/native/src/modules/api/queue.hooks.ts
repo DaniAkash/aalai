@@ -3,6 +3,7 @@ import { createMutation, createQuery } from 'react-query-kit'
 import { api } from '@/modules/api/client'
 import { parseResponse } from '@/modules/api/parse'
 import { queryClient } from '@/modules/api/queryClient'
+import { useWork } from '@/modules/api/work.hooks'
 
 type Client = Awaited<ReturnType<typeof api>>
 type QueueResponse = InferResponseType<Client['api']['queue']['$get'], 200>
@@ -38,8 +39,16 @@ export const useQueue = createQuery<QueueResponse>({
   refetchInterval: 4000,
 })
 
+/**
+ * Both views of the same rows, refreshed together.
+ *
+ * The work list is a projection of the table the queue mutates, so a start or
+ * a dismissal changes both. Invalidating only the queue leaves the work list
+ * showing a Start button on a row that already started until its next poll.
+ */
 const refresh = () => {
   void queryClient.invalidateQueries({ queryKey: useQueue.getKey() })
+  void queryClient.invalidateQueries({ queryKey: useWork.getKey() })
 }
 
 interface Subject {

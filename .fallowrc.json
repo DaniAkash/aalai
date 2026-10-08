@@ -35,7 +35,8 @@
         "app/native/src/routeTree.gen.ts",
         "app/native/src/lib/ease.ts",
         "app/native/src/lib/hooks/**",
-        "app/native/src/components/agents/**"
+        "app/native/src/components/agents/**",
+        "app/native/src/lib/touch.ts"
       ],
       "rules": {
         "unused-exports": "off",

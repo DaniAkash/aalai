@@ -9,82 +9,98 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as QueueRouteImport } from './routes/queue'
-import { Route as ReposRouteImport } from './routes/repos'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as GatesGateIdRouteImport } from './routes/gates/$gateId'
-import { Route as RunsIndexRouteImport } from './routes/runs/index'
-import { Route as RunsRunIdRouteImport } from './routes/runs/$runId'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppInboxRouteImport } from './routes/_app/inbox'
+import { Route as AppQueueRouteImport } from './routes/_app/queue'
+import { Route as AppReposRouteImport } from './routes/_app/repos'
+import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppGatesGateIdRouteImport } from './routes/_app/gates/$gateId'
+import { Route as AppRunsIndexRouteImport } from './routes/_app/runs/index'
+import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const QueueRoute = QueueRouteImport.update({
+const AppInboxRoute = AppInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppQueueRoute = AppQueueRouteImport.update({
   id: '/queue',
   path: '/queue',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const ReposRoute = ReposRouteImport.update({
+const AppReposRoute = AppReposRouteImport.update({
   id: '/repos',
   path: '/repos',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
+const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const GatesGateIdRoute = GatesGateIdRouteImport.update({
+const AppGatesGateIdRoute = AppGatesGateIdRouteImport.update({
   id: '/gates/$gateId',
   path: '/gates/$gateId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const RunsIndexRoute = RunsIndexRouteImport.update({
+const AppRunsIndexRoute = AppRunsIndexRouteImport.update({
   id: '/runs/',
   path: '/runs/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
-const RunsRunIdRoute = RunsRunIdRouteImport.update({
+const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   id: '/runs/$runId',
   path: '/runs/$runId',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/queue': typeof QueueRoute
-  '/repos': typeof ReposRoute
-  '/settings': typeof SettingsRoute
-  '/gates/$gateId': typeof GatesGateIdRoute
-  '/runs/$runId': typeof RunsRunIdRoute
-  '/runs/': typeof RunsIndexRoute
+  '/': typeof AppIndexRoute
+  '/inbox': typeof AppInboxRoute
+  '/queue': typeof AppQueueRoute
+  '/repos': typeof AppReposRoute
+  '/settings': typeof AppSettingsRoute
+  '/gates/$gateId': typeof AppGatesGateIdRoute
+  '/runs/$runId': typeof AppRunsRunIdRoute
+  '/runs/': typeof AppRunsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/queue': typeof QueueRoute
-  '/repos': typeof ReposRoute
-  '/settings': typeof SettingsRoute
-  '/gates/$gateId': typeof GatesGateIdRoute
-  '/runs/$runId': typeof RunsRunIdRoute
-  '/runs': typeof RunsIndexRoute
+  '/inbox': typeof AppInboxRoute
+  '/queue': typeof AppQueueRoute
+  '/repos': typeof AppReposRoute
+  '/settings': typeof AppSettingsRoute
+  '/': typeof AppIndexRoute
+  '/gates/$gateId': typeof AppGatesGateIdRoute
+  '/runs/$runId': typeof AppRunsRunIdRoute
+  '/runs': typeof AppRunsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/queue': typeof QueueRoute
-  '/repos': typeof ReposRoute
-  '/settings': typeof SettingsRoute
-  '/gates/$gateId': typeof GatesGateIdRoute
-  '/runs/$runId': typeof RunsRunIdRoute
-  '/runs/': typeof RunsIndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/_app/inbox': typeof AppInboxRoute
+  '/_app/queue': typeof AppQueueRoute
+  '/_app/repos': typeof AppReposRoute
+  '/_app/settings': typeof AppSettingsRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/gates/$gateId': typeof AppGatesGateIdRoute
+  '/_app/runs/$runId': typeof AppRunsRunIdRoute
+  '/_app/runs/': typeof AppRunsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/inbox'
     | '/queue'
     | '/repos'
     | '/settings'
@@ -93,96 +109,125 @@ export interface FileRouteTypes {
     | '/runs/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
+    | '/inbox'
     | '/queue'
     | '/repos'
     | '/settings'
+    | '/'
     | '/gates/$gateId'
     | '/runs/$runId'
     | '/runs'
   id:
     | '__root__'
-    | '/'
-    | '/queue'
-    | '/repos'
-    | '/settings'
-    | '/gates/$gateId'
-    | '/runs/$runId'
-    | '/runs/'
+    | '/_app'
+    | '/_app/inbox'
+    | '/_app/queue'
+    | '/_app/repos'
+    | '/_app/settings'
+    | '/_app/'
+    | '/_app/gates/$gateId'
+    | '/_app/runs/$runId'
+    | '/_app/runs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  QueueRoute: typeof QueueRoute
-  ReposRoute: typeof ReposRoute
-  SettingsRoute: typeof SettingsRoute
-  GatesGateIdRoute: typeof GatesGateIdRoute
-  RunsRunIdRoute: typeof RunsRunIdRoute
-  RunsIndexRoute: typeof RunsIndexRoute
+  AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/queue': {
-      id: '/queue'
+    '/_app/inbox': {
+      id: '/_app/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AppInboxRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/queue': {
+      id: '/_app/queue'
       path: '/queue'
       fullPath: '/queue'
-      preLoaderRoute: typeof QueueRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppQueueRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/repos': {
-      id: '/repos'
+    '/_app/repos': {
+      id: '/_app/repos'
       path: '/repos'
       fullPath: '/repos'
-      preLoaderRoute: typeof ReposRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppReposRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/settings': {
-      id: '/settings'
+    '/_app/settings': {
+      id: '/_app/settings'
       path: '/settings'
       fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppSettingsRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/gates/$gateId': {
-      id: '/gates/$gateId'
+    '/_app/gates/$gateId': {
+      id: '/_app/gates/$gateId'
       path: '/gates/$gateId'
       fullPath: '/gates/$gateId'
-      preLoaderRoute: typeof GatesGateIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppGatesGateIdRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/runs/': {
-      id: '/runs/'
+    '/_app/runs/': {
+      id: '/_app/runs/'
       path: '/runs'
       fullPath: '/runs/'
-      preLoaderRoute: typeof RunsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppRunsIndexRouteImport
+      parentRoute: typeof AppRoute
     }
-    '/runs/$runId': {
-      id: '/runs/$runId'
+    '/_app/runs/$runId': {
+      id: '/_app/runs/$runId'
       path: '/runs/$runId'
       fullPath: '/runs/$runId'
-      preLoaderRoute: typeof RunsRunIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppRunsRunIdRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppInboxRoute: typeof AppInboxRoute
+  AppQueueRoute: typeof AppQueueRoute
+  AppReposRoute: typeof AppReposRoute
+  AppSettingsRoute: typeof AppSettingsRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppGatesGateIdRoute: typeof AppGatesGateIdRoute
+  AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppRunsIndexRoute: typeof AppRunsIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppInboxRoute: AppInboxRoute,
+  AppQueueRoute: AppQueueRoute,
+  AppReposRoute: AppReposRoute,
+  AppSettingsRoute: AppSettingsRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppGatesGateIdRoute: AppGatesGateIdRoute,
+  AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppRunsIndexRoute: AppRunsIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  QueueRoute: QueueRoute,
-  ReposRoute: ReposRoute,
-  SettingsRoute: SettingsRoute,
-  GatesGateIdRoute: GatesGateIdRoute,
-  RunsRunIdRoute: RunsRunIdRoute,
-  RunsIndexRoute: RunsIndexRoute,
+  AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
