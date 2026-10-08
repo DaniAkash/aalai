@@ -2,11 +2,13 @@ import { Hono } from 'hono'
 import { loadConfig } from '@/config'
 import { activeRuns, replay } from '@/events/bus'
 import type { RunEvent } from '@/events/events.types'
-import { listQueue, runningCount } from '@/modules/runs/queue'
+import { listQueue, readRun, runningCount } from '@/modules/runs/queue'
+import { readWorkThread } from '@/modules/work/thread'
 import {
   LANES,
   type Lane,
   laneOf,
+  parseWorkId,
   type WorkItem,
   workId,
 } from '@/shared/workView'
@@ -19,32 +21,80 @@ import { openState } from '@/watch/state'
  * ceiling together, and fetching them separately means three loading states
  * that settle at different moments and a list that reflows twice.
  */
-export const workRoute = new Hono().get('/work', async (c) => {
-  const repo = c.req.query('repo')
-  const config = await loadConfig()
-  const db = openState()
-  try {
-    const stations = runningStations()
-    const items = listQueue(db)
-      .filter((entry) => repo === undefined || entry.repo === repo)
-      .map((entry): WorkItem => {
-        return {
+export const workRoute = new Hono()
+  .get('/work', async (c) => {
+    const repo = c.req.query('repo')
+    const config = await loadConfig()
+    const db = openState()
+    try {
+      const stations = runningStations()
+      const items = listQueue(db)
+        .filter((entry) => repo === undefined || entry.repo === repo)
+        .map((entry): WorkItem => {
+          return {
+            id: workId(entry),
+            repo: entry.repo,
+            kind: entry.kind,
+            number: entry.number,
+            // Something discovered but never opened has no title yet. The subject
+            // is the only honest thing to show until GitHub's is read.
+            title: entry.title ?? `${entry.kind} #${entry.number}`,
+            status: entry.status,
+            lane: laneOf(entry.status),
+            // Only a running row has a station. The event buffer retains
+            // finished runs, so without this a delivered row would show the
+            // last stage it passed through as though it were happening now.
+            station:
+              entry.status === 'running'
+                ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
+                : null,
+            branch: entry.branch,
+            prUrl: entry.prUrl,
+            error: entry.error,
+            offeredAt: entry.offeredAt,
+            queuedAt: entry.queuedAt,
+            startedAt: entry.startedAt,
+            finishedAt: entry.finishedAt,
+          }
+        })
+
+      return c.json({
+        lanes: LANES.map((lane) => ({
+          key: lane,
+          items: items.filter((item) => item.lane === lane),
+        })),
+        counts: countByLane(items),
+        total: items.length,
+        running: runningCount(db),
+        capacity: config.maxParallelRuns,
+        paused: config.queuePaused,
+      })
+    } finally {
+      db.close()
+    }
+  })
+  .get('/work/:id', async (c) => {
+    const subject = parseWorkId(c.req.param('id'))
+    if (subject === undefined) {
+      return c.json({ error: 'not a work id' }, 400)
+    }
+    const db = openState()
+    try {
+      const entry = readRun(db, subject.repo, subject.kind, subject.number)
+      if (entry === undefined) {
+        return c.json({ error: 'no such work' }, 404)
+      }
+      const thread = await readWorkThread(db, subject)
+      return c.json({
+        item: {
           id: workId(entry),
           repo: entry.repo,
           kind: entry.kind,
           number: entry.number,
-          // Something discovered but never opened has no title yet. The subject
-          // is the only honest thing to show until GitHub's is read.
           title: entry.title ?? `${entry.kind} #${entry.number}`,
           status: entry.status,
           lane: laneOf(entry.status),
-          // Only a running row has a station. The event buffer retains
-          // finished runs, so without this a delivered row would show the
-          // last stage it passed through as though it were happening now.
-          station:
-            entry.status === 'running'
-              ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
-              : null,
+          station: null,
           branch: entry.branch,
           prUrl: entry.prUrl,
           error: entry.error,
@@ -52,24 +102,13 @@ export const workRoute = new Hono().get('/work', async (c) => {
           queuedAt: entry.queuedAt,
           startedAt: entry.startedAt,
           finishedAt: entry.finishedAt,
-        }
+        } satisfies WorkItem,
+        ...thread,
       })
-
-    return c.json({
-      lanes: LANES.map((lane) => ({
-        key: lane,
-        items: items.filter((item) => item.lane === lane),
-      })),
-      counts: countByLane(items),
-      total: items.length,
-      running: runningCount(db),
-      capacity: config.maxParallelRuns,
-      paused: config.queuePaused,
-    })
-  } finally {
-    db.close()
-  }
-})
+    } finally {
+      db.close()
+    }
+  })
 
 function countByLane(items: readonly WorkItem[]): Record<Lane, number> {
   const counts = Object.fromEntries(LANES.map((lane) => [lane, 0])) as Record<

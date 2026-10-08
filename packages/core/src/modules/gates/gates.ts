@@ -1,5 +1,5 @@
 import type { Database } from 'bun:sqlite'
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, eq, like } from 'drizzle-orm'
 import { emit } from '@/events/bus'
 import { query } from '@/modules/db/query'
 import {
@@ -63,6 +63,26 @@ export function gateId(input: {
 
 export function readGate(db: Database, id: string): GateRow | undefined {
   return query(db).select().from(gates).where(eq(gates.id, id)).get()
+}
+
+/**
+ * Every gate ever opened against one subject, oldest first.
+ *
+ * A gate records the run it belongs to and a run id carries the subject in its
+ * own text, so the subject is matched by prefix rather than through a join the
+ * schema does not have. A subject answered twice has two runs and both of their
+ * gates belong in its thread.
+ */
+export function listGatesForSubject(
+  db: Database,
+  subject: { repo: string; number: number },
+): GateRow[] {
+  return query(db)
+    .select()
+    .from(gates)
+    .where(like(gates.runId, `${subject.repo}#${subject.number}@%`))
+    .orderBy(asc(gates.openedAt))
+    .all()
 }
 
 export function listGates(db: Database, filter: GateQuery = {}): GateRow[] {
