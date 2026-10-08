@@ -131,24 +131,12 @@ function startProps(
   }
 }
 
-/**
- * Where a row goes when it is opened.
- *
- * A row with a pull request opens it, which is the one destination that is
- * genuinely about this subject. Everything else lands on the run history,
- * which is the whole list rather than this row's own run: the projection
- * carries no run id, so there is nothing to select on. That is a placeholder
- * until the thread exists, and the thread is what this should open.
- */
+/** Every row opens its own thread now that there is one. */
 function openWork(
   item: WorkItem,
   navigate: ReturnType<typeof useNavigate>,
 ): void {
-  if (item.prUrl !== null) {
-    window.open(item.prUrl, '_blank', 'noopener')
-    return
-  }
-  void navigate({ to: '/runs' })
+  void navigate({ to: '/work/$workId', params: { workId: item.id } })
 }
 
 function subtitle(running: number, capacity: number): string {

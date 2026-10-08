@@ -79,6 +79,11 @@ function crumbFor(path: string): string {
   if (id === undefined || id === '') {
     return `aalai / ${section}`
   }
+  // The work detail puts its own title in an h1 directly below this, so the
+  // trail names the section and stops rather than repeating it badly.
+  if (section === 'work') {
+    return 'aalai / work'
+  }
   return `aalai / ${section} / ${section === 'gates' ? 'one gate' : 'one run'}`
 }
 

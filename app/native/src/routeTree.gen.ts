@@ -18,6 +18,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppGatesGateIdRouteImport } from './routes/_app/gates/$gateId'
 import { Route as AppRunsIndexRouteImport } from './routes/_app/runs/index'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
+import { Route as AppWorkWorkIdRouteImport } from './routes/_app/work.$workId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -63,6 +64,11 @@ const AppRunsRunIdRoute = AppRunsRunIdRouteImport.update({
   path: '/runs/$runId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkWorkIdRoute = AppWorkWorkIdRouteImport.update({
+  id: '/work/$workId',
+  path: '/work/$workId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRoute
   '/gates/$gateId': typeof AppGatesGateIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/work/$workId': typeof AppWorkWorkIdRoute
   '/runs/': typeof AppRunsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/gates/$gateId': typeof AppGatesGateIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
+  '/work/$workId': typeof AppWorkWorkIdRoute
   '/runs': typeof AppRunsIndexRoute
 }
 export interface FileRoutesById {
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/gates/$gateId': typeof AppGatesGateIdRoute
   '/_app/runs/$runId': typeof AppRunsRunIdRoute
+  '/_app/work/$workId': typeof AppWorkWorkIdRoute
   '/_app/runs/': typeof AppRunsIndexRoute
 }
 export interface FileRouteTypes {
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/gates/$gateId'
     | '/runs/$runId'
+    | '/work/$workId'
     | '/runs/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/'
     | '/gates/$gateId'
     | '/runs/$runId'
+    | '/work/$workId'
     | '/runs'
   id:
     | '__root__'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/gates/$gateId'
     | '/_app/runs/$runId'
+    | '/_app/work/$workId'
     | '/_app/runs/'
   fileRoutesById: FileRoutesById
 }
@@ -199,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRunsRunIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/work/$workId': {
+      id: '/_app/work/$workId'
+      path: '/work/$workId'
+      fullPath: '/work/$workId'
+      preLoaderRoute: typeof AppWorkWorkIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -210,6 +229,7 @@ interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
   AppGatesGateIdRoute: typeof AppGatesGateIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
+  AppWorkWorkIdRoute: typeof AppWorkWorkIdRoute
   AppRunsIndexRoute: typeof AppRunsIndexRoute
 }
 
@@ -221,6 +241,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
   AppGatesGateIdRoute: AppGatesGateIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
+  AppWorkWorkIdRoute: AppWorkWorkIdRoute,
   AppRunsIndexRoute: AppRunsIndexRoute,
 }
 
