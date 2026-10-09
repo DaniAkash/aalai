@@ -94,6 +94,32 @@ const agentsDomain = z.object({
   reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).default('high'),
 })
 
+/**
+ * What one station is given, beyond the agent that drives it.
+ *
+ * Per station rather than global because the stations do different jobs: the
+ * one that plans wants to know the repository's conventions, the one that
+ * reviews wants to know what this team argues about. A skill given to all of
+ * them is a skill none of them is sure applies.
+ */
+const stationConfig = z.object({
+  /** Named capabilities handed to this station, and to no other. */
+  skills: z.array(z.string().min(1).max(60)).max(20).default([]),
+  /** Added after the repository's own files, so a repository can override it. */
+  instructions: z.string().max(4000).default(''),
+  /** Overrides the shared effort for this station only. */
+  reasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
+})
+
+const EMPTY_STATION = () => ({ skills: [], instructions: '' })
+
+const stationsDomain = z.object({
+  classifier: stationConfig.default(EMPTY_STATION),
+  analyst: stationConfig.default(EMPTY_STATION),
+  implementer: stationConfig.default(EMPTY_STATION),
+  reviewer: stationConfig.default(EMPTY_STATION),
+})
+
 const limitsDomain = z.object({
   /** Most times the reviewer may send work back before the run gives up. */
   maxRevisions: z.number().int().min(0).max(5).default(2),
@@ -146,6 +172,7 @@ const uiDomain = z.object({
 export const DOMAINS = {
   factory: factoryDomain,
   agents: agentsDomain,
+  stations: stationsDomain,
   limits: limitsDomain,
   trust: trustDomain,
   commit: commitDomain,

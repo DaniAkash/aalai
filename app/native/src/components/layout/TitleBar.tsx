@@ -78,7 +78,7 @@ const DESTINATIONS: {
   icon: ComponentType<{ className?: string }>
 }[] = [
   { to: '/inbox', label: 'Inbox', icon: Inbox },
-  { to: '/queue', label: 'Queue', icon: SlidersHorizontal },
+  { to: '/stations', label: 'Stations', icon: SlidersHorizontal },
   { to: '/repos', label: 'Repositories', icon: GitBranch },
   { to: '/settings', label: 'Settings', icon: Settings2 },
 ]

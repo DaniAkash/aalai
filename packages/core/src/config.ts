@@ -77,6 +77,14 @@ const configSchema = z.object({
       reviewer: 'codex',
     })),
   reasoningEffort: DOMAINS.agents.shape.reasoningEffort,
+  /**
+   * What each station is handed, beyond the agent that drives it.
+   *
+   * Defaulted, because every config written before this key existed has none,
+   * and a required key here stops the whole factory starting rather than
+   * degrading to the behaviour it had yesterday.
+   */
+  stations: DOMAINS.stations.default(() => DOMAINS.stations.parse({})),
 })
 
 export type Config = z.infer<typeof configSchema>
@@ -110,6 +118,7 @@ function toConfig(domains: Domains, watch: WatchedRepo[]): Config {
     keepWorktreeOnFailure: domains.factory.keepWorktreeOnFailure,
     defaultPolicy: domains.factory.defaultPolicy,
     keepPullRequestsAlive: domains.factory.keepPullRequestsAlive,
+    stations: domains.stations,
     requireSignedCommits: domains.factory.requireSignedCommits,
     agents: {
       analyst: domains.agents.analyst,
@@ -144,6 +153,7 @@ function toDomains(config: Config): Domains {
       keepPullRequestsAlive: config.keepPullRequestsAlive,
       requireSignedCommits: config.requireSignedCommits,
     },
+    stations: config.stations,
     agents: {
       analyst: config.agents.analyst,
       implementer: config.agents.implementer,
