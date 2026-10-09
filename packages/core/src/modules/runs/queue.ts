@@ -7,6 +7,7 @@ import type { RunStatus, SubjectKind } from '@/modules/db/schema/schema'
 import { runs } from '@/modules/db/schema/schema'
 import { byInterest, subjectOf, toEntry } from '@/modules/runs/queue.helpers'
 import type { QueueEntry } from '@/modules/runs/queue.types'
+import type { RunPolicy } from '@/modules/settings/domains'
 
 /** States a row can be in and still be waiting for, or holding, a slot. */
 const LIVE: readonly RunStatus[] = ['offered', 'queued', 'running', 'blocked']
@@ -30,6 +31,8 @@ export function offerRun(
     readonly kind: SubjectKind
     readonly number: number
     readonly title?: string
+    /** The mode chosen for it, when a person described it rather than GitHub. */
+    readonly policy?: RunPolicy
   },
 ): boolean {
   const now = new Date().toISOString()
@@ -41,6 +44,7 @@ export function offerRun(
       subjectNumber: input.number,
       status: 'offered',
       title: input.title ?? null,
+      policy: input.policy ?? null,
       offeredAt: now,
       startedAt: now,
     })

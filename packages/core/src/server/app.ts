@@ -5,6 +5,7 @@ import { queueRoute } from '@/server/routes/queueRoute'
 import { reposRoute } from '@/server/routes/reposRoute'
 import { runsRoute } from '@/server/routes/runsRoute'
 import { settingsRoute } from '@/server/routes/settingsRoute'
+import { startWorkRoute } from '@/server/routes/startWork'
 import { toolsRoute } from '@/server/routes/toolsRoute'
 import { workRoute } from '@/server/routes/workRoute'
 
@@ -24,6 +25,7 @@ export const app = new Hono()
   .route('/api', queueRoute)
   .route('/api', settingsRoute)
   .route('/api', workRoute)
+  .route('/api', startWorkRoute)
   .route('/api', toolsRoute)
 
 /** The contract the UI's typed client is generated from. */
