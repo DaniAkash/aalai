@@ -226,3 +226,73 @@ describe('review turns in the thread', () => {
     }
   })
 })
+
+describe('attaching the commit made after the turn', () => {
+  test('an answer given in this turn gets the commit', async () => {
+    // The station answers during its turn and the commit is made after it, so
+    // the sha does not exist while the answer is being written.
+    const { attachCommitToAnswers } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Corrected it.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-09T12:00:00Z',
+    })
+    const attached = await attachCommitToAnswers(
+      subject,
+      'cafe1234',
+      '2026-10-09T11:59:00Z',
+    )
+    expect(attached).toBe(1)
+    const { readWorkThread } = await import('@/modules/work/thread')
+    const { openState } = await import('@/watch/state')
+    const db = openState()
+    try {
+      const view = await readWorkThread(db, subject)
+      const turn = view.turns.find((t) => t.kind === 'reviewed')
+      if (turn?.kind === 'reviewed') {
+        expect(turn.commitSha).toBe('cafe1234')
+        expect(turn.answer).toBe('Corrected it.')
+      }
+    } finally {
+      db.close()
+    }
+  })
+
+  test('an answer from an earlier turn keeps having no commit', async () => {
+    // Disagreeing with a comment is an answer with no commit, and a later
+    // turn's push must not make it look like something was changed for it.
+    const { attachCommitToAnswers } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'A matter of taste.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'This should stand as it is.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-09T10:00:00Z',
+    })
+    const attached = await attachCommitToAnswers(
+      subject,
+      'cafe1234',
+      '2026-10-09T11:59:00Z',
+    )
+    expect(attached).toBe(0)
+  })
+
+  test('an answer that already names a commit is left alone', async () => {
+    const { attachCommitToAnswers } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Fixed.',
+      commitSha: 'aaa1111',
+      station: 'reviewer',
+      at: '2026-10-09T12:00:00Z',
+    })
+    expect(
+      await attachCommitToAnswers(subject, 'bbb2222', '2026-10-09T11:00:00Z'),
+    ).toBe(0)
+  })
+})

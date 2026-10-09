@@ -121,3 +121,38 @@ export async function recordReviewAnswer(
 ): Promise<void> {
   await append(subject, { ...answer, kind: 'answer' })
 }
+
+/**
+ * Attaches a commit to answers that were given without one.
+ *
+ * The station answers during its turn and the commit is made after it, so the
+ * sha does not exist while the answers are being written. Rather than mutate
+ * the file, the answers are written again carrying it: the store is append
+ * only and the last answer for a comment is the one that stands, so this reads
+ * back as the answer having had a commit all along.
+ *
+ * Only answers given in this turn are touched, identified by the ones that
+ * have no commit yet, so an earlier answer that genuinely had none keeps it.
+ */
+export async function attachCommitToAnswers(
+  subject: Subject,
+  commitSha: string,
+  since: string,
+): Promise<number> {
+  const records = await readReviewRecords(subject)
+  const latest = new Map<string, RecordedAnswer>()
+  for (const record of records) {
+    if (record.kind === 'answer') {
+      latest.set(record.threadId, record)
+    }
+  }
+  let attached = 0
+  for (const answer of latest.values()) {
+    if (answer.commitSha !== null || answer.at < since) {
+      continue
+    }
+    await append(subject, { ...answer, commitSha })
+    attached += 1
+  }
+  return attached
+}

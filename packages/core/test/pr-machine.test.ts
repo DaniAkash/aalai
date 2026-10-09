@@ -33,6 +33,11 @@ function start(
         ),
         failureReporter: fromPromise(async () => {}),
         ciFixer: fromPromise(async () => ({ pushedSha: 'fixed-sha' })),
+        reviewAnswerer: fromPromise(
+          async (): Promise<{ pushedSha: string | null }> => ({
+            pushedSha: 'answer-sha',
+          }),
+        ),
         ...overrides,
       },
     }),
@@ -214,17 +219,52 @@ describe('what is not built yet says so', () => {
         settled.context.outcome.why,
     ).toContain('base branch moved')
   })
+})
 
-  test('a review comment stops with a reason rather than being dropped', async () => {
+describe('answering a review', () => {
+  test('a review comment is answered rather than ending the pull request', async () => {
+    // This used to stop with "that is not built yet". It is built now, and
+    // the thing that would quietly undo it is this transition going back to
+    // done, so the test watches for the state rather than the outcome.
     const actor = start()
     look(actor, [asked])
-    const settled = await waitFor(actor, (s) => s.status === 'done', {
+    const answering = await waitFor(
+      actor,
+      (s) => s.matches('answeringReview'),
+      { timeout: 5000 },
+    )
+    expect(answering.matches('answeringReview')).toBe(true)
+  })
+
+  test('answering goes back to watching, because a review is not the end', async () => {
+    // The push it may have made starts the checks again, and whoever reads the
+    // answer may say something else.
+    const actor = start()
+    look(actor, [asked])
+    const watching = await waitFor(actor, (s) => s.matches('watching'), {
       timeout: 5000,
     })
-    expect(
-      settled.context.outcome?.kind === 'exhausted' &&
-        settled.context.outcome.why,
-    ).toContain('review comment')
+    expect(watching.context.pushedSha).toBe('answer-sha')
+  })
+
+  test('a push it did not make leaves the last one alone', async () => {
+    // Answering by disagreeing with every comment changes nothing, and the
+    // previous push is still the last thing this factory pushed. Blanking it
+    // would make the next look read our own last commit as somebody else
+    // touching the branch, which stops the run.
+    const actor = start({
+      reviewAnswerer: fromPromise(
+        async (): Promise<{ pushedSha: string | null }> => ({
+          pushedSha: null,
+        }),
+      ),
+    })
+    look(actor, [asked])
+    const watching = await waitFor(actor, (s) => s.matches('watching'), {
+      timeout: 5000,
+    })
+    // What the look established, not blanked by an answer that pushed nothing.
+    expect(watching.context.pushedSha).toBe('aaa')
   })
 })
 
