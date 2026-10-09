@@ -1,12 +1,14 @@
-import { useParams } from '@tanstack/react-router'
+import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ApprovalCard } from '@/components/agents/approval-card'
+import { SplitPane } from '@/components/layout/panes'
 import { useToast } from '@/components/providers/ToastProvider'
 import { ErrorNote } from '@/components/state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAnswerGate } from '@/modules/api/gates.hooks'
 import { queryClient } from '@/modules/api/queryClient'
 import { type Awaiting, useWorkDetail } from '@/modules/api/workDetail.hooks'
+import { ChangesPane } from './ChangesPane'
 import { Recorded, Said, SystemNote } from './work-detail.components'
 
 /**
@@ -17,8 +19,20 @@ import { Recorded, Said, SystemNote } from './work-detail.components'
  * live parts arrive once this is right.
  */
 export function WorkDetail() {
-  const { workId } = useParams({ from: '/_app/work/$workId' })
+  const { workId } = useParams({ strict: false }) as { workId: string }
+  const navigate = useNavigate()
+  // The chosen file lives in the url rather than in state, so the pane can be
+  // linked to. Everything after `/changes/` is the path, slashes included.
+  const path = useLocation({
+    select: (location) => decodeOrNull(location.pathname.split('/changes/')[1]),
+  })
   const [open, setOpen] = useState<string | null>(null)
+  const chooseFile = (next: string | null) => {
+    void navigate({
+      to: next === null ? '/work/$workId' : '/work/$workId/changes/$',
+      params: next === null ? { workId } : { workId, _splat: next },
+    })
+  }
   const toast = useToast()
   const detail = useWorkDetail({ variables: { id: workId } })
   const answer = useAnswerGate({
@@ -51,7 +65,9 @@ export function WorkDetail() {
   )
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <SplitPane
+      aside={<ChangesPane workId={workId} path={path} onChoose={chooseFile} />}
+    >
       <header className="border-border border-b px-4 py-4 md:px-6">
         <h1 className="font-heading font-semibold text-[17px] leading-snug tracking-tight">
           {item.title}
@@ -124,7 +140,7 @@ export function WorkDetail() {
           />
         )}
       </div>
-    </div>
+    </SplitPane>
   )
 }
 
@@ -154,4 +170,22 @@ function ThreadSkeleton() {
       <Skeleton className="h-12 w-[55%] rounded-[var(--radius)]" />
     </div>
   )
+}
+
+/**
+ * A url path segment, as the path it names.
+ *
+ * A file path arrives percent encoded and a malformed escape throws rather
+ * than returning something wrong, so a bad link opens the thread with no file
+ * instead of a blank screen.
+ */
+function decodeOrNull(raw: string | undefined): string | null {
+  if (raw === undefined || raw === '') {
+    return null
+  }
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
 }
