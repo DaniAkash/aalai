@@ -6,6 +6,7 @@ import {
   sqliteTable,
   text,
 } from 'drizzle-orm/sqlite-core'
+import type { RunPolicy } from '@/shared/modes'
 
 /**
  * Where a run is, which is also where the work is allowed to be.
@@ -69,6 +70,10 @@ export const runs = sqliteTable(
     // be legible in the inbox before anything has been fetched for it, and a
     // list that shows only numbers is a list nobody can triage.
     title: text('title'),
+    // The mode a person chose for this one piece of work, which outranks the
+    // repository's standing answer. Null is the repository's answer, which is
+    // every run that predates the composer and every run the watcher starts.
+    policy: text('policy').$type<RunPolicy>(),
     lease: text('lease'),
     // When the watcher first saw it, and when a person asked for it. The
     // second is what orders the queue, so first in really is first out.

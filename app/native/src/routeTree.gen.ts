@@ -15,10 +15,12 @@ import { Route as AppInboxRouteImport } from './routes/_app/inbox'
 import { Route as AppQueueRouteImport } from './routes/_app/queue'
 import { Route as AppReposRouteImport } from './routes/_app/repos'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppStationsRouteImport } from './routes/_app/stations'
 import { Route as AppGatesGateIdRouteImport } from './routes/_app/gates/$gateId'
 import { Route as AppRunsIndexRouteImport } from './routes/_app/runs/index'
 import { Route as AppRunsRunIdRouteImport } from './routes/_app/runs/$runId'
 import { Route as AppWorkWorkIdRouteImport } from './routes/_app/work.$workId'
+import { Route as AppWorkNewRouteImport } from './routes/_app/work.new'
 import { Route as AppWorkWorkIdChangesSplatRouteImport } from './routes/_app/work.$workId.changes.$'
 
 const AppRoute = AppRouteImport.update({
@@ -50,6 +52,11 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStationsRoute = AppStationsRouteImport.update({
+  id: '/stations',
+  path: '/stations',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppGatesGateIdRoute = AppGatesGateIdRouteImport.update({
   id: '/gates/$gateId',
   path: '/gates/$gateId',
@@ -70,6 +77,11 @@ const AppWorkWorkIdRoute = AppWorkWorkIdRouteImport.update({
   path: '/work/$workId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkNewRoute = AppWorkNewRouteImport.update({
+  id: '/work/new',
+  path: '/work/new',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppWorkWorkIdChangesSplatRoute =
   AppWorkWorkIdChangesSplatRouteImport.update({
     id: '/changes/$',
@@ -83,9 +95,11 @@ export interface FileRoutesByFullPath {
   '/queue': typeof AppQueueRoute
   '/repos': typeof AppReposRoute
   '/settings': typeof AppSettingsRoute
+  '/stations': typeof AppStationsRoute
   '/gates/$gateId': typeof AppGatesGateIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/work/$workId': typeof AppWorkWorkIdRouteWithChildren
+  '/work/new': typeof AppWorkNewRoute
   '/runs/': typeof AppRunsIndexRoute
   '/work/$workId/changes/$': typeof AppWorkWorkIdChangesSplatRoute
 }
@@ -94,10 +108,12 @@ export interface FileRoutesByTo {
   '/queue': typeof AppQueueRoute
   '/repos': typeof AppReposRoute
   '/settings': typeof AppSettingsRoute
+  '/stations': typeof AppStationsRoute
   '/': typeof AppIndexRoute
   '/gates/$gateId': typeof AppGatesGateIdRoute
   '/runs/$runId': typeof AppRunsRunIdRoute
   '/work/$workId': typeof AppWorkWorkIdRouteWithChildren
+  '/work/new': typeof AppWorkNewRoute
   '/runs': typeof AppRunsIndexRoute
   '/work/$workId/changes/$': typeof AppWorkWorkIdChangesSplatRoute
 }
@@ -108,10 +124,12 @@ export interface FileRoutesById {
   '/_app/queue': typeof AppQueueRoute
   '/_app/repos': typeof AppReposRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/stations': typeof AppStationsRoute
   '/_app/': typeof AppIndexRoute
   '/_app/gates/$gateId': typeof AppGatesGateIdRoute
   '/_app/runs/$runId': typeof AppRunsRunIdRoute
   '/_app/work/$workId': typeof AppWorkWorkIdRouteWithChildren
+  '/_app/work/new': typeof AppWorkNewRoute
   '/_app/runs/': typeof AppRunsIndexRoute
   '/_app/work/$workId/changes/$': typeof AppWorkWorkIdChangesSplatRoute
 }
@@ -123,9 +141,11 @@ export interface FileRouteTypes {
     | '/queue'
     | '/repos'
     | '/settings'
+    | '/stations'
     | '/gates/$gateId'
     | '/runs/$runId'
     | '/work/$workId'
+    | '/work/new'
     | '/runs/'
     | '/work/$workId/changes/$'
   fileRoutesByTo: FileRoutesByTo
@@ -134,10 +154,12 @@ export interface FileRouteTypes {
     | '/queue'
     | '/repos'
     | '/settings'
+    | '/stations'
     | '/'
     | '/gates/$gateId'
     | '/runs/$runId'
     | '/work/$workId'
+    | '/work/new'
     | '/runs'
     | '/work/$workId/changes/$'
   id:
@@ -147,10 +169,12 @@ export interface FileRouteTypes {
     | '/_app/queue'
     | '/_app/repos'
     | '/_app/settings'
+    | '/_app/stations'
     | '/_app/'
     | '/_app/gates/$gateId'
     | '/_app/runs/$runId'
     | '/_app/work/$workId'
+    | '/_app/work/new'
     | '/_app/runs/'
     | '/_app/work/$workId/changes/$'
   fileRoutesById: FileRoutesById
@@ -203,6 +227,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/stations': {
+      id: '/_app/stations'
+      path: '/stations'
+      fullPath: '/stations'
+      preLoaderRoute: typeof AppStationsRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/gates/$gateId': {
       id: '/_app/gates/$gateId'
       path: '/gates/$gateId'
@@ -229,6 +260,13 @@ declare module '@tanstack/react-router' {
       path: '/work/$workId'
       fullPath: '/work/$workId'
       preLoaderRoute: typeof AppWorkWorkIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/work/new': {
+      id: '/_app/work/new'
+      path: '/work/new'
+      fullPath: '/work/new'
+      preLoaderRoute: typeof AppWorkNewRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/work/$workId/changes/$': {
@@ -258,10 +296,12 @@ interface AppRouteChildren {
   AppQueueRoute: typeof AppQueueRoute
   AppReposRoute: typeof AppReposRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppStationsRoute: typeof AppStationsRoute
   AppIndexRoute: typeof AppIndexRoute
   AppGatesGateIdRoute: typeof AppGatesGateIdRoute
   AppRunsRunIdRoute: typeof AppRunsRunIdRoute
   AppWorkWorkIdRoute: typeof AppWorkWorkIdRouteWithChildren
+  AppWorkNewRoute: typeof AppWorkNewRoute
   AppRunsIndexRoute: typeof AppRunsIndexRoute
 }
 
@@ -270,10 +310,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppQueueRoute: AppQueueRoute,
   AppReposRoute: AppReposRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppStationsRoute: AppStationsRoute,
   AppIndexRoute: AppIndexRoute,
   AppGatesGateIdRoute: AppGatesGateIdRoute,
   AppRunsRunIdRoute: AppRunsRunIdRoute,
   AppWorkWorkIdRoute: AppWorkWorkIdRouteWithChildren,
+  AppWorkNewRoute: AppWorkNewRoute,
   AppRunsIndexRoute: AppRunsIndexRoute,
 }
 

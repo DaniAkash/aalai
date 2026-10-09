@@ -94,6 +94,9 @@ export const issueWorkMachine = setup({
             input: ({ context }) => ({
               runId: context.runId,
               planGeneration: context.planGeneration,
+              ...(context.asksFirst === undefined
+                ? {}
+                : { asksFirst: context.asksFirst }),
             }),
             // Both paths announce, so neither can forget: the criteria are the
             // contract, and anything watching should have them when they exist

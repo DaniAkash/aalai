@@ -87,6 +87,16 @@ export const queueRoute = new Hono()
             )
           }
         }
+        // A paused queue refuses rather than starting. The capacity statement
+        // below bounds the running count and knows nothing about the pause, so
+        // without this Start would start work the rest of the interface says
+        // cannot start.
+        if (config.queuePaused) {
+          return c.json(
+            { error: 'the queue is paused, so nothing new starts' },
+            409,
+          )
+        }
         // Claimed through the same capacity bounded statement the scheduler
         // uses, so two Start presses and a poll cannot each believe they have
         // the last free slot. Refused rather than silently queued behind

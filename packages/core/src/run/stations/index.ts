@@ -35,6 +35,8 @@ export interface AnalystInput {
   readonly worktree: string
   readonly conventionFiles: readonly string[]
   readonly config: Config
+  /** Whether to lead with the open questions rather than with an answer. */
+  readonly asksFirst?: boolean
   /** Cancels the turn when the run it belongs to stops. */
   readonly signal?: AbortSignal
 }
@@ -60,6 +62,9 @@ export async function runAnalyst(
         issue: input.issue,
         conventionFiles: input.conventionFiles,
         tools: toolSurfaceIsUp(),
+        ...(input.asksFirst === undefined
+          ? {}
+          : { asksFirst: input.asksFirst }),
       }),
       // Reads only. The planning station cannot modify the repository it is
       // planning against, which is a property of the run rather than a promise.

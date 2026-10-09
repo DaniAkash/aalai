@@ -1,8 +1,9 @@
-import { useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   CircleDot,
   GitPullRequestArrow,
   MessageSquareWarning,
+  Plus,
   Search,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
@@ -58,6 +59,7 @@ export function SideNav() {
   return (
     <>
       <AnimatedSidebarGroup>
+        <NewWorkButton collapsed={collapsed} />
         <Search_
           collapsed={collapsed}
           value={filter}
@@ -135,6 +137,29 @@ export function SideNav() {
  * menu wraps each child in its own element, so a paragraph placed in there
  * ends up containing a div, which is invalid and which React refuses to nest.
  */
+/**
+ * The way in to describing a piece of work.
+ *
+ * Above the search field, because searching is for work that exists and this
+ * is for work that does not. Collapsed it keeps the icon and loses the words,
+ * like everything else in here.
+ */
+function NewWorkButton({ collapsed }: { collapsed: boolean }) {
+  return (
+    <Link
+      to="/work/new"
+      aria-label="Describe a new piece of work"
+      className={cn(
+        'mb-2 flex items-center gap-2 rounded-[calc(var(--radius)-2px)] bg-primary font-medium text-[13px] text-primary-foreground transition-opacity hover:opacity-90',
+        collapsed ? 'size-8 w-full justify-center' : 'h-8 px-3',
+      )}
+    >
+      <Plus className="size-4 shrink-0" />
+      {collapsed ? null : <span>New work</span>}
+    </Link>
+  )
+}
+
 /**
  * A search field that becomes a button when there is no room for one.
  *

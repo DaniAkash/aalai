@@ -157,6 +157,32 @@ export async function closeIssue(
   ])
 }
 
+/**
+ * Opens an issue from a brief, and returns it as the watcher would have seen it.
+ *
+ * Work described in the app becomes a real issue rather than a local record.
+ * Everything downstream hangs off a subject: the thread, the gates, the
+ * artifacts, the pull request that closes it. A local-only piece of work would
+ * be a second kind that none of those could reference and nobody else could
+ * see, which is the opposite of what this is for.
+ */
+export async function createIssue(
+  repo: string,
+  title: string,
+  body: string,
+): Promise<GhIssue> {
+  return await ghJson<GhIssue>([
+    'api',
+    '--method',
+    'POST',
+    `repos/${repo}/issues`,
+    '-f',
+    `title=${title}`,
+    '-f',
+    `body=${body}`,
+  ])
+}
+
 export interface DraftPullRequest {
   readonly repo: string
   readonly head: string

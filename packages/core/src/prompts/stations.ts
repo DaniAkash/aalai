@@ -52,12 +52,28 @@ function recordContract(tool: string, available: boolean): string {
 }
 
 export interface AnalystPromptInput {
+  /** Whether to lead with the open questions rather than with an answer. */
+  readonly asksFirst?: boolean
   readonly repo: string
   readonly issue: GhIssue
   readonly conventionFiles: readonly string[]
   /** Whether this turn has the tool surface. */
   readonly tools: boolean
 }
+
+/**
+ * What the analyst is told when the mode is to talk it through.
+ *
+ * It still records a plan, because that is what a person approves and what the
+ * next station builds from. The difference is that the first version is
+ * allowed to be mostly questions, so the revision loop carries the
+ * conversation instead of a guess being treated as settled.
+ */
+const ASK_FIRST = `
+This run was started in the mode where the goal is agreed before it is built. Lead with what you do not know. Where the issue leaves a real choice open, say so plainly and say which way you would go and why, rather than picking one silently. Put these at the top of problem_statement as a short numbered list of open questions.
+
+Expect this plan to come back with answers rather than be approved as it stands. That is the mode working, not a failure.
+`
 
 export function buildAnalystPrompt(input: AnalystPromptInput): string {
   const { repo, issue, conventionFiles } = input
@@ -75,7 +91,7 @@ ${issue.body?.trim() ?? '(no description was provided)'}
 ${conventions}
 
 Explore the repository properly before you plan. Find the code the issue actually touches; do not reason from file names. Do not modify anything: a later station writes the code.
-
+${input.asksFirst === true ? ASK_FIRST : ''}
 Produce a plan with these fields:
 
 - problem_statement: what is actually wrong, as a precise engineering problem
