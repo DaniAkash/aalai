@@ -8,7 +8,7 @@
  * three hooks happen to produce when rendered together.
  */
 
-export const TURN_KINDS = ['said', 'recorded', 'gate'] as const
+export const TURN_KINDS = ['said', 'recorded', 'gate', 'reviewed'] as const
 export type TurnKind = (typeof TURN_KINDS)[number]
 
 /** Who is speaking, which is the only thing that decides where a turn sits. */
@@ -42,6 +42,24 @@ export type Turn = TurnBase &
         readonly summary: string | null
         readonly artifact: string | null
         readonly artifactVersion: string | null
+      }
+    | {
+        /**
+         * A review comment, with the answer when one has been given.
+         *
+         * One turn rather than two, because a comment and its answer are read
+         * together: a thread that lists every comment and then every answer
+         * makes a person match them up by eye.
+         */
+        readonly kind: 'reviewed'
+        readonly commentId: string
+        readonly body: string
+        readonly path: string | null
+        readonly line: number | null
+        readonly answer: string | null
+        readonly answeredAt: string | null
+        /** The commit that addressed it, when there was one. */
+        readonly commitSha: string | null
       }
   )
 

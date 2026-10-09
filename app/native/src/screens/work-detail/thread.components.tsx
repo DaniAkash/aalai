@@ -3,7 +3,7 @@ import { ApprovalCard } from '@/components/agents/approval-card'
 import type { Awaiting } from '@/modules/api/workDetail.hooks'
 
 import { LiveStep } from './live.components'
-import { Recorded, Said, SystemNote } from './work-detail.components'
+import { Recorded, Reviewed, Said, SystemNote } from './work-detail.components'
 
 /**
  * The thread itself: what has happened, what is happening, what is wanted.
@@ -88,6 +88,9 @@ function TurnRow({
 }: { turn: Turn } & Omit<ThreadProps, 'turns'>) {
   if (turn.kind === 'said') {
     return <Said turn={turn} body={turn.body} />
+  }
+  if (turn.kind === 'reviewed') {
+    return <Reviewed turn={turn} />
   }
   if (turn.kind !== 'recorded') {
     return <SystemNote turn={turn} />

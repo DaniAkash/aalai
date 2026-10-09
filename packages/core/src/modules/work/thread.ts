@@ -10,6 +10,11 @@ import {
 } from '@/modules/work/artifacts'
 import { readConversation } from '@/modules/work/conversation'
 import type { Subject } from '@/modules/work/paths'
+import {
+  type RecordedAnswer,
+  type RecordedComment,
+  readReviewRecords,
+} from '@/modules/work/reviews'
 import { stationName } from '@/shared/stepActivity'
 import type { ThreadView, Turn } from '@/shared/threadView'
 
@@ -26,14 +31,15 @@ export async function readWorkThread(
   db: Database,
   subject: Subject,
 ): Promise<ThreadView> {
-  const [said, recorded, plan] = await Promise.all([
+  const [said, recorded, reviewed, plan] = await Promise.all([
     saidTurns(subject),
     recordedTurns(subject),
+    reviewTurns(subject),
     latestPlan(subject),
   ])
   const gates = gateTurns(db, subject)
 
-  const turns = [...said, ...recorded, ...gates].sort(byTime)
+  const turns = [...said, ...recorded, ...reviewed, ...gates].sort(byTime)
   const open = gates.find(
     (turn) => turn.kind === 'gate' && turn.status === 'open',
   )
@@ -91,6 +97,45 @@ function instant(at: string): number {
  * the file is encoded into it. Without that, equal timestamps sort
  * alphabetically by author and a reply can appear above the thing it answers.
  */
+/**
+ * What the review said, and what was said back.
+ *
+ * Each comment becomes one turn carrying its answer, rather than a turn each.
+ * The answer is found by the comment id the station was given, so an answer
+ * whose comment was never recorded is dropped: showing an answer with nothing
+ * to answer reads as a bug rather than as history.
+ */
+async function reviewTurns(subject: Subject): Promise<Turn[]> {
+  const records = await readReviewRecords(subject)
+  const answers = new Map<string, RecordedAnswer>()
+  for (const record of records) {
+    if (record.kind === 'answer') {
+      // The last answer wins. A comment reopened and answered again should
+      // read as the answer that stands, not the first one given.
+      answers.set(record.threadId, record)
+    }
+  }
+  return records
+    .filter((record): record is RecordedComment => record.kind === 'comment')
+    .map((comment, index): Turn => {
+      const answer = answers.get(comment.id)
+      return {
+        kind: 'reviewed',
+        id: `reviewed:${String(index).padStart(6, '0')}:${comment.id}`,
+        at: comment.at,
+        voice: 'reporter',
+        author: comment.author,
+        commentId: comment.id,
+        body: comment.body,
+        path: comment.path,
+        line: comment.line,
+        answer: answer?.answer ?? null,
+        answeredAt: answer?.at ?? null,
+        commitSha: answer?.commitSha ?? null,
+      }
+    })
+}
+
 async function saidTurns(subject: Subject): Promise<Turn[]> {
   const entries = await readConversation(subject)
   return entries.map(

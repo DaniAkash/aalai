@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { emit } from '@/events/bus'
+import { recordReviewAnswer } from '@/modules/work/reviews'
 import type { ToolContext } from './context'
 import {
   answerReviewInput,
@@ -182,7 +183,7 @@ export function registerReviewAnswerTool(
       inputSchema: answerReviewInput,
       outputSchema: answerReviewOutput.shape,
     },
-    ({ thread_id, answer, commit_sha }) => {
+    async ({ thread_id, answer, commit_sha }) => {
       const answeredAt = new Date().toISOString()
       ctx.answered.push({
         threadId: thread_id,
@@ -190,8 +191,16 @@ export function registerReviewAnswerTool(
         answeredAt,
         commitSha: commit_sha ?? null,
       })
-      // Same reason as the context report: the grant does not outlive the
-      // turn, so an answer that only lives on it is an answer nobody sees.
+      // Written down before it is announced. The grant does not outlive the
+      // turn and the event does not outlive the process, so without this an
+      // answer is gone by the time anybody opens the thread to read it.
+      await recordReviewAnswer(ctx.subject, {
+        threadId: thread_id,
+        answer,
+        commitSha: commit_sha ?? null,
+        station: ctx.station,
+        at: answeredAt,
+      })
       emit({
         type: 'review.answered',
         runId: ctx.runId,

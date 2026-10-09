@@ -5,8 +5,10 @@ import {
   listCheckRuns,
   listReviewComments,
   pullRequestState,
+  type ReviewComment,
 } from '@/lib/ghPr'
 import { logger } from '@/lib/log'
+import { recordReviewComments } from '@/modules/work/reviews'
 import { type Seen, seenAfter, signalsFrom } from '@/run/prSignals'
 import { pollEvery } from './polling'
 
@@ -20,6 +22,8 @@ interface WatchInput {
   readonly prNumber: number
   readonly seen: Seen
   readonly pollMs?: number
+  /** The issue whose thread this review belongs in, when there is one. */
+  readonly issueNumber?: number
 }
 
 /**
@@ -76,6 +80,12 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
           comments,
           me,
         }
+        // Written down before the signals are worked out, so what a person
+        // reads in the thread does not depend on the machine deciding the
+        // comment was worth acting on. A comment that changes nothing is
+        // still something somebody said about this work.
+        await rememberComments(input, comments)
+
         const signals = signalsFrom(seen, current)
         seen = seenAfter(seen, current, signals)
         if (signals.length > 0) {
@@ -94,3 +104,34 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
     )
   },
 )
+
+/**
+ * Records what the review said, for the thread rather than for the machine.
+ *
+ * Failures are logged and swallowed. The watch is what keeps a pull request
+ * alive, and losing that because a file could not be written would trade the
+ * whole loop for one line of history.
+ */
+async function rememberComments(
+  input: WatchInput,
+  comments: readonly ReviewComment[],
+): Promise<void> {
+  if (input.issueNumber === undefined) {
+    return
+  }
+  try {
+    await recordReviewComments(
+      { repo: input.repo, kind: 'issue', number: input.issueNumber },
+      comments.map((comment) => ({
+        id: String(comment.id),
+        author: comment.author,
+        body: comment.body,
+        path: comment.path ?? null,
+        line: comment.line ?? null,
+        at: comment.created_at,
+      })),
+    )
+  } catch (error) {
+    log.debug('could not record what the review said', { error })
+  }
+}
