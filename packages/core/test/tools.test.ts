@@ -25,7 +25,10 @@ const RUN_ID = 'acme/widgets#27@1790000000000'
 
 function contextFor(
   station: ToolContext['station'],
-): Omit<ToolContext, 'written' | 'queued' | 'recorded'> {
+): Omit<
+  ToolContext,
+  'written' | 'queued' | 'recorded' | 'answered' | 'context'
+> {
   return {
     runId: RUN_ID,
     title: 'pluralise always returns the plural form',
