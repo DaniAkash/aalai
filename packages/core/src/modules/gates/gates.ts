@@ -77,12 +77,18 @@ export function listGatesForSubject(
   db: Database,
   subject: { repo: string; number: number },
 ): GateRow[] {
+  const prefix = `${subject.repo}#${subject.number}@`
+  // `_` is a single character wildcard in LIKE and is legal in a repository
+  // name, so `org/foo_bar` would otherwise also match `org/fooXbar` and pull
+  // another repository's gates into this thread. The pattern narrows the scan
+  // and the exact prefix is what decides.
   return query(db)
     .select()
     .from(gates)
-    .where(like(gates.runId, `${subject.repo}#${subject.number}@%`))
+    .where(like(gates.runId, `${prefix}%`))
     .orderBy(asc(gates.openedAt))
     .all()
+    .filter((gate) => gate.runId.startsWith(prefix))
 }
 
 export function listGates(db: Database, filter: GateQuery = {}): GateRow[] {

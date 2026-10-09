@@ -56,10 +56,13 @@ export function Recorded({
   turn,
   onOpen,
   active,
+  body,
 }: {
   turn: Extract<Turn, { kind: 'recorded' }>
   onOpen: () => void
   active: boolean
+  /** The text, once the chip has been opened and it has arrived. */
+  body?: string
 }) {
   return (
     <Left author={turn.author} at={turn.at}>
@@ -80,6 +83,11 @@ export function Recorded({
         <FileText className="size-3" />
         {turn.artifactKind}.v{turn.version}
       </button>
+      {active ? (
+        <pre className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto whitespace-pre-wrap rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3 font-mono text-[11.5px] text-muted-foreground leading-relaxed">
+          {body ?? 'Reading it.'}
+        </pre>
+      ) : null}
     </Left>
   )
 }

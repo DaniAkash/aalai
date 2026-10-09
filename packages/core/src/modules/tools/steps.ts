@@ -66,10 +66,18 @@ export function registerStepTools(server: McpServer, ctx: ToolContext): void {
     },
     ({ step_index, label, unit, done, total }) => {
       if (!coherentProgress({ done, total })) {
-        return reply(
-          `ignored: ${done} of ${total} is not a position inside the work`,
-          { stepIndex: step_index, done: total, total, ratio: 1 },
-        )
+        // An error result rather than a shaped one. Answering with
+        // `done: total` would have had a client draw a finished bar for the
+        // very report that was refused, which is the thing this guards against.
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text' as const,
+              text: `refused: ${done} of ${total} is not a position inside the work. Report a count no greater than the total.`,
+            },
+          ],
+        }
       }
       emit({
         type: 'step.progress',
@@ -138,6 +146,20 @@ export function registerContextTool(server: McpServer, ctx: ToolContext): void {
     ({ files }) => {
       const found = files.filter((file) => file.found).length
       ctx.context = files
+      // Emitted as well as held on the turn. The grant is revoked when the
+      // turn ends and `runStation` does not return this, so without the event
+      // the report would be collected and then thrown away.
+      emit({
+        type: 'context.read',
+        runId: ctx.runId,
+        at: Date.now(),
+        station: ctx.station,
+        files: files.map((file) => ({
+          path: file.path,
+          found: file.found,
+          bytes: file.bytes,
+        })),
+      })
       return reply(
         `recorded ${found} of ${files.length} instruction files as read`,
         { found, missing: files.length - found, total: files.length },
@@ -161,7 +183,23 @@ export function registerReviewAnswerTool(
     },
     ({ thread_id, answer, commit_sha }) => {
       const answeredAt = new Date().toISOString()
-      ctx.answered.push({ threadId: thread_id, answer, answeredAt })
+      ctx.answered.push({
+        threadId: thread_id,
+        answer,
+        answeredAt,
+        commitSha: commit_sha ?? null,
+      })
+      // Same reason as the context report: the grant does not outlive the
+      // turn, so an answer that only lives on it is an answer nobody sees.
+      emit({
+        type: 'review.answered',
+        runId: ctx.runId,
+        at: Date.now(),
+        station: ctx.station,
+        threadId: thread_id,
+        answer,
+        commitSha: commit_sha ?? null,
+      })
       return reply('recorded for a person to read. Nothing is posted by you.', {
         threadId: thread_id,
         answeredAt,

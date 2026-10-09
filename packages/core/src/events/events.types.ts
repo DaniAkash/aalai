@@ -102,6 +102,23 @@ export type RunEvent = Base &
         readonly files: readonly FileChangeEvent[]
       }
     | {
+        /** Which of the repository's own instruction files a station read. */
+        readonly type: 'context.read'
+        readonly station: StationId
+        readonly files: readonly {
+          readonly path: string
+          readonly found: boolean
+          readonly bytes: number
+        }[]
+      }
+    | {
+        readonly type: 'review.answered'
+        readonly station: StationId
+        readonly threadId: string
+        readonly answer: string
+        readonly commitSha: string | null
+      }
+    | {
         readonly type: 'agent.tool'
         readonly station: StationId
         readonly tool: string

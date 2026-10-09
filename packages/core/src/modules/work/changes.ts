@@ -65,6 +65,46 @@ const STATUS: Record<string, ChangeKind> = {
   M: 'modified',
   D: 'deleted',
   R: 'renamed',
+  C: 'added',
+}
+
+/**
+ * The branch this repository actually forks from.
+ *
+ * Hard coding `main` would show an empty pane for every repository whose
+ * default is `master` or anything else, which is a silent wrong answer rather
+ * than an error. Falls back to `main` only when the clone cannot say.
+ */
+async function baseOf(dir: string, given: string | undefined): Promise<string> {
+  if (given !== undefined) {
+    return given
+  }
+  const ref = await exec(
+    ['git', 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'],
+    { cwd: dir },
+  )
+  return ref.exitCode === 0
+    ? ref.stdout.trim().replace(/^origin\//, '')
+    : 'main'
+}
+
+/**
+ * The path a change ends at, and what kind of change it is.
+ *
+ * A rename is the awkward one. `--name-status` writes `R100<tab>old<tab>new`
+ * and `--numstat` writes its counts against the new path, so reading only the
+ * first path after the status files a rename under the name it no longer has
+ * and the counts never find it.
+ */
+function statusEntry(line: string): { path: string; kind: ChangeKind } | null {
+  const [status, first, second] = line.split('\t')
+  if (status === undefined || first === undefined) {
+    return null
+  }
+  const kind = STATUS[status.charAt(0)] ?? 'modified'
+  const renamed = status.startsWith('R') || status.startsWith('C')
+  const path = renamed ? (second ?? first) : first
+  return { path, kind }
 }
 
 export async function readChanges(input: {
@@ -72,16 +112,22 @@ export async function readChanges(input: {
   branch: string | null
   base?: string
 }): Promise<ChangeSet> {
-  const base = input.base ?? 'main'
   const branch = input.branch
   const dir = clonePath(input.repo)
+
+  if (!existsSync(join(dir, '.git'))) {
+    return {
+      base: input.base ?? 'main',
+      branch: branch ?? '',
+      files: [],
+      absent: 'no-clone',
+    }
+  }
+  const base = await baseOf(dir, input.base)
   const empty = { base, branch: branch ?? '', files: [] as FileChange[] }
 
   if (branch === null) {
     return { ...empty, absent: 'no-branch' }
-  }
-  if (!existsSync(join(dir, '.git'))) {
-    return { ...empty, absent: 'no-clone' }
   }
   const [head, from] = await Promise.all([
     resolveRef(dir, branch),
@@ -105,14 +151,15 @@ export async function readChanges(input: {
 
   const kindByPath = new Map<string, ChangeKind>()
   for (const line of lines(kinds.stdout)) {
-    const [status, path] = line.split('\t')
-    if (status !== undefined && path !== undefined) {
-      kindByPath.set(path, STATUS[status.charAt(0)] ?? 'modified')
+    const entry = statusEntry(line)
+    if (entry !== null) {
+      kindByPath.set(entry.path, entry.kind)
     }
   }
 
   const files = lines(counts.stdout).flatMap((line): FileChange[] => {
-    const [added, removed, path] = line.split('\t')
+    const [added, removed, ...rest] = line.split('\t')
+    const path = numstatPath(rest)
     if (path === undefined) {
       return []
     }
@@ -137,11 +184,11 @@ export async function readFilePatch(input: {
   base?: string
   path: string
 }): Promise<string | undefined> {
-  const base = input.base ?? 'main'
   const dir = clonePath(input.repo)
   if (!existsSync(join(dir, '.git'))) {
     return undefined
   }
+  const base = await baseOf(dir, input.base)
   const [head, from] = await Promise.all([
     resolveRef(dir, input.branch),
     resolveRef(dir, base),
@@ -160,4 +207,24 @@ export async function readFilePatch(input: {
 
 function lines(out: string): string[] {
   return out.split('\n').filter((line) => line !== '')
+}
+
+/**
+ * The path a numstat row is about.
+ *
+ * A rename is written either as three fields, the old and the new, or as one
+ * field spelling `old => new`. Both mean the file now at the second name.
+ */
+function numstatPath(
+  rest: readonly (string | undefined)[],
+): string | undefined {
+  const [first, second] = rest
+  if (second !== undefined && second !== '') {
+    return second
+  }
+  if (first === undefined) {
+    return undefined
+  }
+  const arrow = first.indexOf(' => ')
+  return arrow === -1 ? first : first.slice(arrow + 4).replace(/\}$/, '')
 }

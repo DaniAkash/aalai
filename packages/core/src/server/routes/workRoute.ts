@@ -10,7 +10,9 @@ import {
   readRun,
   runningCount,
 } from '@/modules/runs/queue'
+import { readArtifact } from '@/modules/work/artifacts'
 import { readChanges, readFilePatch } from '@/modules/work/changes'
+import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { readWorkThread } from '@/modules/work/thread'
 import {
   LANES,
@@ -146,6 +148,30 @@ export const workRoute = new Hono()
       return patch === undefined
         ? c.json({ error: 'no such file in this change' }, 404)
         : c.json({ path, patch })
+    },
+  )
+  .get(
+    '/work/:id/artifact',
+    zValidator('query', z.object({ artifact: z.string().min(1) })),
+    async (c) => {
+      const found = findWork(c.req.param('id'))
+      if (typeof found === 'string') {
+        return found === 'bad-id'
+          ? c.json({ error: 'not a work id' }, 400)
+          : c.json({ error: 'no such work' }, 404)
+      }
+      const id = c.req.valid('query').artifact
+      // Parsed rather than prefix matched, for the same reason the tool does
+      // it: an id is validated whole, so `acme__widgets/../other__repo/...`
+      // cannot read its way out of this subject.
+      const parsed = parseArtifactId(id)
+      if (parsed?.repoSegment !== repoSegment(found.entry.repo)) {
+        return c.json({ error: 'no such artifact' }, 404)
+      }
+      const body = await readArtifact(id)
+      return body === undefined
+        ? c.json({ error: 'no such artifact' }, 404)
+        : c.json({ artifact: id, file: parsed.file, body })
     },
   )
 

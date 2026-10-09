@@ -1,3 +1,4 @@
+import { skipToken } from '@tanstack/react-query'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ApprovalCard } from '@/components/agents/approval-card'
@@ -7,7 +8,11 @@ import { ErrorNote } from '@/components/state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAnswerGate } from '@/modules/api/gates.hooks'
 import { queryClient } from '@/modules/api/queryClient'
-import { type Awaiting, useWorkDetail } from '@/modules/api/workDetail.hooks'
+import {
+  type Awaiting,
+  useArtifact,
+  useWorkDetail,
+} from '@/modules/api/workDetail.hooks'
 import { ChangesPane } from './ChangesPane'
 import { Recorded, Said, SystemNote } from './work-detail.components'
 
@@ -35,6 +40,9 @@ export function WorkDetail() {
   }
   const toast = useToast()
   const detail = useWorkDetail({ variables: { id: workId } })
+  const artifact = useArtifact({
+    variables: open === null ? skipToken : { id: workId, artifact: open },
+  })
   const answer = useAnswerGate({
     onError: (error) => toast.failed('Could not record that answer', error),
     onSuccess: () => {
@@ -103,7 +111,12 @@ export function WorkDetail() {
               key={turn.id}
               turn={turn}
               active={open === turn.artifact}
-              onOpen={() => setOpen(turn.artifact)}
+              onOpen={() =>
+                setOpen(open === turn.artifact ? null : turn.artifact)
+              }
+              {...(open === turn.artifact && artifact.data
+                ? { body: artifact.data.body }
+                : {})}
             />
           ) : (
             <SystemNote key={turn.id} turn={turn} />

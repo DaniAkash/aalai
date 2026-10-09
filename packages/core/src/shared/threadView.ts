@@ -96,6 +96,27 @@ export function gateSentence(turn: Extract<Turn, { kind: 'gate' }>): string {
     case 'rejected':
       return `Rejected the ${what}`
     default:
+      return unanswered(turn, what)
+  }
+}
+
+/**
+ * A gate with no decision was not necessarily left for somebody.
+ *
+ * It can also have been superseded by a newer version or expired, and both of
+ * those are in the thread. Calling them "waiting on you" asks for an answer
+ * that can no longer be given.
+ */
+function unanswered(
+  turn: Extract<Turn, { kind: 'gate' }>,
+  what: string,
+): string {
+  switch (turn.status) {
+    case 'superseded':
+      return `The ${what} was replaced before it was answered`
+    case 'expired':
+      return `The ${what} expired without an answer`
+    default:
       return `Waiting on you: the ${what}`
   }
 }

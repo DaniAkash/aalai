@@ -20,18 +20,24 @@ export interface PatchLine {
 const HUNK = /^@@ -(?<old>\d+)(?:,\d+)? \+(?<new>\d+)(?:,\d+)? @@/
 
 /**
- * Lines a reader does not need, dropped.
+ * Lines a reader does not need, dropped, and only where they can occur.
  *
- * The `diff --git`, `index`, `---` and `+++` lines restate the filename the
- * pane already shows as its heading, and the `---`/`+++` pair would otherwise
- * be counted as a removal and an addition of the path itself.
+ * The file header restates the filename the pane already shows as its heading,
+ * and its `---`/`+++` pair would otherwise count as a removal and an addition
+ * of the path itself.
+ *
+ * It is only consulted before the first hunk. Inside a hunk a removed line
+ * whose own text begins with `-- ` is written `--- `, and treating that as a
+ * header deletes a line of somebody's source and shifts every number after it.
  */
-function isHeader(line: string): boolean {
+function isFileHeader(line: string): boolean {
   return (
     line.startsWith('diff --git ') ||
     line.startsWith('index ') ||
     line.startsWith('--- ') ||
     line.startsWith('+++ ') ||
+    line.startsWith('old mode') ||
+    line.startsWith('new mode') ||
     line.startsWith('new file mode') ||
     line.startsWith('deleted file mode') ||
     line.startsWith('similarity index') ||
@@ -40,61 +46,80 @@ function isHeader(line: string): boolean {
   )
 }
 
+/**
+ * What one line inside a hunk is, and what it contributes to the numbering.
+ *
+ * Only a leading space is context. Everything else unrecognised is metadata:
+ * the no-newline marker, and the notices git emits in place of a binary body.
+ * Reading an unknown first character as a marker invents a numbered row and
+ * eats the first letter of the text.
+ */
+function classify(raw: string): { type: PatchLineType; content: string } {
+  const marker = raw.charAt(0)
+  if (marker === '+' || marker === '-' || marker === ' ') {
+    const type =
+      marker === '+' ? 'added' : marker === '-' ? 'removed' : 'context'
+    return { type, content: raw.slice(1) }
+  }
+  return { type: 'meta', content: raw }
+}
+
+/**
+ * Walks a patch, keeping the two line counters the hunk headers set.
+ *
+ * A small class rather than four variables threaded through helpers: the
+ * counters and the position in the file are one thing, and separating them is
+ * how a refactor ends up advancing one and not the other.
+ */
+class Numbering {
+  private oldLine = 0
+  private newLine = 0
+  private index = 0
+  inHunk = false
+
+  startHunk(oldStart: number, newStart: number): void {
+    this.inHunk = true
+    this.oldLine = oldStart
+    this.newLine = newStart
+  }
+
+  take(type: PatchLineType, content: string): PatchLine {
+    const id = `l${this.index++}`
+    const old = type === 'removed' || type === 'context'
+    const next = type === 'added' || type === 'context'
+    return {
+      id,
+      type,
+      ...(old ? { oldLine: this.oldLine++ } : {}),
+      ...(next ? { newLine: this.newLine++ } : {}),
+      content,
+    }
+  }
+}
+
 export function parsePatch(patch: string): PatchLine[] {
   const out: PatchLine[] = []
-  let oldLine = 0
-  let newLine = 0
-  let index = 0
+  const at = new Numbering()
 
   for (const raw of patch.split('\n')) {
-    if (isHeader(raw)) {
+    if (!at.inHunk && isFileHeader(raw)) {
       continue
     }
     const hunk = HUNK.exec(raw)
     if (hunk?.groups !== undefined) {
-      oldLine = Number(hunk.groups.old)
-      newLine = Number(hunk.groups.new)
-      out.push({
-        id: `l${index++}`,
-        type: 'meta',
-        content: raw,
-      })
+      at.startHunk(Number(hunk.groups.old), Number(hunk.groups.new))
+      out.push(at.take('meta', raw))
       continue
     }
-    // A patch ends with a trailing newline, which splits into one empty
-    // string that is not a context line and must not be numbered as one.
+    // A patch ends with a trailing newline, which splits into one empty string
+    // that is not a context line and must not be numbered as one.
     if (raw === '' && out.length > 0) {
       continue
     }
-    const marker = raw.charAt(0)
-    const content = raw.slice(1)
-    if (marker === '+') {
-      out.push({
-        id: `l${index++}`,
-        type: 'added',
-        newLine: newLine++,
-        content,
-      })
-    } else if (marker === '-') {
-      out.push({
-        id: `l${index++}`,
-        type: 'removed',
-        oldLine: oldLine++,
-        content,
-      })
-    } else if (marker === '\\') {
-      // "\ No newline at end of file" belongs to the line above and numbers
-      // nothing of its own.
-      out.push({ id: `l${index++}`, type: 'meta', content: raw })
-    } else {
-      out.push({
-        id: `l${index++}`,
-        type: 'context',
-        oldLine: oldLine++,
-        newLine: newLine++,
-        content,
-      })
-    }
+    const { type, content } = at.inHunk
+      ? classify(raw)
+      : { type: 'meta' as const, content: raw }
+    out.push(at.take(type, content))
   }
   return out
 }

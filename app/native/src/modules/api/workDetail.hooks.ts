@@ -41,3 +41,25 @@ export const useWorkDetail = createQuery<DetailResponse, DetailVars>({
     )
   },
 })
+
+/**
+ * One artifact's text, fetched only when a chip is opened.
+ *
+ * A plan is long and a thread can carry several versions of one, so the bodies
+ * are not sent with the thread. The chip is what asks for one.
+ */
+export const useArtifact = createQuery<
+  { artifact: string; file: string; body: string },
+  { id: string; artifact: string }
+>({
+  queryKey: ['work', 'artifact'],
+  fetcher: async ({ id, artifact }) => {
+    const client = await api()
+    return parseResponse<{ artifact: string; file: string; body: string }>(
+      await client.api.work[':id'].artifact.$get({
+        param: { id },
+        query: { artifact },
+      }),
+    )
+  },
+})

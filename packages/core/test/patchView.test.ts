@@ -60,6 +60,38 @@ describe('parsePatch', () => {
     expect(lines.at(-1)?.content).not.toBe('')
   })
 
+  test('a removed line that looks like a header is kept', () => {
+    // `-- ` at the start of a source line is written `--- ` in a patch, and
+    // dropping it as a file header deletes somebody's code and shifts every
+    // number after it.
+    const tricky = parsePatch(
+      '@@ -1,3 +1,3 @@\n keep\n--- a line that begins with two dashes\n+++ a line that begins with two pluses\n',
+    )
+    expect(tricky.filter((l) => l.type === 'removed')).toHaveLength(1)
+    expect(tricky.filter((l) => l.type === 'added')).toHaveLength(1)
+    expect(tricky.find((l) => l.type === 'removed')?.content).toBe(
+      '-- a line that begins with two dashes',
+    )
+  })
+
+  test('the real file header is still dropped before the first hunk', () => {
+    const content = parsePatch(PATCH)
+      .map((l) => l.content)
+      .join('\n')
+    expect(content).not.toContain('--- a/src')
+    expect(content).not.toContain('+++ b/src')
+  })
+
+  test('a binary diff numbers nothing and keeps its text whole', () => {
+    const binary = parsePatch(
+      'diff --git a/logo.png b/logo.png\nindex 1..2 100644\nBinary files a/logo.png and b/logo.png differ\n',
+    )
+    expect(binary.every((l) => l.type === 'meta')).toBe(true)
+    expect(binary.at(-1)?.content).toBe(
+      'Binary files a/logo.png and b/logo.png differ',
+    )
+  })
+
   test('no newline at end of file numbers nothing', () => {
     const marked = parsePatch(
       '@@ -1,1 +1,1 @@\n-a\n+b\n\\ No newline at end of file\n',

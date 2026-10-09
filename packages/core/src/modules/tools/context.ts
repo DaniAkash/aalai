@@ -33,7 +33,12 @@ export interface ToolContext {
   /** Which instruction files the station found, when it says. */
   context?: readonly { path: string; found: boolean; bytes: number }[]
   /** Review comments this turn answered, in call order. */
-  readonly answered: { threadId: string; answer: string; answeredAt: string }[]
+  readonly answered: {
+    threadId: string
+    answer: string
+    answeredAt: string
+    commitSha: string | null
+  }[]
 }
 
 /** A turn's authority to call tools, and the record of what it did with it. */

@@ -80,6 +80,12 @@ export function registerWriteReview(server: McpServer, ctx: ToolContext): void {
         blocking_findings: z.array(z.string()),
         summary: z.string().min(1),
       },
+      outputSchema: {
+        ...artifactWritten,
+        verdict: z.string(),
+        passed: z.number().int(),
+        total: z.number().int(),
+      },
     },
     async (input) => {
       // Redacted here rather than after, because this is what gets written.

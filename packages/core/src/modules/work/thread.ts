@@ -55,12 +55,29 @@ export async function readWorkThread(
 /**
  * Oldest first, and ties broken by id.
  *
- * A gate opened by the same write that recorded the artifact it points at can
- * share a timestamp to the second, and a thread that reorders itself between
- * two refetches reads as though something happened.
+ * Compared as instants rather than as strings, because the sources do not
+ * agree on a format: conversation entries and artifacts carry ISO timestamps
+ * while gate rows written by the database default carry `YYYY-MM-DD HH:MM:SS`.
+ * A space sorts before `T`, so comparing the text puts every such gate ahead
+ * of everything else that happened the same day.
+ *
+ * Ties go to the id. A gate opened by the same write that recorded the
+ * artifact it points at can share a second, and a thread that reorders itself
+ * between two refetches reads as though something happened.
  */
 function byTime(a: Turn, b: Turn): number {
-  return a.at.localeCompare(b.at) || a.id.localeCompare(b.id)
+  return instant(a.at) - instant(b.at) || a.id.localeCompare(b.id)
+}
+
+function instant(at: string): number {
+  const direct = Date.parse(at)
+  if (!Number.isNaN(direct)) {
+    return direct
+  }
+  // SQLite's `current_timestamp` is UTC without saying so, and parsing it as
+  // local time would move those rows by the offset.
+  const utc = Date.parse(`${at.replace(' ', 'T')}Z`)
+  return Number.isNaN(utc) ? 0 : utc
 }
 
 /**
