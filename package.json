@@ -31,10 +31,10 @@
     "dev:web": "bun scripts/dev-web.ts"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
+    "@biomejs/biome": "^2.5.15",
     "@types/bun": "^1.4.2",
     "concurrently": "^10",
-    "fallow": "^3.30.0",
+    "fallow": "^3.31.0",
     "typescript": "^7.0.2"
   }
 }
