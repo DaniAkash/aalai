@@ -62,3 +62,27 @@ describe('planSteps', () => {
     ).toEqual(['only this'])
   })
 })
+
+describe('planSteps against hostile input', () => {
+  test('a line padded between its words does not stall the parse', () => {
+    // Content, then a long run of spaces, then one more character. The first
+    // version of these patterns captured lazily and ended in optional
+    // whitespace, so it retried the tail at every expansion: 1673ms on this
+    // input against 0.02ms now, and quadratic, so it only gets worse. A plan
+    // is written by an agent, so its shape is not ours to assume.
+    const pad = ' '.repeat(60_000)
+    const hostile = `## a${pad}b\n1. a${pad}b\n`
+    const started = performance.now()
+    planSteps(hostile)
+    expect(performance.now() - started).toBeLessThan(100)
+  })
+
+  test('a step that is only whitespace is not a step', () => {
+    // It would render as a blank row that looks like a layout fault.
+    expect(planSteps('## Steps\n1.    \n2. real\n')).toEqual(['real'])
+  })
+
+  test('surrounding whitespace is not kept', () => {
+    expect(planSteps('##   Steps  \n1.   padded   \n')).toEqual(['padded'])
+  })
+})

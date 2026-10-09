@@ -11,8 +11,15 @@
  * entirely plausible.
  */
 
-const HEADING = /^##\s+(?<title>.+?)\s*$/
-const NUMBERED = /^\s*(?<ordinal>\d+)[.)]\s+(?<body>.+?)\s*$/
+/*
+  Both capture greedily to the end of the line and are trimmed afterwards,
+  rather than ending `.+?\s*$`. A lazy capture followed by optional trailing
+  whitespace has to retry the tail at every expansion, which is quadratic on a
+  line of many spaces. A plan is written by an agent, so its length and shape
+  are not ours to assume.
+*/
+const HEADING = /^##\s+(?<title>.*)$/
+const NUMBERED = /^\s*(?<ordinal>\d+)[.)]\s+(?<body>.*)$/
 
 /**
  * Reads the numbered list under a heading.
@@ -29,15 +36,17 @@ export function planSteps(body: string, section = 'Steps'): string[] {
   for (const line of body.split('\n')) {
     const heading = HEADING.exec(line)
     if (heading?.groups !== undefined) {
-      inside = heading.groups.title?.toLowerCase() === section.toLowerCase()
+      inside =
+        heading.groups.title?.trim().toLowerCase() === section.toLowerCase()
       continue
     }
     if (!inside) {
       continue
     }
     const numbered = NUMBERED.exec(line)
-    if (numbered?.groups?.body !== undefined) {
-      steps.push(numbered.groups.body)
+    const body = numbered?.groups?.body?.trim()
+    if (body !== undefined && body !== '') {
+      steps.push(body)
     }
   }
   return steps
