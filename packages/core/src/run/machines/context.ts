@@ -18,6 +18,7 @@ export function initialContext(input: IssueWorkInput): IssueWorkContext {
     implementerReport: '',
     premiseBody: input.premiseBody,
     ...(input.planGated === undefined ? {} : { planGated: input.planGated }),
+    ...(input.asksFirst === undefined ? {} : { asksFirst: input.asksFirst }),
     ...(input.gatePollMs === undefined ? {} : { gatePollMs: input.gatePollMs }),
     ...(input.premiseIntervalMs === undefined
       ? {}

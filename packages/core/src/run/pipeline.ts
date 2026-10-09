@@ -3,12 +3,19 @@ import { emit, registerRunRoot } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
+import { readRun } from '@/modules/runs/queue'
 import type { RunRef, Subject } from '@/modules/work/paths'
 import { recordBestEffort, recordRun, snapshotOf } from '@/run/artifacts'
 import { detectConventions } from '@/run/conventions'
 import { type Delivery, deliver, reportOutcomeOnIssue } from '@/run/deliver'
 import { driveIssueWork } from '@/run/machines/drive'
 import type { IssueWorkContext } from '@/run/machines/types'
+import {
+  announceStart,
+  type ResumeFrom,
+  snapshotFor,
+} from '@/run/pipeline.helpers'
+import { policyForRun } from '@/run/policy'
 import { triageIfAsked } from '@/run/triageRoute'
 import {
   adoptWorkspace,
@@ -39,12 +46,7 @@ export interface PipelineResult {
  * caller finalises the run's claim from that result: a rejection here would
  * leave the issue claimed and unretryable until its lease expires.
  */
-export interface ResumeFrom {
-  readonly runId: string
-  readonly snapshot: unknown
-  /** Which machine wrote it, so it is restored into that one and no other. */
-  readonly machine: string
-}
+export type { ResumeFrom }
 
 /**
  * Picks a run back up where a previous process left it.
@@ -77,37 +79,6 @@ export async function runIssue(
   return await work(repo, issue, config, undefined)
 }
 
-/**
- * The persisted snapshot, but only for the machine that wrote it.
- *
- * A run parked in its triage gate, or waiting weeks on a reporter, would
- * otherwise restart by classifying from scratch, and its snapshot would go on
- * to be restored into a machine whose states it shares none of.
- */
-function snapshotFor(
-  from: ResumeFrom | undefined,
-  machine: string,
-): { snapshot?: unknown } {
-  if (from === undefined || from.machine !== machine) {
-    return {}
-  }
-  return { snapshot: from.snapshot }
-}
-
-/** Says a run has begun, before anything exists that could fail. */
-function announceStart(runId: string, repo: string, issue: GhIssue): void {
-  log.info('run starting', { repo, issue: issue.number, title: issue.title })
-  emit({
-    type: 'run.started',
-    runId,
-    repo,
-    issue: issue.number,
-    title: issue.title,
-    at: Date.now(),
-  })
-  emit({ type: 'stage.entered', runId, stage: 'workspace', at: Date.now() })
-}
-
 async function work(
   repo: string,
   issue: GhIssue,
@@ -116,6 +87,14 @@ async function work(
 ): Promise<PipelineResult> {
   const runId = from?.runId ?? `${repo}#${issue.number}@${Date.now()}`
   const subject: Subject = { repo, kind: 'issue', number: issue.number }
+  // Resolved once, here, rather than read again inside each station: a person
+  // changing the repository's policy mid run must not move the run underneath
+  // the machine that is already going by it.
+  const policy = policyForRun(
+    config,
+    repo,
+    readRun(getDb().sqlite, repo, 'issue', issue.number)?.policy,
+  )
   const run: RunRef = { subject, runId }
   announceStart(runId, repo, issue)
 
@@ -155,6 +134,7 @@ async function work(
       issue,
       run,
       config,
+      policy,
       workspace,
       conventionFiles,
       ...snapshotFor(from, 'triage'),
@@ -169,6 +149,7 @@ async function work(
       repo,
       issueNumber: issue.number,
       run,
+      policy,
       ...snapshotFor(from, 'issueWork'),
       deps: {
         db: getDb().sqlite,

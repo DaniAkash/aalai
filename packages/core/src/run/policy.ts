@@ -18,9 +18,42 @@ export function policyForRepo(config: Config, repo: string): RunPolicy {
   )
 }
 
-/** Whether the plan needs a person before any code is written. */
+/**
+ * The policy one run goes by.
+ *
+ * A mode chosen in the composer is about one piece of work and outranks the
+ * repository's standing answer, which is what a run the watcher started still
+ * uses. Null rather than a default on the column, so "no answer" and "the same
+ * answer as the repository" stay the same thing after the repository's changes.
+ */
+export function policyForRun(
+  config: Config,
+  repo: string,
+  chosen: RunPolicy | null | undefined,
+): RunPolicy {
+  return chosen ?? policyForRepo(config, repo)
+}
+
+/**
+ * Whether the plan needs a person before any code is written.
+ *
+ * True for `talk` as well. The difference between the two is what the analyst
+ * writes first, not whether somebody has to agree to it: talking it through is
+ * the same gate reached with questions rather than with an answer.
+ */
 export function planIsGated(policy: RunPolicy): boolean {
-  return policy === 'plan_gate'
+  return policy === 'plan_gate' || policy === 'talk'
+}
+
+/**
+ * Whether the analyst should lead with what it does not know.
+ *
+ * The revision loop already carries this: a plan, a person asking for changes,
+ * the next version. This is that loop entered deliberately, so the first thing
+ * recorded is the questions rather than a guess at the answers.
+ */
+export function asksFirst(policy: RunPolicy): boolean {
+  return policy === 'talk'
 }
 
 /**

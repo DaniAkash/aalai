@@ -1,23 +1,12 @@
+export type { QueueEntry }
+
 import type { Database } from 'bun:sqlite'
 import { and, asc, eq, inArray, notInArray } from 'drizzle-orm'
 import { query } from '@/modules/db/query'
 import type { RunStatus, SubjectKind } from '@/modules/db/schema/schema'
 import { runs } from '@/modules/db/schema/schema'
-
-export interface QueueEntry {
-  readonly repo: string
-  readonly kind: SubjectKind
-  readonly number: number
-  readonly status: RunStatus
-  readonly title: string | null
-  readonly offeredAt: string | null
-  readonly queuedAt: string | null
-  readonly startedAt: string
-  readonly finishedAt: string | null
-  readonly branch: string | null
-  readonly prUrl: string | null
-  readonly error: string | null
-}
+import { byInterest, subjectOf, toEntry } from '@/modules/runs/queue.helpers'
+import type { QueueEntry } from '@/modules/runs/queue.types'
 
 /** States a row can be in and still be waiting for, or holding, a slot. */
 const LIVE: readonly RunStatus[] = ['offered', 'queued', 'running', 'blocked']
@@ -322,51 +311,4 @@ export function blockRun(
     .returning({ repo: runs.repo })
     .all()
   return changed.length > 0
-}
-
-function subjectOf(repo: string, kind: SubjectKind, number: number) {
-  return and(
-    eq(runs.repo, repo),
-    eq(runs.subjectKind, kind),
-    eq(runs.subjectNumber, number),
-  )
-}
-
-/** Most interesting first: what needs a person, then what is moving, then the rest. */
-const ORDER: Record<RunStatus, number> = {
-  blocked: 0,
-  running: 1,
-  queued: 2,
-  offered: 3,
-  failed: 4,
-  stopped: 5,
-  delivered: 6,
-  skipped: 7,
-}
-
-function byInterest(a: QueueEntry, b: QueueEntry): number {
-  const rank = ORDER[a.status] - ORDER[b.status]
-  if (rank !== 0) {
-    return rank
-  }
-  return (a.queuedAt ?? a.offeredAt ?? a.startedAt).localeCompare(
-    b.queuedAt ?? b.offeredAt ?? b.startedAt,
-  )
-}
-
-function toEntry(row: typeof runs.$inferSelect): QueueEntry {
-  return {
-    repo: row.repo,
-    kind: row.subjectKind,
-    number: row.subjectNumber,
-    status: row.status,
-    title: row.title,
-    offeredAt: row.offeredAt,
-    queuedAt: row.queuedAt,
-    startedAt: row.startedAt,
-    finishedAt: row.finishedAt,
-    branch: row.branch,
-    prUrl: row.prUrl,
-    error: row.error,
-  }
 }

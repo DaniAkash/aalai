@@ -30,8 +30,16 @@ export interface IssueWorkContext {
   readonly premiseBody: string
   /** How often the premise is rechecked. Lowered by tests. */
   readonly premiseIntervalMs?: number
-  /** Whether this repository's policy asks a person to approve the plan. */
+  /** Whether this run's policy asks a person to approve the plan. */
   readonly planGated?: boolean
+  /**
+   * Whether the analyst leads with what it does not know.
+   *
+   * Carried into the context because the analyst's prompt is built inside the
+   * machine, and this is the only thing that distinguishes talking it through
+   * from planning: the same gate, reached with questions rather than a guess.
+   */
+  readonly asksFirst?: boolean
   /** The gate currently being waited on, if any. */
   readonly gateId?: string
   /**
@@ -76,8 +84,10 @@ export interface IssueWorkInput {
   readonly premiseBody: string
   /** How often the premise is rechecked. Lowered by tests. */
   readonly premiseIntervalMs?: number
-  /** Whether this repository's policy asks a person to approve the plan. */
+  /** Whether this run's policy asks a person to approve the plan. */
   readonly planGated?: boolean
+  /** Whether the analyst leads with its questions rather than a plan. */
+  readonly asksFirst?: boolean
   /** How often a parked run rechecks its gate. Lowered by tests. */
   readonly gatePollMs?: number
 }

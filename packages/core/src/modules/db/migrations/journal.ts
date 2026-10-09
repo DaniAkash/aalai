@@ -4,6 +4,7 @@ import gateStatus from './0001_add_gate_status_and_indexes.sql' with {
 }
 import gateSummary from './0002_add_gate_summary.sql' with { type: 'text' }
 import runQueue from './0003_add_run_queue_states.sql' with { type: 'text' }
+import runPolicy from './0004_add_policy_to_runs.sql' with { type: 'text' }
 
 export interface Migration {
   readonly name: string
@@ -23,4 +24,5 @@ export const MIGRATIONS: readonly Migration[] = [
   { name: '0001_add_gate_status_and_indexes', sql: gateStatus },
   { name: '0002_add_gate_summary', sql: gateSummary },
   { name: '0003_add_run_queue_states', sql: runQueue },
+  { name: '0004_add_policy_to_runs', sql: runPolicy },
 ]

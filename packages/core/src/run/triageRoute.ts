@@ -3,11 +3,12 @@ import { emit } from '@/events/bus'
 import type { GhIssue } from '@/lib/gh'
 import { logger } from '@/lib/log'
 import { getDb } from '@/modules/db/db'
+import type { RunPolicy } from '@/modules/settings/domains'
 import type { RunRef } from '@/modules/work/paths'
 import { driveTriage } from '@/run/machines/driveTriage'
 import type { TriageOutcome } from '@/run/machines/triageTypes'
 import type { PipelineResult } from '@/run/pipeline'
-import { policyForRepo, triageFirst } from '@/run/policy'
+import { triageFirst } from '@/run/policy'
 import type { Workspace } from '@/run/workspace'
 
 const log = logger('triage')
@@ -28,6 +29,8 @@ export async function triageIfAsked(input: {
   workspace: Workspace
   conventionFiles: readonly string[]
   snapshot?: unknown
+  /** Resolved by the caller, so one run goes by one answer throughout. */
+  policy: RunPolicy
 }): Promise<PipelineResult | undefined> {
   // A run that is already in triage stays in triage, whatever the policy says
   // now. Policy decides what a new run does; it must not decide what an
@@ -35,7 +38,7 @@ export async function triageIfAsked(input: {
   // start writing code, and changing it back would insert a fresh triage in
   // front of a machine that is already past it.
   const resuming = input.snapshot !== undefined
-  if (!resuming && !triageFirst(policyForRepo(input.config, input.repo))) {
+  if (!resuming && !triageFirst(input.policy)) {
     return undefined
   }
   const triaged = await driveTriage({

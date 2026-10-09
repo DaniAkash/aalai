@@ -18,7 +18,7 @@ export const analyst = fromPromise(
     input,
     signal,
   }: {
-    input: { runId: string; planGeneration: number }
+    input: { runId: string; planGeneration: number; asksFirst?: boolean }
     signal: AbortSignal
   }): Promise<Analysis> => {
     const deps = runDeps(input.runId)
@@ -44,6 +44,9 @@ export const analyst = fromPromise(
           worktree: deps.workspace.worktreePath,
           conventionFiles: deps.conventionFiles,
           config: deps.config,
+          ...(input.asksFirst === undefined
+            ? {}
+            : { asksFirst: input.asksFirst }),
           signal,
         })
         // Only when the station did not record it itself. A tool call already

@@ -1,5 +1,6 @@
+import type { RunPolicy } from '@/modules/settings/domains'
 import type { RunRef } from '@/modules/work/paths'
-import { planIsGated, policyForRepo } from '@/run/policy'
+import { asksFirst, planIsGated } from '@/run/policy'
 import type { RunDeps } from './deps'
 import { provideRunDeps } from './deps'
 import { issueWorkMachine } from './issueWork'
@@ -30,6 +31,8 @@ export async function driveIssueWork(input: {
   premiseIntervalMs?: number
   /** Lowered by tests so a parked gate is noticed promptly. */
   gatePollMs?: number
+  /** Resolved by the caller, so one run goes by one answer throughout. */
+  policy: RunPolicy
 }): Promise<{ state: string; context: IssueWorkContext }> {
   // Cancelled when the machine settles, so a turn still in flight for a run
   // that has already stopped does not spend another few minutes and commit
@@ -51,7 +54,8 @@ export async function driveIssueWork(input: {
       issueNumber: input.issueNumber,
       maxRevisions: input.deps.config.maxRevisions,
       premiseBody: input.deps.issue.body ?? '',
-      planGated: planIsGated(policyForRepo(input.deps.config, input.repo)),
+      planGated: planIsGated(input.policy),
+      asksFirst: asksFirst(input.policy),
       ...(input.premiseIntervalMs === undefined
         ? {}
         : { premiseIntervalMs: input.premiseIntervalMs }),
