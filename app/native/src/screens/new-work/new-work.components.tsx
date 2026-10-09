@@ -50,10 +50,13 @@ function headline(queue: QueueState, free: number): string {
   if (queue.paused) {
     return 'The queue is paused'
   }
+  const slots = queue.capacity === 1 ? 'slot is' : 'slots are'
   if (free === 0) {
-    return `All ${queue.capacity} slots are busy`
+    return queue.capacity === 1
+      ? 'The only slot is busy'
+      : `All ${queue.capacity} slots are busy`
   }
-  return `${queue.running} of ${queue.capacity} slots are busy`
+  return `${queue.running} of ${queue.capacity} ${slots} busy`
 }
 
 function detail(queue: QueueState, free: number): string {
