@@ -96,11 +96,14 @@ export function WorkRow({
   onOpen,
   onStart,
   starting,
+  activity,
 }: {
   item: WorkItem
   onOpen: () => void
   onStart?: () => void
   starting?: boolean
+  /** What the running step is saying, when one is saying anything. */
+  activity?: { label: string; ratio: number | null }
 }) {
   const live = item.lane === 'running'
   return (
@@ -141,7 +144,12 @@ export function WorkRow({
           <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
         )}
       </div>
-      {live ? <Progress label={item.station ?? 'working'} /> : null}
+      {live ? (
+        <Progress
+          label={activity?.label ?? item.station ?? 'working'}
+          ratio={activity?.ratio ?? null}
+        />
+      ) : null}
     </div>
   )
 }
@@ -167,17 +175,25 @@ function Meta({ item }: { item: WorkItem }) {
 }
 
 /**
- * Indeterminate on purpose, for now.
+ * How far along, determinate once a step says so.
  *
- * A determinate bar needs a step count and a step index, which arrive with the
- * tools that report them. Showing a made up percentage in the meantime would
- * be worse than showing motion and the name of the stage.
+ * A sweep while nothing has reported: it says the machine is alive without
+ * claiming a percentage nothing measured. The moment a step reports a count,
+ * the bar means something and the row says which step it is on rather than
+ * which station is holding it.
  */
-function Progress({ label }: { label: string }) {
+function Progress({ label, ratio }: { label: string; ratio: number | null }) {
   return (
     <div className="px-4 pb-3">
       <div className="h-1 overflow-hidden rounded-full bg-secondary">
-        <div className="h-full w-1/3 animate-[work-sweep_1.8s_ease-in-out_infinite] rounded-full bg-[var(--chart-2)]" />
+        {ratio === null ? (
+          <div className="h-full w-1/3 animate-[work-sweep_1.8s_ease-in-out_infinite] rounded-full bg-[var(--chart-2)]" />
+        ) : (
+          <div
+            style={{ width: `${Math.min(1, ratio) * 100}%` }}
+            className="h-full rounded-full bg-[var(--chart-2)] transition-[width] duration-300 ease-linear"
+          />
+        )}
       </div>
       <div className="mt-1.5 flex items-center gap-2 text-[12px] text-muted-foreground">
         <Dots />

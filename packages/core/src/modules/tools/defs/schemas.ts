@@ -27,6 +27,14 @@ const stepIndexSchema = z
 
 export const startStepInput = {
   step_index: stepIndexSchema,
+  label: z
+    .string()
+    .min(1)
+    .max(120)
+    .optional()
+    .describe(
+      'What this step does, in a few words. The work list shows it where there is no room for the plan, so write it as a person would read it: "Run the test suite", not "step 3".',
+    ),
 }
 
 export const startStepOutput = z.object({

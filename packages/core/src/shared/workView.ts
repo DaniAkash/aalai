@@ -1,4 +1,5 @@
 import type { RunStatus, SubjectKind } from '@/modules/db/schema/schema'
+import type { SubjectActivity } from '@/shared/stepActivity'
 
 /**
  * One piece of work, however it started.
@@ -17,6 +18,13 @@ export interface WorkItem {
   readonly lane: Lane
   /** Which station holds it right now, when one does. */
   readonly station: string | null
+  /**
+   * What that station is in the middle of, for a row loaded mid run.
+   *
+   * The stream carries this onward; this is the starting point, so a page
+   * opened between two reports is not blank until the next one.
+   */
+  readonly activity: SubjectActivity | null
   readonly branch: string | null
   readonly prUrl: string | null
   readonly error: string | null

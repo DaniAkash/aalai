@@ -13,6 +13,7 @@ import {
   type FilterKey,
   lanesFor,
 } from './work-list.helpers'
+import { useLiveRows } from './work-list.hooks'
 
 /**
  * Everything in play, as one list.
@@ -30,6 +31,7 @@ export function WorkList() {
     onError: (error) => toast.failed('Could not start that work', error),
   })
   const navigate = useNavigate()
+  const rows = useLiveRows()
 
   if (work.isPending) {
     return (
@@ -89,14 +91,18 @@ export function WorkList() {
               {LANE_COPY[lane.key].empty}
             </p>
           ) : (
-            lane.items.map((item) => (
-              <WorkRow
-                key={item.id}
-                item={item}
-                onOpen={() => openWork(item, navigate)}
-                {...startProps(item, start)}
-              />
-            ))
+            lane.items.map((item) => {
+              const activity = rows(item)
+              return (
+                <WorkRow
+                  key={item.id}
+                  item={item}
+                  onOpen={() => openWork(item, navigate)}
+                  {...startProps(item, start)}
+                  {...(activity === null ? {} : { activity })}
+                />
+              )
+            })
           )}
         </Lane>
       ))}

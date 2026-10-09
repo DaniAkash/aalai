@@ -76,6 +76,13 @@ export type RunEvent = Base &
         readonly type: 'step.started'
         readonly station: StationId
         readonly stepIndex: number
+        /**
+         * What the step does, where the plan is not to hand.
+         *
+         * The thread can name a step by looking it up in the plan. A work list
+         * row showing forty subjects cannot, so the station says it here.
+         */
+        readonly label?: string
       }
     | {
         /**

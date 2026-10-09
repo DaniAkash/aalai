@@ -1,5 +1,5 @@
 import { gateSentence } from 'aalai/shared'
-import { CircleDot, FileText, GitPullRequestArrow } from 'lucide-react'
+import { Check, CircleDot, FileText, GitPullRequestArrow } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import type { Turn } from '@/modules/api/workDetail.hooks'
@@ -57,12 +57,21 @@ export function Recorded({
   onOpen,
   active,
   body,
+  steps,
+  finished,
+  runningIndex,
 }: {
   turn: Extract<Turn, { kind: 'recorded' }>
   onOpen: () => void
   active: boolean
   /** The text, once the chip has been opened and it has arrived. */
   body?: string
+  /** The steps of this plan, when it is the plan in force. */
+  steps?: readonly string[]
+  /** Which of them a station has finished this session. */
+  finished?: readonly number[]
+  /** Which one is running, when one is. */
+  runningIndex?: number
 }) {
   return (
     <Left author={turn.author} at={turn.at}>
@@ -83,6 +92,30 @@ export function Recorded({
         <FileText className="size-3" />
         {turn.artifactKind}.v{turn.version}
       </button>
+      {steps !== undefined && steps.length > 0 ? (
+        <ol className="mt-2.5 max-w-[68ch] overflow-hidden rounded-[calc(var(--radius)-2px)] border border-border bg-card">
+          {steps.map((step: string, index: number) => (
+            <li
+              key={step}
+              className="flex items-start gap-3 border-border border-b px-3.5 py-2.5 last:border-b-0"
+            >
+              <StepMark
+                index={index}
+                done={finished?.includes(index) === true}
+                running={runningIndex === index}
+              />
+              <span
+                className={cn(
+                  'text-[13px] leading-snug',
+                  finished?.includes(index) === true && 'text-muted-foreground',
+                )}
+              >
+                {step}
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
       {active ? (
         <pre className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto whitespace-pre-wrap rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3 font-mono text-[11.5px] text-muted-foreground leading-relaxed">
           {body ?? 'Reading it.'}
@@ -191,4 +224,35 @@ function when(iso: string): string {
     return `${Math.floor(mins / 60)} h ago`
   }
   return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+/**
+ * Where a step has got to, as one mark that changes rather than three.
+ *
+ * A number becomes a tick when the step finishes, which is the smallest thing
+ * that can say "that one is done" without the row moving or the list reflowing.
+ */
+function StepMark({
+  index,
+  done,
+  running,
+}: {
+  index: number
+  done: boolean
+  running: boolean
+}) {
+  return (
+    <span
+      className={cn(
+        'mt-px grid size-5 shrink-0 place-items-center rounded-full border font-mono font-semibold text-[10px]',
+        done
+          ? 'border-primary bg-primary text-primary-foreground'
+          : running
+            ? 'border-[var(--chart-2)] bg-[var(--chart-2)] text-white'
+            : 'border-border bg-secondary text-muted-foreground',
+      )}
+    >
+      {done ? <Check className="size-3" /> : index + 1}
+    </span>
+  )
 }

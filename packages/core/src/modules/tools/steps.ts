@@ -39,7 +39,7 @@ export function registerStepTools(server: McpServer, ctx: ToolContext): void {
       inputSchema: startStepInput,
       outputSchema: startStepOutput.shape,
     },
-    ({ step_index }) => {
+    ({ step_index, label }) => {
       const startedAt = new Date().toISOString()
       emit({
         type: 'step.started',
@@ -47,6 +47,7 @@ export function registerStepTools(server: McpServer, ctx: ToolContext): void {
         at: Date.now(),
         station: ctx.station,
         stepIndex: step_index,
+        ...(label === undefined ? {} : { label }),
       })
       return reply(`started step ${step_index}`, {
         stepIndex: step_index,
