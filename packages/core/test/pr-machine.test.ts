@@ -317,3 +317,16 @@ describe('a pull request that is no longer open', () => {
     expect(settled.context.outcome?.kind).not.toBe('settled')
   })
 })
+
+describe('the answering budget', () => {
+  test('answering a review spends a revision', async () => {
+    // Without this the allowance never advances, and a push that a bot
+    // reviewer answers with more comments is a loop rather than a round.
+    const actor = start()
+    look(actor, [asked])
+    const watching = await waitFor(actor, (s) => s.matches('watching'), {
+      timeout: 5000,
+    })
+    expect(watching.context.revisions).toBe(1)
+  })
+})

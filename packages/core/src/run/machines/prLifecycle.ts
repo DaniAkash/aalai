@@ -227,6 +227,13 @@ export const prLifecycle = setup({
      * something else.
      */
     answeringReview: {
+      // Counted on the way in, the same as a ci fix, and against the revisions
+      // allowance rather than that one: a reviewer asking for something else
+      // and a check going red are different kinds of wrong. Without this the
+      // budget never advances, and answering a review pushes a commit which a
+      // bot reviewer answers with more comments, which is a loop that spends a
+      // laptop rather than one that ends.
+      entry: assign({ revisions: ({ context }) => context.revisions + 1 }),
       invoke: {
         src: 'reviewAnswerer',
         input: ({ context }) => {
