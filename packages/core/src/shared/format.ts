@@ -4,8 +4,10 @@ export type {
   RunStatus,
 } from '@/modules/db/schema/schema'
 export type { RunPolicy } from '@/modules/settings/domains'
+export * from './patchView'
 export * from './pickerRows'
 export * from './queueView'
+export * from './threadView'
 export * from './triageView'
 export * from './workView'
 

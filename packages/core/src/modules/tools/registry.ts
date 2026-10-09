@@ -1,7 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { StationId } from '@/events/events.types'
-import { redactDeep } from '@/lib/redact'
 import {
   appendConversation,
   findArtifacts,
@@ -9,14 +8,18 @@ import {
 } from '@/modules/work/artifacts'
 import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { queueOutbound } from '@/modules/work/store'
-import { recordAnalysis, recordReview, recordTriage } from '@/run/artifacts'
-import {
-  analysisSchema,
-  reviewSchema,
-  triageSchema,
-} from '@/run/stations/schemas'
-import { CLASSIFICATIONS, CONFIDENCES } from '@/shared/triageView'
 import type { ToolContext } from './context'
+import {
+  registerWritePlan,
+  registerWriteReview,
+  registerWriteTriage,
+} from './records'
+import { text } from './reply'
+import {
+  registerContextTool,
+  registerReviewAnswerTool,
+  registerStepTools,
+} from './steps'
 
 /**
  * The tools a station may call, and nothing else.
@@ -27,88 +30,6 @@ import type { ToolContext } from './context'
  * are not the lever here: the specification is explicit that they are hints
  * and that a client must not make tool use decisions from them.
  */
-
-function text(body: string) {
-  return { content: [{ type: 'text' as const, text: body }] }
-}
-
-function registerWritePlan(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
-    'write_plan',
-    {
-      title: 'Record the implementation plan',
-      description:
-        'Record the plan and how you intend to approach the work. Call this instead of writing the plan as prose. A new call records a new version; it never overwrites an earlier one.',
-      inputSchema: {
-        problem_statement: z.string().min(1),
-        approach: z.string().min(1),
-        plan: z.array(z.string().min(1)).min(1),
-        affected_surface: z.array(z.string()),
-        risks: z.array(z.string()),
-        test_strategy: z.string().min(1),
-        acceptance_criteria: z.array(z.string().min(1)).min(1),
-      },
-    },
-    async (input) => {
-      const analysis = analysisSchema.parse(input)
-      const recorded = await recordAnalysis(
-        ctx.subject,
-        ctx.run,
-        { number: ctx.subject.number, title: ctx.title },
-        analysis,
-      )
-      ctx.written.push(recorded.plan, recorded.criteria)
-      ctx.recorded.analysis = analysis
-      return text(
-        `recorded ${recorded.plan.id} (version ${recorded.plan.version}) and ${recorded.criteria.id} with ${analysis.acceptance_criteria.length} criteria`,
-      )
-    },
-  )
-}
-
-function registerWriteReview(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
-    'write_review',
-    {
-      title: 'Record the review verdict',
-      description:
-        'Record your verdict with one result per acceptance criterion. Call this instead of writing the verdict as prose.',
-      inputSchema: {
-        verdict: z.enum(['approve', 'request_changes', 'reject']),
-        criteria_results: z
-          .array(
-            z.object({
-              criterion: z.string().min(1),
-              pass: z.boolean(),
-              evidence: z.string().min(1),
-            }),
-          )
-          .min(1),
-        blocking_findings: z.array(z.string()),
-        summary: z.string().min(1),
-      },
-    },
-    async (input) => {
-      // Redacted here rather than after, because this is what gets written.
-      // The station path redacts what it returns, but a tool recorded review
-      // skips that write, so without this the artifact on disk keeps local
-      // worktree paths that a person and later the brain will read.
-      const review = redactDeep(reviewSchema.parse(input), ctx.worktreePath)
-      const recorded = await recordReview(
-        ctx.subject,
-        ctx.run,
-        { number: ctx.subject.number, title: ctx.title },
-        review,
-      )
-      ctx.written.push(recorded.review)
-      ctx.recorded.review = review
-      const passed = review.criteria_results.filter((r) => r.pass).length
-      return text(
-        `recorded ${recorded.review.id} (version ${recorded.review.version}): ${review.verdict}, ${passed}/${review.criteria_results.length} criteria met`,
-      )
-    },
-  )
-}
 
 function registerRecall(server: McpServer, ctx: ToolContext): void {
   server.registerTool(
@@ -235,58 +156,36 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
   )
 }
 
-function registerWriteTriage(server: McpServer, ctx: ToolContext): void {
-  server.registerTool(
-    'write_triage',
-    {
-      title: 'Record what this issue is',
-      description:
-        'Record your classification of this issue and why. Call this instead of writing the verdict as prose. A new call records a new version; it never overwrites an earlier one.',
-      inputSchema: {
-        classification: z.enum(CLASSIFICATIONS),
-        confidence: z.enum(CONFIDENCES),
-        summary: z.string().min(1),
-        reasoning: z.string().min(1),
-        affected_surface: z.array(z.string()),
-        duplicate_of: z.number().int().positive().optional(),
-        reply: z.string().optional(),
-        missing: z.array(z.string()),
-      },
-    },
-    async (input) => {
-      const triage = triageSchema.parse(input)
-      const recorded = await recordTriage(
-        ctx.subject,
-        ctx.run,
-        { number: ctx.subject.number, title: ctx.title },
-        triage,
-      )
-      ctx.written.push(recorded)
-      ctx.recorded.triage = triage
-      return text(
-        `recorded ${recorded.id} (version ${recorded.version}) as ${triage.classification} at ${triage.confidence} confidence`,
-      )
-    },
-  )
-}
-
-/** Tool names a station is given, which is the whole access control. */
 export const STATION_TOOLS: Record<StationId, readonly string[]> = {
   classifier: [
     'write_triage',
+    'report_context',
     'find_artifacts',
     'read_artifact',
     'append_conversation',
   ],
   analyst: [
     'write_plan',
+    'report_context',
     'find_artifacts',
     'read_artifact',
     'append_conversation',
   ],
-  implementer: ['find_artifacts', 'read_artifact', 'append_conversation'],
+  // The step tools and not write_plan: the implementer reports against the
+  // plan it was handed and cannot rewrite the thing it is being measured by.
+  implementer: [
+    'start_step',
+    'report_progress',
+    'finish_step',
+    'find_artifacts',
+    'read_artifact',
+    'append_conversation',
+  ],
+  // answer_review_comment and not the step tools: answering a comment is a
+  // different act from executing a plan step.
   reviewer: [
     'write_review',
+    'answer_review_comment',
     'find_artifacts',
     'read_artifact',
     'append_conversation',
@@ -301,6 +200,10 @@ export function registerStationTools(
   if (allowed.has('write_triage')) registerWriteTriage(server, ctx)
   if (allowed.has('write_plan')) registerWritePlan(server, ctx)
   if (allowed.has('write_review')) registerWriteReview(server, ctx)
+  if (allowed.has('start_step')) registerStepTools(server, ctx)
+  if (allowed.has('report_context')) registerContextTool(server, ctx)
+  if (allowed.has('answer_review_comment'))
+    registerReviewAnswerTool(server, ctx)
   if (allowed.has('find_artifacts')) registerRecall(server, ctx)
   if (allowed.has('append_conversation')) registerConversation(server, ctx)
   registerOutbound(server, ctx)

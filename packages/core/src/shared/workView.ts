@@ -133,9 +133,14 @@ export function workId(subject: {
 const WORK_ID =
   /^(?<owner>[A-Za-z0-9-]+)~(?<name>[A-Za-z0-9._-]+)~(?<kind>issue|pr)~(?<number>\d+)$/
 
-export function parseWorkId(
-  id: string,
-): { repo: string; kind: SubjectKind; number: number } | undefined {
+/** The three parts a work id carries. */
+export interface ParsedWorkId {
+  readonly repo: string
+  readonly kind: SubjectKind
+  readonly number: number
+}
+
+export function parseWorkId(id: string): ParsedWorkId | undefined {
   const g = WORK_ID.exec(id)?.groups
   if (!g?.owner || !g.name || !g.kind || !g.number) {
     return undefined

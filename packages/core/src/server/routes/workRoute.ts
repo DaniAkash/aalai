@@ -1,12 +1,25 @@
+import { zValidator } from '@hono/zod-validator'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { loadConfig } from '@/config'
 import { activeRuns, replay } from '@/events/bus'
 import type { RunEvent } from '@/events/events.types'
-import { listQueue, runningCount } from '@/modules/runs/queue'
+import {
+  listQueue,
+  type QueueEntry,
+  readRun,
+  runningCount,
+} from '@/modules/runs/queue'
+import { readArtifact } from '@/modules/work/artifacts'
+import { readChanges, readFilePatch } from '@/modules/work/changes'
+import { parseArtifactId, repoSegment } from '@/modules/work/paths'
+import { readWorkThread } from '@/modules/work/thread'
 import {
   LANES,
   type Lane,
   laneOf,
+  type ParsedWorkId,
+  parseWorkId,
   type WorkItem,
   workId,
 } from '@/shared/workView'
@@ -19,32 +32,79 @@ import { openState } from '@/watch/state'
  * ceiling together, and fetching them separately means three loading states
  * that settle at different moments and a list that reflows twice.
  */
-export const workRoute = new Hono().get('/work', async (c) => {
-  const repo = c.req.query('repo')
-  const config = await loadConfig()
-  const db = openState()
-  try {
-    const stations = runningStations()
-    const items = listQueue(db)
-      .filter((entry) => repo === undefined || entry.repo === repo)
-      .map((entry): WorkItem => {
-        return {
+export const workRoute = new Hono()
+  .get('/work', async (c) => {
+    const repo = c.req.query('repo')
+    const config = await loadConfig()
+    const db = openState()
+    try {
+      const stations = runningStations()
+      const items = listQueue(db)
+        .filter((entry) => repo === undefined || entry.repo === repo)
+        .map((entry): WorkItem => {
+          return {
+            id: workId(entry),
+            repo: entry.repo,
+            kind: entry.kind,
+            number: entry.number,
+            // Something discovered but never opened has no title yet. The subject
+            // is the only honest thing to show until GitHub's is read.
+            title: entry.title ?? `${entry.kind} #${entry.number}`,
+            status: entry.status,
+            lane: laneOf(entry.status),
+            // Only a running row has a station. The event buffer retains
+            // finished runs, so without this a delivered row would show the
+            // last stage it passed through as though it were happening now.
+            station:
+              entry.status === 'running'
+                ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
+                : null,
+            branch: entry.branch,
+            prUrl: entry.prUrl,
+            error: entry.error,
+            offeredAt: entry.offeredAt,
+            queuedAt: entry.queuedAt,
+            startedAt: entry.startedAt,
+            finishedAt: entry.finishedAt,
+          }
+        })
+
+      return c.json({
+        lanes: LANES.map((lane) => ({
+          key: lane,
+          items: items.filter((item) => item.lane === lane),
+        })),
+        counts: countByLane(items),
+        total: items.length,
+        running: runningCount(db),
+        capacity: config.maxParallelRuns,
+        paused: config.queuePaused,
+      })
+    } finally {
+      db.close()
+    }
+  })
+  .get('/work/:id', async (c) => {
+    const found = findWork(c.req.param('id'))
+    if (typeof found === 'string') {
+      return found === 'bad-id'
+        ? c.json({ error: 'not a work id' }, 400)
+        : c.json({ error: 'no such work' }, 404)
+    }
+    const { entry, subject } = found
+    const db = openState()
+    try {
+      const thread = await readWorkThread(db, subject)
+      return c.json({
+        item: {
           id: workId(entry),
           repo: entry.repo,
           kind: entry.kind,
           number: entry.number,
-          // Something discovered but never opened has no title yet. The subject
-          // is the only honest thing to show until GitHub's is read.
           title: entry.title ?? `${entry.kind} #${entry.number}`,
           status: entry.status,
           lane: laneOf(entry.status),
-          // Only a running row has a station. The event buffer retains
-          // finished runs, so without this a delivered row would show the
-          // last stage it passed through as though it were happening now.
-          station:
-            entry.status === 'running'
-              ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
-              : null,
+          station: null,
           branch: entry.branch,
           prUrl: entry.prUrl,
           error: entry.error,
@@ -52,24 +112,91 @@ export const workRoute = new Hono().get('/work', async (c) => {
           queuedAt: entry.queuedAt,
           startedAt: entry.startedAt,
           finishedAt: entry.finishedAt,
-        }
+        } satisfies WorkItem,
+        ...thread,
       })
+    } finally {
+      db.close()
+    }
+  })
+  .get(
+    '/work/:id/changes',
+    zValidator('query', z.object({ path: z.string().min(1).optional() })),
+    async (c) => {
+      const found = findWork(c.req.param('id'))
+      if (typeof found === 'string') {
+        return found === 'bad-id'
+          ? c.json({ error: 'not a work id' }, 400)
+          : c.json({ error: 'no such work' }, 404)
+      }
+      const { entry } = found
 
-    return c.json({
-      lanes: LANES.map((lane) => ({
-        key: lane,
-        items: items.filter((item) => item.lane === lane),
-      })),
-      counts: countByLane(items),
-      total: items.length,
-      running: runningCount(db),
-      capacity: config.maxParallelRuns,
-      paused: config.queuePaused,
-    })
+      const path = c.req.valid('query').path
+      if (path === undefined) {
+        return c.json(
+          await readChanges({ repo: entry.repo, branch: entry.branch }),
+        )
+      }
+      if (entry.branch === null) {
+        return c.json({ error: 'nothing was changed' }, 404)
+      }
+      const patch = await readFilePatch({
+        repo: entry.repo,
+        branch: entry.branch,
+        path,
+      })
+      return patch === undefined
+        ? c.json({ error: 'no such file in this change' }, 404)
+        : c.json({ path, patch })
+    },
+  )
+  .get(
+    '/work/:id/artifact',
+    zValidator('query', z.object({ artifact: z.string().min(1) })),
+    async (c) => {
+      const found = findWork(c.req.param('id'))
+      if (typeof found === 'string') {
+        return found === 'bad-id'
+          ? c.json({ error: 'not a work id' }, 400)
+          : c.json({ error: 'no such work' }, 404)
+      }
+      const id = c.req.valid('query').artifact
+      // Parsed rather than prefix matched, for the same reason the tool does
+      // it: an id is validated whole, so `acme__widgets/../other__repo/...`
+      // cannot read its way out of this subject.
+      const parsed = parseArtifactId(id)
+      if (parsed?.repoSegment !== repoSegment(found.entry.repo)) {
+        return c.json({ error: 'no such artifact' }, 404)
+      }
+      const body = await readArtifact(id)
+      return body === undefined
+        ? c.json({ error: 'no such artifact' }, 404)
+        : c.json({ artifact: id, file: parsed.file, body })
+    },
+  )
+
+/**
+ * The run row a work id names, or why there is not one.
+ *
+ * Both detail routes start by turning an id into a row and both have the same
+ * two ways of failing, so the lookup lives once and each route decides what to
+ * do with the answer.
+ */
+function findWork(
+  id: string,
+): { entry: QueueEntry; subject: ParsedWorkId } | 'bad-id' | 'not-found' {
+  const subject = parseWorkId(id)
+  if (subject === undefined) {
+    return 'bad-id'
+  }
+  const db = openState()
+  try {
+    const entry = readRun(db, subject.repo, subject.kind, subject.number)
+    return entry === undefined ? 'not-found' : { entry, subject }
   } finally {
     db.close()
   }
-})
+}
 
 function countByLane(items: readonly WorkItem[]): Record<Lane, number> {
   const counts = Object.fromEntries(LANES.map((lane) => [lane, 0])) as Record<

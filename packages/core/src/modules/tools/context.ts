@@ -30,6 +30,15 @@ export interface ToolContext {
    * to read back what it just wrote or parse the same thing out of prose.
    */
   readonly recorded: { analysis?: Analysis; review?: Review; triage?: Triage }
+  /** Which instruction files the station found, when it says. */
+  context?: readonly { path: string; found: boolean; bytes: number }[]
+  /** Review comments this turn answered, in call order. */
+  readonly answered: {
+    threadId: string
+    answer: string
+    answeredAt: string
+    commitSha: string | null
+  }[]
 }
 
 /** A turn's authority to call tools, and the record of what it did with it. */
@@ -49,7 +58,10 @@ export interface ToolGrant {
 const grants = new Map<string, ToolContext>()
 
 export function grantToolAccess(
-  context: Omit<ToolContext, 'written' | 'queued' | 'recorded'>,
+  context: Omit<
+    ToolContext,
+    'written' | 'queued' | 'recorded' | 'answered' | 'context'
+  >,
 ): ToolGrant {
   const token = crypto.randomUUID()
   const full: ToolContext = {
@@ -57,6 +69,7 @@ export function grantToolAccess(
     written: [],
     queued: [],
     recorded: {},
+    answered: [],
   }
   grants.set(token, full)
   return { token, context: full }

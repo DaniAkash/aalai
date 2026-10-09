@@ -20,6 +20,14 @@ export type StationId = Extract<
   'classifier' | 'analyst' | 'implementer' | 'reviewer'
 >
 
+/** One file a step changed, as the thread shows it. */
+export interface FileChangeEvent {
+  readonly path: string
+  readonly kind: 'added' | 'modified' | 'deleted'
+  readonly additions: number
+  readonly deletions: number
+}
+
 export interface CriterionResultEvent {
   readonly criterion: string
   readonly pass: boolean
@@ -62,6 +70,53 @@ export type RunEvent = Base &
         readonly type: 'analysis.ready'
         readonly steps: number
         readonly criteria: readonly string[]
+      }
+    | {
+        /** A station began a numbered step of the plan in force. */
+        readonly type: 'step.started'
+        readonly station: StationId
+        readonly stepIndex: number
+      }
+    | {
+        /**
+         * How far through a step it is, in units the step chose.
+         *
+         * The one thing a long step has to keep saying. Without it a step that
+         * takes five minutes is indistinguishable from one that has hung, and
+         * the interface has nothing to animate but a spinner.
+         */
+        readonly type: 'step.progress'
+        readonly station: StationId
+        readonly stepIndex: number
+        /** What is being counted, shown verbatim: `bun test`, `files read`. */
+        readonly label: string
+        readonly unit: string
+        readonly done: number
+        readonly total: number
+      }
+    | {
+        readonly type: 'step.finished'
+        readonly station: StationId
+        readonly stepIndex: number
+        readonly summary: string
+        readonly files: readonly FileChangeEvent[]
+      }
+    | {
+        /** Which of the repository's own instruction files a station read. */
+        readonly type: 'context.read'
+        readonly station: StationId
+        readonly files: readonly {
+          readonly path: string
+          readonly found: boolean
+          readonly bytes: number
+        }[]
+      }
+    | {
+        readonly type: 'review.answered'
+        readonly station: StationId
+        readonly threadId: string
+        readonly answer: string
+        readonly commitSha: string | null
       }
     | {
         readonly type: 'agent.tool'
