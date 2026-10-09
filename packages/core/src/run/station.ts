@@ -16,6 +16,7 @@ import type { ArtifactRef } from '@/modules/work/artifacts'
 import type { Subject } from '@/modules/work/paths'
 import type { OutboundIntent } from '@/modules/work/store'
 import { permissionGate } from '@/run/permissionGate'
+import { effortFor, stationExtras } from '@/run/stationExtras'
 import type { Analysis, Review, Triage } from '@/run/stations/schemas'
 
 // The provider implements LanguageModelV2, which the AI SDK accepts through a
@@ -251,14 +252,21 @@ export async function runStation(input: StationInput): Promise<StationResult> {
     // continues, rather than hanging on a prompt nobody is there to answer.
     nonInteractivePermissions: 'deny',
     turnTimeoutMs: input.config.turnTimeoutMs,
-    sessionOptions: { systemPrompt: { append: input.systemRules } },
+    sessionOptions: {
+      systemPrompt: {
+        // The station's own skills and instructions ride on the system prompt
+        // rather than the task, so they apply to every turn this station takes
+        // in this run rather than only the first.
+        append: `${input.systemRules}${stationExtras(input.config.stations[input.station])}`,
+      },
+    },
   })
 
   try {
     try {
       await provider.setConfigOption(
         'reasoning_effort',
-        input.config.reasoningEffort,
+        effortFor(input.config, input.station),
       )
     } catch (error) {
       log.debug('reasoning_effort not applied', { error })

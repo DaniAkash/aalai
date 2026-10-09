@@ -62,7 +62,6 @@ export async function runAnalyst(
         issue: input.issue,
         conventionFiles: input.conventionFiles,
         tools: toolSurfaceIsUp(),
-        station: input.config.stations.analyst,
         ...(input.asksFirst === undefined
           ? {}
           : { asksFirst: input.asksFirst }),
@@ -111,7 +110,6 @@ export async function runImplementer(
       analysis: input.analysis,
       conventionFiles: input.conventionFiles,
       revision: input.revision,
-      station: input.config.stations.implementer,
     }),
     permission: 'approve-all',
     config: input.config,
@@ -155,7 +153,6 @@ export async function runReviewer(
         base: input.base,
         branch: input.branch,
         tools: toolSurfaceIsUp(),
-        station: input.config.stations.reviewer,
       }),
       permission: 'approve-reads',
       config: input.config,

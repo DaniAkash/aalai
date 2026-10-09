@@ -2,6 +2,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   GitBranch,
   Inbox,
+  ListOrdered,
   PanelLeft,
   Settings2,
   SlidersHorizontal,
@@ -78,6 +79,7 @@ const DESTINATIONS: {
   icon: ComponentType<{ className?: string }>
 }[] = [
   { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/queue', label: 'Queue', icon: ListOrdered },
   { to: '/stations', label: 'Stations', icon: SlidersHorizontal },
   { to: '/repos', label: 'Repositories', icon: GitBranch },
   { to: '/settings', label: 'Settings', icon: Settings2 },

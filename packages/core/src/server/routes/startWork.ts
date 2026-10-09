@@ -68,15 +68,22 @@ export const startWorkRoute = new Hono().post(
         policy: mode,
       })
       enqueueRun(db, repo, 'issue', issue.number)
-      // Through the same capacity bounded statement the scheduler uses, so a
-      // Start press and a poll cannot both believe they have the last slot.
-      const claimed = claimQueuedSubject(
-        db,
-        repo,
-        'issue',
-        issue.number,
-        config.maxParallelRuns,
-      )
+      // A paused queue stops this starting, not just the scheduler promoting.
+      // `claimQueuedSubject` only bounds the running count, so without this a
+      // brief sent while paused would start immediately while the composer was
+      // saying nothing starts until you resume.
+      const claimed = config.queuePaused
+        ? undefined
+        : // Through the same capacity bounded statement the scheduler uses, so
+          // a Start press and a poll cannot both believe they have the last
+          // slot.
+          claimQueuedSubject(
+            db,
+            repo,
+            'issue',
+            issue.number,
+            config.maxParallelRuns,
+          )
       const entry = claimed?.entry
       if (claimed !== undefined && entry !== undefined) {
         // Detached, and it opens its own connection, so closing this one

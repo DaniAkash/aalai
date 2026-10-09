@@ -1,38 +1,26 @@
 import { describe, expect, test } from 'bun:test'
-import type { GhIssue } from '@/lib/gh'
-import {
-  buildAnalystPrompt,
-  buildImplementerPrompt,
-  stationExtras,
-} from '@/prompts/stations'
-import type { Analysis } from '@/run/stations/schemas'
+import type { Config } from '@/config'
+import type { StationId } from '@/events/events.types'
+import { DOMAINS } from '@/modules/settings/domains'
+import { effortFor, stationExtras } from '@/run/stationExtras'
 
-const issue: GhIssue = {
-  number: 61,
-  title: 'formatBytes is off by one',
-  body: 'It returns bytes where it should return kilobytes.',
-  html_url: 'https://github.com/DaniAkash/aalai-demo/issues/61',
-  state: 'open',
-  created_at: '2026-10-09T09:00:00Z',
-  updated_at: '2026-10-09T09:00:00Z',
-  author_association: 'OWNER',
-  user: { login: 'someone' },
-  labels: [],
+const STATIONS: readonly StationId[] = [
+  'classifier',
+  'analyst',
+  'implementer',
+  'reviewer',
+]
+
+function configWith(stations: Record<string, unknown>): Config {
+  return {
+    reasoningEffort: 'high',
+    stations: DOMAINS.stations.parse(stations),
+  } as Config
 }
-
-const analysis = {
-  problem_statement: 'The loop never divides.',
-  approach: 'Divide while at or above the unit size.',
-  plan: ['Correct the comparison'],
-  affected_surface: ['src/bytes.ts'],
-  risks: [],
-  acceptance_criteria: ['formatBytes(1024) returns "1 KB"'],
-  test_strategy: 'Unit tests on the boundary.',
-} as Analysis
 
 describe('stationExtras', () => {
   test('a station nobody configured adds nothing', () => {
-    // The default for every station, so this is the shape most runs see.
+    // The default for every station, so this is what most runs look like.
     expect(stationExtras({ skills: [], instructions: '' })).toBe('')
     expect(stationExtras(undefined)).toBe('')
   })
@@ -50,65 +38,49 @@ describe('stationExtras', () => {
 })
 
 describe('a skill belongs to one station', () => {
-  test('a skill given to the analyst does not reach the implementer', () => {
-    // The acceptance criterion for per station configuration, checked against
-    // what each station is actually handed rather than against the form that
-    // sets it.
-    const analystPrompt = buildAnalystPrompt({
-      repo: 'DaniAkash/aalai-demo',
-      issue,
-      conventionFiles: [],
-      tools: false,
-      station: { skills: ['repo-conventions'], instructions: '' },
-    })
-    const implementerPrompt = buildImplementerPrompt({
-      repo: 'DaniAkash/aalai-demo',
-      issue,
-      analysis,
-      conventionFiles: [],
-      station: { skills: ['commit-style'], instructions: '' },
-    })
-
-    expect(analystPrompt).toContain('repo-conventions')
-    expect(analystPrompt).not.toContain('commit-style')
-    expect(implementerPrompt).toContain('commit-style')
-    expect(implementerPrompt).not.toContain('repo-conventions')
+  const config = configWith({
+    analyst: { skills: ['repo-conventions'], instructions: 'Ask first.' },
   })
 
-  test('one station being configured leaves the others untouched', () => {
-    const configured = buildAnalystPrompt({
-      repo: 'DaniAkash/aalai-demo',
-      issue,
-      conventionFiles: [],
-      tools: false,
-      station: {
-        skills: ['gh-cli'],
-        instructions: 'Say what you are unsure of.',
-      },
-    })
-    const bare = buildImplementerPrompt({
-      repo: 'DaniAkash/aalai-demo',
-      issue,
-      analysis,
-      conventionFiles: [],
-      station: { skills: [], instructions: '' },
-    })
-
-    expect(configured).toContain('Say what you are unsure of.')
-    expect(bare).not.toContain('Say what you are unsure of.')
-    expect(bare).not.toContain('Skills available to you')
-  })
-
-  test('instructions come after the conventions, so a repository still wins', () => {
-    const prompt = buildAnalystPrompt({
-      repo: 'DaniAkash/aalai-demo',
-      issue,
-      conventionFiles: ['AGENTS.md'],
-      tools: false,
-      station: { skills: [], instructions: 'Prefer small diffs.' },
-    })
-    expect(prompt.indexOf('AGENTS.md')).toBeLessThan(
-      prompt.indexOf('Prefer small diffs.'),
+  test('only the configured station is handed it', () => {
+    // The acceptance criterion, checked against what each station is handed
+    // rather than against the form that sets it. Every station turn goes
+    // through one place, so this is every turn and not only the first.
+    const handed = Object.fromEntries(
+      STATIONS.map((station) => [
+        station,
+        stationExtras(config.stations[station]),
+      ]),
     )
+    expect(handed.analyst).toContain('repo-conventions')
+    expect(handed.analyst).toContain('Ask first.')
+    for (const other of ['classifier', 'implementer', 'reviewer']) {
+      expect(handed[other]).toBe('')
+    }
+  })
+
+  test('the classifier is configurable like the rest', () => {
+    // It is on the settings page, so it has to reach the run. A station shown
+    // as editable whose settings go nowhere is worse than one not shown.
+    const triage = configWith({ classifier: { skills: ['severity-rubric'] } })
+    expect(stationExtras(triage.stations.classifier)).toContain(
+      'severity-rubric',
+    )
+    expect(stationExtras(triage.stations.analyst)).toBe('')
+  })
+})
+
+describe('effortFor', () => {
+  test('a station with no answer follows the shared setting', () => {
+    const config = configWith({})
+    for (const station of STATIONS) {
+      expect(effortFor(config, station)).toBe('high')
+    }
+  })
+
+  test('a station with its own answer overrides the shared one', () => {
+    const config = configWith({ implementer: { reasoningEffort: 'low' } })
+    expect(effortFor(config, 'implementer')).toBe('low')
+    expect(effortFor(config, 'analyst')).toBe('high')
   })
 })

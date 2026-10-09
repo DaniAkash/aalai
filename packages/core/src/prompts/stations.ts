@@ -45,33 +45,6 @@ const JSON_CONTRACT =
  * in the schemas exist to survive. The fenced form stays for the headless path
  * and for any run where the tool surface did not come up.
  */
-/**
- * What this station, and only this station, was given.
- *
- * Appended rather than woven in, and after the repository's own conventions,
- * so a repository's files still win over a preference set here. Empty for a
- * station nobody has configured, which is every station by default.
- */
-export function stationExtras(station?: {
-  readonly skills: readonly string[]
-  readonly instructions: string
-}): string {
-  if (station === undefined) {
-    return ''
-  }
-  const parts: string[] = []
-  if (station.skills.length > 0) {
-    parts.push(
-      `Skills available to you for this work: ${station.skills.join(', ')}. These were given to this station and not to the others, so do not assume another station has them.`,
-    )
-  }
-  const written = station.instructions.trim()
-  if (written !== '') {
-    parts.push(written)
-  }
-  return parts.length === 0 ? '' : `\n\n${parts.join('\n\n')}`
-}
-
 function recordContract(tool: string, available: boolean): string {
   return available
     ? `Record this by calling the ${tool} tool, with each field above as an argument. The tool is the only thing that records your work: anything you write as prose is read by a person and then forgotten. Call it once you are confident, and do not also write the object as a fenced block.`
@@ -81,8 +54,6 @@ function recordContract(tool: string, available: boolean): string {
 export interface AnalystPromptInput {
   /** Whether to lead with the open questions rather than with an answer. */
   readonly asksFirst?: boolean
-  /** What this station was given, which is not what the others were given. */
-  readonly station?: StationExtras
   readonly repo: string
   readonly issue: GhIssue
   readonly conventionFiles: readonly string[]
@@ -131,17 +102,10 @@ Produce a plan with these fields:
 - acceptance_criteria: objective, testable statements a reviewer will check one by one against the diff. These are the contract. Write them so that passing them means the issue is genuinely resolved, and so that someone reading the diff can tell whether each one holds.
 - test_strategy: what should be tested and how, grounded in this repository's real test setup
 
-${recordContract('write_plan', input.tools)}${stationExtras(input.station)}`
-}
-
-export interface StationExtras {
-  readonly skills: readonly string[]
-  readonly instructions: string
+${recordContract('write_plan', input.tools)}`
 }
 
 export interface ImplementerPromptInput {
-  /** What this station was given, which is not what the others were given. */
-  readonly station?: StationExtras
   readonly repo: string
   readonly issue: GhIssue
   readonly analysis: Analysis
@@ -193,7 +157,7 @@ ${conventions}${revisionBlock}
 
 Write complete, runnable code. No placeholders. Keep the change minimal: do not refactor unrelated code or reformat files. Verify with the repository's own lint, typecheck, and test commands and read the output.
 
-When you are done, reply with what you changed and why, which files you touched, and exactly which verification commands you ran and what they produced. If you could not verify something, say so plainly rather than implying it works.${stationExtras(input.station)}`
+When you are done, reply with what you changed and why, which files you touched, and exactly which verification commands you ran and what they produced. If you could not verify something, say so plainly rather than implying it works.`
 }
 
 export interface ReviewerPromptInput {
@@ -204,8 +168,6 @@ export interface ReviewerPromptInput {
   readonly branch: string
   /** Whether this turn has the tool surface. */
   readonly tools: boolean
-  /** What this station was given, which is not what the others were given. */
-  readonly station?: StationExtras
 }
 
 export function buildReviewerPrompt(input: ReviewerPromptInput): string {
@@ -241,7 +203,7 @@ Produce:
 
 Do not approve out of politeness, and do not request changes over style preference. Every blocking finding must trace back to correctness, the acceptance criteria, safety, or scope.
 
-${recordContract('write_review', input.tools)}${stationExtras(input.station)}`
+${recordContract('write_review', input.tools)}`
 }
 
 export interface ReplyPromptInput {
