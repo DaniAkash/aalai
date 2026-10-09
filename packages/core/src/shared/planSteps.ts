@@ -6,20 +6,57 @@
  * interface needs the steps as a list, so the list is derived here rather than
  * kept as a second copy that can disagree with the document.
  *
- * Derived from text, so it is tested before anything draws from it. A step
- * list that is wrong by one shows the wrong row as running, which looks
- * entirely plausible.
+ * Scanned rather than matched. Every pattern that reads "whitespace, then the
+ * rest of the line" has two parts that both accept a space, which is the shape
+ * that backtracks: an earlier version was quadratic on a padded line, 1673ms
+ * on sixty thousand spaces. A plan is markdown an agent wrote, so its length
+ * and shape are not ours to assume. These are single forward passes, so the
+ * cost is the length of the line and nothing else.
  */
 
-/*
-  Both capture greedily to the end of the line and are trimmed afterwards,
-  rather than ending `.+?\s*$`. A lazy capture followed by optional trailing
-  whitespace has to retry the tail at every expansion, which is quadratic on a
-  line of many spaces. A plan is written by an agent, so its length and shape
-  are not ours to assume.
-*/
-const HEADING = /^##\s+(?<title>.*)$/
-const NUMBERED = /^\s*(?<ordinal>\d+)[.)]\s+(?<body>.*)$/
+const SPACE = 32
+const TAB = 9
+const ZERO = 48
+const NINE = 57
+
+function isBlank(code: number): boolean {
+  return code === SPACE || code === TAB
+}
+
+function isDigit(code: number): boolean {
+  return code >= ZERO && code <= NINE
+}
+
+/** The text of a level two heading, or nothing if the line is not one. */
+function headingTitle(line: string): string | undefined {
+  if (!line.startsWith('##')) {
+    return undefined
+  }
+  // A third hash is a deeper heading, not this one, and is not a space.
+  const rest = line.slice(2)
+  return rest !== '' && isBlank(rest.charCodeAt(0)) ? rest.trim() : undefined
+}
+
+/** The text of a numbered list item, or nothing if the line is not one. */
+function numberedBody(line: string): string | undefined {
+  let at = 0
+  while (at < line.length && isBlank(line.charCodeAt(at))) {
+    at += 1
+  }
+  const firstDigit = at
+  while (at < line.length && isDigit(line.charCodeAt(at))) {
+    at += 1
+  }
+  if (at === firstDigit) {
+    return undefined
+  }
+  const punctuation = line.charAt(at)
+  if (punctuation !== '.' && punctuation !== ')') {
+    return undefined
+  }
+  const rest = line.slice(at + 1)
+  return rest !== '' && isBlank(rest.charCodeAt(0)) ? rest.trim() : undefined
+}
 
 /**
  * Reads the numbered list under a heading.
@@ -31,22 +68,23 @@ const NUMBERED = /^\s*(?<ordinal>\d+)[.)]\s+(?<body>.*)$/
  */
 export function planSteps(body: string, section = 'Steps'): string[] {
   const steps: string[] = []
+  const wanted = section.toLowerCase()
   let inside = false
 
   for (const line of body.split('\n')) {
-    const heading = HEADING.exec(line)
-    if (heading?.groups !== undefined) {
-      inside =
-        heading.groups.title?.trim().toLowerCase() === section.toLowerCase()
+    const heading = headingTitle(line)
+    if (heading !== undefined) {
+      inside = heading.toLowerCase() === wanted
       continue
     }
     if (!inside) {
       continue
     }
-    const numbered = NUMBERED.exec(line)
-    const body = numbered?.groups?.body?.trim()
-    if (body !== undefined && body !== '') {
-      steps.push(body)
+    const step = numberedBody(line)
+    // A step of nothing but spaces would render as a blank row that reads as
+    // a layout fault rather than as an empty step.
+    if (step !== undefined && step !== '') {
+      steps.push(step)
     }
   }
   return steps
