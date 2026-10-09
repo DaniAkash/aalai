@@ -6,6 +6,7 @@ import { queryClient } from '@/modules/api/queryClient'
 import { useActiveRuns, usePastRuns } from '@/modules/api/runs.hooks'
 import { useSettings } from '@/modules/api/settings.hooks'
 import { useThread } from '@/modules/api/thread.hooks'
+import { recordStepEvent } from '@/modules/live/$stepActivity'
 import { announceGate } from '@/modules/notify/notify'
 
 /**
@@ -45,8 +46,15 @@ export function useLiveEvents(): StreamState {
   return state
 }
 
-/** What each event means for the cache, and nothing else. */
+/** What each event means for the cache, and for the one thing it cannot hold. */
 function invalidateFor(event: RunEvent): void {
+  // Step events are fed to the activity store rather than invalidating
+  // anything, because nothing durable records them: a refetch would return a
+  // thread that knows nothing about a count that changes twice a second.
+  if (event.type.startsWith('step.')) {
+    recordStepEvent(event)
+    return
+  }
   if (event.type === 'conversation.appended') {
     // The event says who spoke, never what they said, so the thread is refetched
     // rather than patched. One source of truth, which is the file.

@@ -166,3 +166,18 @@
     opacity: 1;
   }
 }
+
+/*
+  The banner arrives rather than appearing. A pinned element that pops into
+  existence reads as a layout shift; one that slides reads as news.
+*/
+@keyframes work-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
