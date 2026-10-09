@@ -182,10 +182,10 @@ await writeArtifact(
 approve
 
 ## Criteria
-1. formatBytes(1024) returns "1 KB" — pass, covered by the new case
-2. formatBytes(1536) returns "1.5 KB" — pass
-3. formatBytes(1023) returns "1023 B" — pass
-4. Existing tests still pass — pass, 68 files
+1. formatBytes(1024) returns "1 KB": pass, covered by the new case
+2. formatBytes(1536) returns "1.5 KB": pass
+3. formatBytes(1023) returns "1023 B": pass
+4. Existing tests still pass: pass, 68 files
 
 ## Summary
 The change is one comparison and one rounding call. Nothing else reads the
