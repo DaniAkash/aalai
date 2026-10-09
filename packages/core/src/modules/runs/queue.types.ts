@@ -1,5 +1,5 @@
 import type { RunStatus, SubjectKind } from '@/modules/db/schema/runs.sql'
-import type { RunPolicy } from '@/modules/settings/domains'
+import type { RunPolicy } from '@/shared/modes'
 
 /** One row of the claim table, as everything outside the queue reads it. */
 export interface QueueEntry {

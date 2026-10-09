@@ -6,7 +6,7 @@ import {
   sqliteTable,
   text,
 } from 'drizzle-orm/sqlite-core'
-import type { RunPolicy } from '@/modules/settings/domains'
+import type { RunPolicy } from '@/shared/modes'
 
 /**
  * Where a run is, which is also where the work is allowed to be.

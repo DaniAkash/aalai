@@ -5,6 +5,7 @@ export type {
 } from '@/modules/db/schema/schema'
 export type { RunPolicy } from '@/modules/settings/domains'
 export * from './brief'
+export * from './modes'
 export * from './patchView'
 export * from './pickerRows'
 export * from './planSteps'

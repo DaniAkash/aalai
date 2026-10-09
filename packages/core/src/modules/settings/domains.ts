@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RUN_POLICIES, type RunPolicy } from '@/shared/modes'
 
 /**
  * Settings grouped into domains, one row each.
@@ -19,13 +20,7 @@ import { z } from 'zod'
  * should never share this setting. `automatic` is the default so an existing
  * installation behaves exactly as it did until somebody opts in.
  */
-export const RUN_POLICIES = [
-  'automatic',
-  'plan_gate',
-  'talk',
-  'triage',
-] as const
-export type RunPolicy = (typeof RUN_POLICIES)[number]
+export { RUN_POLICIES, type RunPolicy }
 export const runPolicySchema = z.enum(RUN_POLICIES)
 
 const factoryDomain = z.object({

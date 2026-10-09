@@ -38,7 +38,7 @@ export function CapacityMeter() {
     return null
   }
 
-  const { running, capacity } = queue.data
+  const { running, capacity, paused } = queue.data
   if (collapsed) {
     return (
       <div
@@ -60,7 +60,7 @@ export function CapacityMeter() {
       </div>
       <Segments running={running} capacity={capacity} />
       <p className="mt-2 text-[11px] text-muted-foreground">
-        {note(running, capacity)}
+        {note(running, capacity, paused)}
       </p>
     </div>
   )
@@ -98,7 +98,13 @@ function Segments({
  * The bar already says two of three. What a person cannot see from it is
  * whether the next thing they start waits, which is the only reason to look.
  */
-function note(running: number, capacity: number): string {
+function note(running: number, capacity: number, paused: boolean): string {
+  // Checked before the free slots, because a free slot is not a promise that
+  // anything starts: a paused queue has free slots and starts nothing, and
+  // saying "starts now" there is a promise this cannot keep.
+  if (paused) {
+    return 'The queue is paused, so nothing new starts until you resume it.'
+  }
   if (running >= capacity) {
     return 'Every slot is busy. The next piece of work waits for one.'
   }
