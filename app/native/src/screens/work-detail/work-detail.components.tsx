@@ -69,7 +69,7 @@ export function Recorded({
   /** The steps of this plan, when it is the plan in force. */
   steps?: readonly string[]
   /** Which of them a station has finished this session. */
-  finished?: ReadonlySet<number>
+  finished?: readonly number[]
   /** Which one is running, when one is. */
   runningIndex?: number
 }) {
@@ -101,13 +101,13 @@ export function Recorded({
             >
               <StepMark
                 index={index}
-                done={finished?.has(index) === true}
+                done={finished?.includes(index) === true}
                 running={runningIndex === index}
               />
               <span
                 className={cn(
                   'text-[13px] leading-snug',
-                  finished?.has(index) === true && 'text-muted-foreground',
+                  finished?.includes(index) === true && 'text-muted-foreground',
                 )}
               >
                 {step}

@@ -1,4 +1,4 @@
-import { activityKey } from 'aalai/shared'
+import { activityKey, NO_ACTIVITY } from 'aalai/shared'
 import { useSyncExternalStore } from 'react'
 import type { WorkItem } from '@/modules/api/work.hooks'
 import { activityOf, subscribeToActivity } from '@/modules/live/$stepActivity'
@@ -18,15 +18,21 @@ export function useLiveRows(): (
     () => activityOf(''),
   )
   return (item) => {
-    const live = activityOf(activityKey(item.repo, item.number)).live
+    // The store wins once anything has streamed in; the row falls back to
+    // what the server said was happening when the list was fetched.
+    const held = activityOf(activityKey(item.repo, item.number))
+    const live = (held === NO_ACTIVITY ? item.activity : held)?.live ?? null
     if (live === null) {
       return null
     }
+    // What the station called the step, which is what the prototype shows
+    // here: a row has no room for the plan and no way to look one up.
+    const name = live.label ?? `Step ${live.stepIndex + 1}`
     const progress = live.progress
     return progress === undefined
-      ? { label: `step ${live.stepIndex + 1}`, ratio: null }
+      ? { label: name, ratio: null }
       : {
-          label: `${progress.label}, ${progress.done} of ${progress.total} ${progress.unit}`,
+          label: `${name}, ${progress.done} of ${progress.total} ${progress.unit}`,
           ratio: progress.done / progress.total,
         }
   }

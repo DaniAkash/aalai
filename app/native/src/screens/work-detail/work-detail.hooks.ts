@@ -34,6 +34,7 @@ export function useWorkDetailScreen() {
   const item = detail.data && 'item' in detail.data ? detail.data.item : null
   const activity = useStepActivity(
     item === null ? null : { repo: item.repo, number: item.number },
+    item?.activity,
   )
   const queue = useQueue()
   const answer = useAnswerGate({

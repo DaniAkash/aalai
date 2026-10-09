@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { loadConfig } from '@/config'
 import { activeRuns, replay } from '@/events/bus'
-import type { RunEvent } from '@/events/events.types'
+import type { RunEvent, StationId } from '@/events/events.types'
 import {
   listQueue,
   type QueueEntry,
@@ -14,6 +14,13 @@ import { readArtifact } from '@/modules/work/artifacts'
 import { readChanges, readFilePatch } from '@/modules/work/changes'
 import { parseArtifactId, repoSegment } from '@/modules/work/paths'
 import { readWorkThread } from '@/modules/work/thread'
+import {
+  activityKeyOfRun,
+  advanceActivity,
+  NO_ACTIVITY,
+  type SubjectActivity,
+  stationName,
+} from '@/shared/stepActivity'
 import {
   LANES,
   type Lane,
@@ -39,6 +46,7 @@ export const workRoute = new Hono()
     const db = openState()
     try {
       const stations = runningStations()
+      const activity = runningActivity()
       const items = listQueue(db)
         .filter((entry) => repo === undefined || entry.repo === repo)
         .map((entry): WorkItem => {
@@ -58,6 +66,10 @@ export const workRoute = new Hono()
             station:
               entry.status === 'running'
                 ? (stations.get(`${entry.repo}#${entry.number}`) ?? null)
+                : null,
+            activity:
+              entry.status === 'running'
+                ? (activity.get(`${entry.repo}#${entry.number}`) ?? null)
                 : null,
             branch: entry.branch,
             prUrl: entry.prUrl,
@@ -104,7 +116,16 @@ export const workRoute = new Hono()
           title: entry.title ?? `${entry.kind} #${entry.number}`,
           status: entry.status,
           lane: laneOf(entry.status),
-          station: null,
+          station:
+            entry.status === 'running'
+              ? (runningStations().get(`${entry.repo}#${entry.number}`) ?? null)
+              : null,
+          // Seeds the live store, so a thread opened between two reports shows
+          // the running step rather than nothing until the next one arrives.
+          activity:
+            entry.status === 'running'
+              ? (runningActivity().get(`${entry.repo}#${entry.number}`) ?? null)
+              : null,
           branch: entry.branch,
           prUrl: entry.prUrl,
           error: entry.error,
@@ -224,12 +245,38 @@ function countByLane(items: readonly WorkItem[]): Record<Lane, number> {
  * better than the wrong station on both rows. The step events that arrive with
  * the thread carry their own station and this stops being inferred.
  */
+/**
+ * What each running station is in the middle of, folded from the buffer.
+ *
+ * The live store in the app fills from the stream and therefore knows nothing
+ * about events that arrived before the page did. A step reporting every thirty
+ * seconds would leave a freshly loaded page blank for thirty seconds, which
+ * reads as a run that has stopped. This is the same reduction the app runs,
+ * over the events the bus has retained, so a load starts where the run is.
+ */
+function runningActivity(): Map<string, SubjectActivity> {
+  const bySubject = new Map<string, SubjectActivity>()
+  for (const { runId } of activeRuns()) {
+    const subject = activityKeyOfRun(runId)
+    if (subject === '') {
+      continue
+    }
+    const folded = replay(runId).reduce(advanceActivity, NO_ACTIVITY)
+    if (folded !== NO_ACTIVITY) {
+      bySubject.set(subject, folded)
+    }
+  }
+  return bySubject
+}
+
 function runningStations(): Map<string, string> {
   const bySubject = new Map<string, string>()
   const ambiguous = new Set<string>()
   for (const { runId } of activeRuns()) {
-    const subject = runId.split('@')[0]
-    if (subject === undefined) {
+    // Split from the end: the timestamp is appended last, and a repository
+    // name may legally contain an at sign.
+    const subject = activityKeyOfRun(runId)
+    if (subject === '') {
       continue
     }
     if (bySubject.has(subject)) {
@@ -247,12 +294,25 @@ function runningStations(): Map<string, string> {
   return bySubject
 }
 
+/**
+ * The stage a run is in, named as the rest of the interface names it.
+ *
+ * A row reading "analyst" beside a banner reading "Analyst is working" looks
+ * like one of the two is broken, so both go through the same table. A stage
+ * that is not a station keeps its own name.
+ */
 function lastStage(events: readonly RunEvent[]): string | undefined {
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const event = events[i]
     if (event?.type === 'stage.entered') {
-      return event.stage
+      return isStation(event.stage) ? stationName(event.stage) : event.stage
     }
   }
   return undefined
+}
+
+const STATIONS = ['classifier', 'analyst', 'implementer', 'reviewer'] as const
+
+function isStation(stage: string): stage is StationId {
+  return (STATIONS as readonly string[]).includes(stage)
 }

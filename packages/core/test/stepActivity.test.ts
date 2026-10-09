@@ -11,13 +11,14 @@ import {
 
 const RUN = 'DaniAkash/aalai-demo#61@1790000000061'
 
-function started(stepIndex: number): RunEvent {
+function started(stepIndex: number, label?: string): RunEvent {
   return {
     type: 'step.started',
     runId: RUN,
     at: 1_000,
     station: 'implementer',
     stepIndex,
+    ...(label === undefined ? {} : { label }),
   }
 }
 
@@ -81,7 +82,7 @@ describe('advanceActivity', () => {
     // avoid giving.
     const state = fold([started(0), progress(0, 68), finished(0)])
     expect(state.live).toBeNull()
-    expect(state.finished.has(0)).toBe(true)
+    expect(state.finished).toContain(0)
   })
 
   test('finishing keeps what the step said it did', () => {
@@ -106,7 +107,7 @@ describe('advanceActivity', () => {
     // step already overtaken must not blank the step now running.
     const state = fold([started(0), started(1), finished(0)])
     expect(state.live?.stepIndex).toBe(1)
-    expect(state.finished.has(0)).toBe(true)
+    expect(state.finished).toContain(0)
   })
 
   test('progress with no start still shows, for a screen opened mid run', () => {
@@ -144,11 +145,46 @@ describe('advanceActivity', () => {
     expect(state.live?.stepIndex).toBe(0)
   })
 
+  test('a step keeps the name the station gave it', () => {
+    // The work list has no plan to look a step up in, so the name travels
+    // with the event.
+    const state = fold([started(0, 'Run the test suite')])
+    expect(state.live?.label).toBe('Run the test suite')
+  })
+
+  test('a step with no name has none, rather than an empty one', () => {
+    // The caller falls back to the plan or the number; an empty string would
+    // render as a blank line that looks like a layout bug.
+    const state = fold([started(0)])
+    expect(state.live?.label).toBeUndefined()
+  })
+
+  test('progress does not erase the name the start gave it', () => {
+    const state = fold([started(1, 'Run the test suite'), progress(1, 17)])
+    expect(state.live?.label).toBe('Run the test suite')
+    expect(state.live?.progress?.done).toBe(17)
+  })
+
+  test('finishing the same step twice records it once', () => {
+    // A reconnect can redeliver. The plan should not show two ticks for one
+    // step, and the array must not grow without bound.
+    const state = fold([finished(0), finished(0)])
+    expect(state.finished).toEqual([0])
+  })
+
+  test('the finished list survives a round trip through json', () => {
+    // It crosses the wire to seed a freshly loaded page. A Set serializes to
+    // an empty object, which would silently un-tick every step.
+    const state = fold([started(0), finished(0), started(1), finished(1)])
+    const wire = JSON.parse(JSON.stringify(state)) as typeof state
+    expect(wire.finished).toEqual([0, 1])
+  })
+
   test('the reduction does not mutate what it was given', () => {
     const first = fold([started(0)])
     const second = advanceActivity(first, finished(0))
-    expect(first.finished.size).toBe(0)
-    expect(second.finished.size).toBe(1)
+    expect(first.finished).toHaveLength(0)
+    expect(second.finished).toHaveLength(1)
   })
 })
 

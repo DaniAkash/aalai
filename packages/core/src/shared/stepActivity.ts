@@ -16,6 +16,8 @@ export interface StepActivity {
   readonly station: StationId
   readonly stepIndex: number
   readonly startedAt: number
+  /** What the station called it, where the plan is not to hand. */
+  readonly label?: string
   /** Absent until the step reports a count of its own. */
   readonly progress?: {
     readonly label: string
@@ -27,15 +29,20 @@ export interface StepActivity {
 
 export interface SubjectActivity {
   readonly live: StepActivity | null
-  /** Steps this run has finished, so the plan can tick them off. */
-  readonly finished: ReadonlySet<number>
+  /**
+   * Steps this run has finished, so the plan can tick them off.
+   *
+   * An array rather than a Set: this crosses the wire to seed a freshly
+   * loaded page, and a Set serializes to an empty object.
+   */
+  readonly finished: readonly number[]
   /** The last thing a step said it did. */
   readonly lastSummary: string | null
 }
 
 export const NO_ACTIVITY: SubjectActivity = {
   live: null,
-  finished: new Set(),
+  finished: [],
   lastSummary: null,
 }
 
@@ -67,6 +74,7 @@ export function advanceActivity(
         station: event.station,
         stepIndex: event.stepIndex,
         startedAt: event.at,
+        ...(event.label === undefined ? {} : { label: event.label }),
       },
     }
   }
@@ -74,8 +82,9 @@ export function advanceActivity(
     return withProgress(current, event)
   }
   if (event.type === 'step.finished') {
-    const finished = new Set(current.finished)
-    finished.add(event.stepIndex)
+    const finished = current.finished.includes(event.stepIndex)
+      ? current.finished
+      : [...current.finished, event.stepIndex]
     return {
       // The live step is cleared rather than left full. A bar that stays at
       // 100% reads as a step still running that has stopped moving.

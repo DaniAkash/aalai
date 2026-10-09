@@ -1,4 +1,4 @@
-import { activityKey, type SubjectActivity } from 'aalai/shared'
+import { activityKey, NO_ACTIVITY, type SubjectActivity } from 'aalai/shared'
 import { useSyncExternalStore } from 'react'
 import { activityOf, subscribeToActivity } from '@/modules/live/$stepActivity'
 
@@ -12,11 +12,20 @@ import { activityOf, subscribeToActivity } from '@/modules/live/$stepActivity'
  */
 export function useStepActivity(
   subject: { repo: string; number: number } | null,
+  /**
+   * What the server said was happening when this screen loaded.
+   *
+   * The store only knows what has come down the stream since the page opened,
+   * so without this a thread loaded between two reports is blank until the
+   * next one. The moment a live event arrives the store takes over.
+   */
+  seed?: SubjectActivity | null,
 ): SubjectActivity {
   const key = subject === null ? '' : activityKey(subject.repo, subject.number)
-  return useSyncExternalStore(
+  const live = useSyncExternalStore(
     subscribeToActivity,
     () => activityOf(key),
     () => activityOf(key),
   )
+  return live === NO_ACTIVITY ? (seed ?? NO_ACTIVITY) : live
 }

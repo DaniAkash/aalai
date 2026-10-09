@@ -123,8 +123,13 @@ function SubProgress({
         />
       </span>
       <span className="tabular-nums">
-        <AnimatedNumber value={progress.done} /> of {progress.total}{' '}
-        {progress.unit}
+        {/*
+          Not gated on coming into view. The default waits for the element to
+          be 60% visible and renders zero until then, so a live card below the
+          fold of a long thread reads "0 of 68" while 68 are done.
+        */}
+        <AnimatedNumber value={progress.done} startOnView={false} /> of{' '}
+        {progress.total} {progress.unit}
       </span>
     </div>
   )

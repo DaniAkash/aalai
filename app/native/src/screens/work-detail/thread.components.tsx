@@ -1,4 +1,4 @@
-import type { SubjectActivity, Turn } from 'aalai/shared'
+import type { StepActivity, SubjectActivity, Turn } from 'aalai/shared'
 import { ApprovalCard } from '@/components/agents/approval-card'
 import type { Awaiting } from '@/modules/api/workDetail.hooks'
 
@@ -36,7 +36,10 @@ export function Thread({
 }: ThreadProps) {
   return (
     <>
-      {turns.length === 0 ? (
+      {turns.length === 0 && activity.live === null ? (
+        // Suppressed while a station is working: a run can reach its first
+        // step before it has written anything, and "nothing has happened yet"
+        // directly above a visible live step reads as a bug.
         <p className="rounded-[var(--radius)] border border-border border-dashed bg-sidebar px-4 py-10 text-center text-[13px] text-muted-foreground">
           Nothing has happened yet. When a station reads the repository and
           writes a plan, it appears here.
@@ -57,18 +60,21 @@ export function Thread({
       ))}
 
       {activity.live === null ? null : (
-        <LiveStep
-          live={activity.live}
-          title={titleOf(steps, activity.live.stepIndex)}
-        />
+        <LiveStep live={activity.live} title={titleOf(steps, activity.live)} />
       )}
     </>
   )
 }
 
-/** The name of a step, or its number when no plan has been recorded yet. */
-function titleOf(steps: readonly string[], index: number): string {
-  return steps[index] ?? `Step ${index + 1}`
+/**
+ * What to call the running step.
+ *
+ * The plan in force wins, because that is the wording a person agreed to. What
+ * the station called it comes next, for a step beyond the plan or before one
+ * has been recorded. The number is the last resort.
+ */
+function titleOf(steps: readonly string[], live: StepActivity): string {
+  return steps[live.stepIndex] ?? live.label ?? `Step ${live.stepIndex + 1}`
 }
 
 function TurnRow({
