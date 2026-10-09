@@ -91,6 +91,16 @@ for (const done of [4, 11, 19, 28, 37, 48, 56, 61, 68]) {
   say(`  ${done} of 68 files`)
 }
 
+await call('finish_step', {
+  step_index: 1,
+  summary: '68 test files pass and the boundary check is clean.',
+  files: [],
+})
+
+say('step 3: beyond the plan, so it falls back to what the station calls it')
+await sleep(BEAT)
+await call('start_step', { step_index: 2, label: 'Open the pull request' })
+
 say('holding here so the banner stays up')
 await sleep(600_000)
 
