@@ -1,6 +1,7 @@
 import { Link, useParams } from '@tanstack/react-router'
 import { revisedNote, subjectOf, waitedFor } from 'aalai/shared'
 import { Screen } from '@/components/layout/Screen'
+import { Markdown } from '@/components/markdown/Markdown'
 import { ErrorNote, Loading } from '@/components/state'
 import { useAnswerGate, useGate } from '@/modules/api/gates.hooks'
 import { useReply, useThread } from '@/modules/api/thread.hooks'
@@ -105,9 +106,7 @@ export function GateDetail() {
               Uncapped this rendered 122 characters per line at 1280 and 143 at
               1440, against a readable maximum of about 75.
             */}
-            <pre className="max-w-[80ch] whitespace-pre-wrap font-mono text-[13.5px] leading-relaxed">
-              {artifact}
-            </pre>
+            <Markdown body={artifact} className="max-w-[80ch]" />
           </article>
         )}
 

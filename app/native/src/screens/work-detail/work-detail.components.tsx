@@ -8,6 +8,7 @@ import {
   MessageSquare,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Markdown } from '@/components/markdown/Markdown'
 import { cn } from '@/lib/utils'
 import type { Turn } from '@/modules/api/workDetail.hooks'
 
@@ -32,9 +33,7 @@ export function Said({
       <div className="flex justify-end">
         <div className="max-w-[78%] rounded-[var(--radius)] border border-border bg-secondary px-4 py-3">
           <Byline author={turn.author} at={turn.at} you />
-          <p className="m-0 whitespace-pre-wrap text-[13.5px] leading-relaxed">
-            {body}
-          </p>
+          <Markdown body={body} className="text-[13.5px]" />
         </div>
       </div>
     )
@@ -45,9 +44,7 @@ export function Said({
       at={turn.at}
       reporter={turn.voice === 'reporter'}
     >
-      <p className="m-0 max-w-[68ch] whitespace-pre-wrap text-[13.5px] leading-relaxed">
-        {body}
-      </p>
+      <Markdown body={body} className="max-w-[68ch] text-[13.5px]" />
     </Left>
   )
 }
@@ -124,9 +121,15 @@ export function Recorded({
         </ol>
       ) : null}
       {active ? (
-        <pre className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto whitespace-pre-wrap rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3 font-mono text-[11.5px] text-muted-foreground leading-relaxed">
-          {body ?? 'Reading it.'}
-        </pre>
+        <div className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3">
+          {body === undefined ? (
+            <p className="m-0 text-[12.5px] text-muted-foreground">
+              Reading it.
+            </p>
+          ) : (
+            <Markdown body={body} />
+          )}
+        </div>
       ) : null}
     </Left>
   )
@@ -289,9 +292,7 @@ export function Reviewed({
             </span>
           )}
         </div>
-        <p className="m-0 whitespace-pre-wrap px-3.5 py-3 text-[13px]">
-          {turn.body}
-        </p>
+        <Markdown body={turn.body} className="px-3.5 py-3" />
         {turn.answer === null ? (
           <p className="m-0 border-border border-t px-3.5 py-2.5 text-[12.5px] text-muted-foreground">
             Not answered yet.
@@ -307,7 +308,7 @@ export function Reviewed({
                 </code>
               )}
             </div>
-            <p className="m-0 whitespace-pre-wrap text-[13px]">{turn.answer}</p>
+            <Markdown body={turn.answer} />
           </div>
         )}
       </div>
