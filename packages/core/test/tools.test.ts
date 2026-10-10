@@ -130,11 +130,10 @@ describe('which tools a station is given', () => {
     for (const station of ['analyst', 'implementer', 'reviewer'] as const) {
       const client = await connect(grantToolAccess(contextFor(station)).token)
       const served = (await client.listTools()).tools.map((t) => t.name).sort()
-      const declared = [
-        ...STATION_TOOLS[station],
-        'comment_on_issue',
-        'reply_to_review',
-      ].sort()
+      // reply_to_review is gone: answering a review queues its own reply, so
+      // a station had two ways to say the same thing and only one of them
+      // reached the thread a person reads.
+      const declared = [...STATION_TOOLS[station], 'comment_on_issue'].sort()
       expect(served).toEqual(declared)
       await client.close()
     }

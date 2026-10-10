@@ -74,6 +74,15 @@ export interface OutboundIntent {
   readonly kind: 'comment_on_issue' | 'reply_to_review' | 'close_issue'
   readonly body: string
   readonly threadId?: string
+  /**
+   * The pull request a reply goes to, which is not the issue it belongs to.
+   *
+   * A run on an issue delivers to that issue, and a review reply on the same
+   * run delivers to the pull request the work produced. Without this the reply
+   * would be posted to the issue number, which is a different conversation
+   * that happens to be numbered nearby.
+   */
+  readonly prNumber?: number
   readonly station: string
   readonly queuedAt: string
   /**

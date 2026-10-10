@@ -22,7 +22,23 @@ export type GateDecision = (typeof GATE_DECISIONS)[number]
  * as long as it takes: nothing is waiting on it except a review that has already
  * said everything it can without running anything.
  */
-export const GATE_KINDS = ['triage', 'plan', 'permission', 'trust'] as const
+/**
+ * `review_reply` is the one that decides whether words reach a reviewer.
+ *
+ * Its own kind rather than a `permission`: the existing kinds each name what
+ * is being decided, and "may this text go to a stranger" is not the same
+ * question as "may this code run". One gate carries every answer to one
+ * review, because the answers have to be read together: judging them one at a
+ * time is how the seventh gets released without anybody noticing it
+ * contradicts the third.
+ */
+export const GATE_KINDS = [
+  'triage',
+  'plan',
+  'permission',
+  'trust',
+  'review_reply',
+] as const
 export type GateKind = (typeof GATE_KINDS)[number]
 
 /**

@@ -42,6 +42,19 @@ export interface RecordedAnswer {
   readonly commitSha: string | null
   readonly station: string
   readonly at: string
+  /**
+   * When this reached the reviewer, and where it landed.
+   *
+   * Written by delivery rather than by the station, because the station does
+   * not post and must not be able to say that it did. Null means recorded and
+   * not sent, which is every answer until a person releases it.
+   */
+  readonly postedAt?: string | null
+  readonly postedUrl?: string | null
+  /** When the thread was closed on GitHub. A summary has none to close. */
+  readonly resolvedAt?: string | null
+  /** Why it could not be sent, when it could not. */
+  readonly failed?: string | null
 }
 
 export type ReviewRecord = RecordedComment | RecordedAnswer
@@ -176,4 +189,46 @@ export async function attachCommitToAnswers(
     attached += 1
   }
   return attached
+}
+
+/**
+ * Records what delivery did with one answer.
+ *
+ * Appended rather than edited, like the commit attachment: the store is append
+ * only and the last answer for a comment is the one that stands, so this reads
+ * back as the answer having been sent all along.
+ */
+export async function markAnswerDelivered(
+  subject: Subject,
+  threadId: string,
+  outcome: {
+    readonly postedAt?: string
+    readonly postedUrl?: string
+    readonly resolvedAt?: string
+    readonly failed?: string
+  },
+): Promise<void> {
+  const answer = (await readReviewRecords(subject))
+    .filter((record): record is RecordedAnswer => record.kind === 'answer')
+    .filter((record) => record.threadId === threadId)
+    .at(-1)
+  if (answer === undefined) {
+    return
+  }
+  await append(subject, { ...answer, ...outcome })
+}
+
+/** The answers on this subject that have not reached the reviewer yet. */
+export async function unsentAnswers(
+  subject: Subject,
+): Promise<RecordedAnswer[]> {
+  const latest = new Map<string, RecordedAnswer>()
+  for (const record of await readReviewRecords(subject)) {
+    if (record.kind === 'answer') {
+      latest.set(record.threadId, record)
+    }
+  }
+  return [...latest.values()].filter(
+    (answer) => answer.postedAt === undefined || answer.postedAt === null,
+  )
 }

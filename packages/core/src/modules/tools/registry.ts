@@ -111,7 +111,7 @@ function registerConversation(server: McpServer, ctx: ToolContext): void {
 
 function registerOutbound(server: McpServer, ctx: ToolContext): void {
   const queue =
-    (kind: 'comment_on_issue' | 'reply_to_review') =>
+    (kind: 'comment_on_issue') =>
     async (input: { body: string; threadId?: string }) => {
       const intent = {
         kind,
@@ -122,10 +122,9 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
       } as const
       await queueOutbound(ctx.run, intent)
       ctx.queued.push(intent)
-      // Only triage drains an outbox today. Telling an implementer or a
-      // reviewer that their intent will be sent would be a promise nothing
-      // keeps: theirs are queued after the handoff, bound to no gate, and
-      // delivered by nobody.
+      // Triage and the review loop drain an outbox. An intent from anywhere
+      // else is queued after the handoff, bound to no gate, and delivered by
+      // nobody, so a station there is told plainly rather than left to assume.
       return text(
         ctx.station === 'classifier'
           ? 'recorded for a person to review. Nothing is posted to GitHub by this tool. If a person releases it, it is sent afterwards, and you are not told either way.'
@@ -142,17 +141,6 @@ function registerOutbound(server: McpServer, ctx: ToolContext): void {
       inputSchema: { body: z.string().min(1) },
     },
     queue('comment_on_issue'),
-  )
-
-  server.registerTool(
-    'reply_to_review',
-    {
-      title: 'Queue a reply to a review thread',
-      description:
-        'Record a reply to a review comment. It is written down for a person to read and is never posted by you. Delivery is not implemented yet, so do not expect a reply.',
-      inputSchema: { threadId: z.string().min(1), body: z.string().min(1) },
-    },
-    queue('reply_to_review'),
   )
 }
 
