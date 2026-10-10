@@ -2,7 +2,12 @@ import { assign, setup } from 'xstate'
 import { exhaustedBecause } from '@/run/budgets'
 import { ready } from '@/run/prCollect'
 import { isOurFault } from '@/run/stations/schemas'
-import { ciFixer, failureReporter, faultClassifier } from './prActors'
+import {
+  ciFixer,
+  failureReporter,
+  faultClassifier,
+  reviewAnswerer,
+} from './prActors'
 import {
   affordable,
   rememberSeen,
@@ -30,7 +35,13 @@ export const prLifecycle = setup({
     input: {} as PrInput,
     events: {} as PrEvent,
   },
-  actors: { prWatch, faultClassifier, failureReporter, ciFixer },
+  actors: {
+    prWatch,
+    faultClassifier,
+    failureReporter,
+    ciFixer,
+    reviewAnswerer,
+  },
   guards: {
     windowClosed: ({ context }: { context: PrContext }) =>
       context.openedAt !== undefined &&
@@ -194,18 +205,9 @@ export const prLifecycle = setup({
           }),
         },
         { target: 'classifyingFailure', guard: 'checksFailed' },
-        {
-          // A batch of review comments with no failing check. Answering those
-          // is the next piece of work; until it exists this says so rather
-          // than dropping them.
-          target: 'done',
-          actions: assign({
-            outcome: () => ({
-              kind: 'exhausted' as const,
-              why: 'a review comment needs answering and that is not built yet',
-            }),
-          }),
-        },
+        // A batch of review comments with no failing check. The reviewer
+        // answers them, and pushes whatever answering them changed.
+        { target: 'answeringReview' },
       ],
     },
 
@@ -216,6 +218,59 @@ export const prLifecycle = setup({
      * somebody else's outage consumes the allowance that exists for a reviewer
      * disagreeing, and a correct pull request is abandoned over a flaky runner.
      */
+    /**
+     * The reviewer answers what the review asked.
+     *
+     * Back to watching afterwards rather than finishing, because answering a
+     * review is not the end of a pull request: the push it may have made
+     * starts the checks again, and a reviewer who reads the answer may say
+     * something else.
+     */
+    answeringReview: {
+      // Counted on the way in, the same as a ci fix, and against the revisions
+      // allowance rather than that one: a reviewer asking for something else
+      // and a check going red are different kinds of wrong. Without this the
+      // budget never advances, and answering a review pushes a commit which a
+      // bot reviewer answers with more comments, which is a loop that spends a
+      // laptop rather than one that ends.
+      entry: assign({ revisions: ({ context }) => context.revisions + 1 }),
+      invoke: {
+        src: 'reviewAnswerer',
+        input: ({ context }) => {
+          const asked = upshot(context)
+          return {
+            runId: context.runId,
+            prNumber: context.prNumber,
+            comments:
+              asked.kind === 'revise'
+                ? asked.asked.flatMap((signal) =>
+                    signal.kind === 'comments' ? signal.comments : [],
+                  )
+                : [],
+          }
+        },
+        onDone: {
+          target: 'watching',
+          actions: assign({
+            // Remembered so the push this just made is not read back on the
+            // next look as somebody else touching the branch.
+            pushedSha: ({ context, event }) =>
+              event.output.pushedSha ?? context.pushedSha,
+            pending: () => [],
+          }),
+        },
+        onError: {
+          target: 'done',
+          actions: assign({
+            outcome: () => ({
+              kind: 'failed' as const,
+              error: 'could not answer the review',
+            }),
+          }),
+        },
+      },
+    },
+
     classifyingFailure: {
       invoke: {
         src: 'faultClassifier',

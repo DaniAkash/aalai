@@ -44,6 +44,12 @@ export function affordable(context: PrContext): boolean {
 export const watchInput = ({ context }: { context: PrContext }) => ({
   repo: context.repo,
   prNumber: context.prNumber,
+  // The issue this pull request is for, so what the review says can be written
+  // down against the subject whose thread a person reads. A pull request
+  // opened for nothing has none, and then nothing is recorded.
+  ...(context.issueNumber === undefined
+    ? {}
+    : { issueNumber: context.issueNumber }),
   seen: {
     looked: context.looked,
     headSha: context.headSha,

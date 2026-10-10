@@ -5,9 +5,22 @@ import {
   commentOnIssue,
   listIssueCommentBodies,
 } from '@/lib/gh'
+import {
+  listReviewThreads,
+  type PostedReply,
+  replyInThread,
+  replyToSummary,
+  resolveReviewThread,
+  threadHolding,
+} from '@/lib/ghReview'
 import { logger } from '@/lib/log'
 import { listGates, readGate } from '@/modules/gates'
 import type { RunRef } from '@/modules/work/paths'
+import {
+  markAnswerDelivered,
+  type RecordedAnswer,
+  readReviewRecords,
+} from '@/modules/work/reviews'
 import type { OutboundIntent, QueuedIntent } from '@/modules/work/store'
 import {
   claimDelivery,
@@ -130,6 +143,10 @@ async function deliverOne(
       deliveredAt: new Date().toISOString(),
     })
     return { kind: intent.kind }
+  }
+
+  if (intent.kind === 'reply_to_review') {
+    return await deliverReply(input, queued, intent)
   }
 
   // A kind this does not know how to send is refused rather than guessed at.
@@ -265,4 +282,75 @@ async function deliverOrSay(
     await releaseDelivery(input.run, queued.id)
     return { kind: 'failed', error: message }
   }
+}
+
+/**
+ * Posts one answer where the reviewer asked, and closes the thread.
+ *
+ * The words come from the review record rather than from the intent, so an
+ * answer corrected between being queued and being released sends the
+ * correction. The intent is a pointer and a gate, not a second copy of a
+ * sentence that can disagree with the first.
+ *
+ * Posting and resolving are separate calls and the first is the one that
+ * cannot be taken back, so it is recorded before the second is attempted. A
+ * crash in between leaves an answer that is sent and not resolved, which a
+ * retry finishes rather than repeats.
+ */
+async function deliverReply(
+  input: { run: RunRef; repo: string; issueNumber: number },
+  queued: QueuedIntent,
+  intent: OutboundIntent,
+): Promise<{ kind: OutboundIntent['kind']; url?: string }> {
+  const threadId = intent.threadId
+  if (threadId === undefined) {
+    throw new Error('a reply with no comment to reply to')
+  }
+  const subject = input.run.subject
+  const answer = (await readReviewRecords(subject))
+    .filter((record): record is RecordedAnswer => record.kind === 'answer')
+    .filter((record) => record.threadId === threadId)
+    .at(-1)
+  const body = (answer?.answer ?? intent.body).trim()
+  if (body === '') {
+    throw new Error('a reply with nothing in it')
+  }
+
+  const prNumber = intent.prNumber ?? input.issueNumber
+  const posted = await post(input.repo, prNumber, threadId, body)
+  const postedAt = new Date().toISOString()
+  await markAnswerDelivered(subject, threadId, {
+    postedAt,
+    postedUrl: posted.html_url,
+  })
+  await recordDelivery(input.run, queued.id, {
+    deliveredAt: postedAt,
+    url: posted.html_url,
+  })
+
+  // A summary has no thread to close, which is an ordinary outcome and not a
+  // failure: there was never anything there for a reviewer to tick off.
+  if (!threadId.startsWith('review:')) {
+    const threads = await listReviewThreads(input.repo, prNumber)
+    const thread = threadHolding(threads, threadId)
+    if (thread !== undefined && !thread.isResolved) {
+      await resolveReviewThread(thread.id)
+      await markAnswerDelivered(subject, threadId, {
+        resolvedAt: new Date().toISOString(),
+      })
+    }
+  }
+
+  return { kind: intent.kind, url: posted.html_url }
+}
+
+function post(
+  repo: string,
+  prNumber: number,
+  threadId: string,
+  body: string,
+): Promise<PostedReply> {
+  return threadId.startsWith('review:')
+    ? replyToSummary(repo, prNumber, body)
+    : replyInThread(repo, prNumber, threadId, body)
 }

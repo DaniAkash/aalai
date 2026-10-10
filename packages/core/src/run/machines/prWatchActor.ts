@@ -4,9 +4,16 @@ import {
   branchHead,
   listCheckRuns,
   listReviewComments,
+  listReviewSummaries,
   pullRequestState,
+  type ReviewComment,
+  type ReviewSummary,
 } from '@/lib/ghPr'
 import { logger } from '@/lib/log'
+import {
+  readableReviewBody,
+  recordReviewComments,
+} from '@/modules/work/reviews'
 import { type Seen, seenAfter, signalsFrom } from '@/run/prSignals'
 import { pollEvery } from './polling'
 
@@ -20,6 +27,8 @@ interface WatchInput {
   readonly prNumber: number
   readonly seen: Seen
   readonly pollMs?: number
+  /** The issue whose thread this review belongs in, when there is one. */
+  readonly issueNumber?: number
 }
 
 /**
@@ -57,13 +66,16 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
           return
         }
 
-        const [me, head, base, checks, comments] = await Promise.all([
-          authenticatedLogin(),
-          branchHead(input.repo, pr.headRef),
-          branchHead(input.repo, pr.baseRef),
-          listCheckRuns(input.repo, pr.headSha),
-          listReviewComments(input.repo, input.prNumber),
-        ])
+        const [me, head, base, checks, comments, summaries] = await Promise.all(
+          [
+            authenticatedLogin(),
+            branchHead(input.repo, pr.headRef),
+            branchHead(input.repo, pr.baseRef),
+            listCheckRuns(input.repo, pr.headSha),
+            listReviewComments(input.repo, input.prNumber),
+            listReviewSummaries(input.repo, input.prNumber),
+          ],
+        )
         if (stopped()) {
           return
         }
@@ -76,6 +88,12 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
           comments,
           me,
         }
+        // Written down before the signals are worked out, so what a person
+        // reads in the thread does not depend on the machine deciding the
+        // comment was worth acting on. A comment that changes nothing is
+        // still something somebody said about this work.
+        await rememberComments(input, comments, summaries)
+
         const signals = signalsFrom(seen, current)
         seen = seenAfter(seen, current, signals)
         if (signals.length > 0) {
@@ -94,3 +112,49 @@ export const prWatch = fromCallback<{ type: string }, WatchInput>(
     )
   },
 )
+
+/**
+ * Records what the review said, for the thread rather than for the machine.
+ *
+ * Failures are logged and swallowed. The watch is what keeps a pull request
+ * alive, and losing that because a file could not be written would trade the
+ * whole loop for one line of history.
+ */
+async function rememberComments(
+  input: WatchInput,
+  comments: readonly ReviewComment[],
+  summaries: readonly ReviewSummary[],
+): Promise<void> {
+  if (input.issueNumber === undefined) {
+    return
+  }
+  try {
+    await recordReviewComments(
+      { repo: input.repo, kind: 'issue', number: input.issueNumber },
+      [
+        // Summaries first: a reviewer says what it thinks overall before it
+        // says it about a line, and the thread reads in that order.
+        ...summaries.map((summary) => ({
+          // Prefixed because review ids and comment ids are different numbers
+          // from different tables, and an answer refers to one of them.
+          id: `review:${summary.id}`,
+          author: summary.author,
+          body: readableReviewBody(summary.body),
+          path: null,
+          line: null,
+          at: summary.submitted_at,
+        })),
+        ...comments.map((comment) => ({
+          id: String(comment.id),
+          author: comment.author,
+          body: comment.body,
+          path: comment.path ?? null,
+          line: comment.line ?? null,
+          at: comment.created_at,
+        })),
+      ],
+    )
+  } catch (error) {
+    log.debug('could not record what the review said', { error })
+  }
+}

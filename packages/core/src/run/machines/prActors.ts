@@ -1,9 +1,12 @@
 import { fromPromise } from 'xstate'
+import type { ReviewComment } from '@/lib/ghPr'
 import { failedLog, latestWorkflowRunId, pullRequestState } from '@/lib/ghPr'
 import { diffNames, diffStat, headSha, pushBranch } from '@/lib/git'
 import { logger } from '@/lib/log'
+import { attachCommitToAnswers } from '@/modules/work/reviews'
 import { commitImplementerWork } from '@/run/commit'
 import { runCiFixer, runFaultClassifier } from '@/run/stations/fault'
+import { runReviewAnswerer } from '@/run/stations/review'
 import type { FaultVerdict } from '@/run/stations/schemas'
 import { runDeps } from './deps'
 
@@ -211,5 +214,73 @@ export const ciFixer = fromPromise(
       sha: (pushed ?? '').slice(0, 8),
     })
     return { pushedSha: pushed ?? '' }
+  },
+)
+
+/**
+ * Answers a review of our own pull request and pushes what it changed.
+ *
+ * The answers are written during the station's turn and the commit after it,
+ * so the sha is attached to them once it exists. A turn that changed nothing
+ * is not a failure here, unlike a failing check: disagreeing with every
+ * comment is a legitimate outcome and the answers still stand.
+ */
+export const reviewAnswerer = fromPromise(
+  async ({
+    input,
+    signal,
+  }: {
+    input: {
+      runId: string
+      prNumber: number
+      comments: readonly ReviewComment[]
+    }
+    signal: AbortSignal
+  }): Promise<{ pushedSha: string | null }> => {
+    const deps = runDeps(input.runId)
+    const startedAt = new Date().toISOString()
+
+    await runReviewAnswerer({
+      runId: input.runId,
+      repo: deps.repo,
+      prNumber: input.prNumber,
+      issueNumber: deps.issue.number,
+      title: deps.issue.title,
+      comments: input.comments,
+      worktree: deps.workspace.worktreePath,
+      config: deps.config,
+      signal,
+    })
+
+    const subject = {
+      repo: deps.repo,
+      kind: 'issue' as const,
+      number: deps.issue.number,
+    }
+    const outcome = await commitImplementerWork(
+      deps.run.runId,
+      deps.workspace,
+      deps.issue,
+      0,
+      deps.config,
+    )
+    if (outcome !== 'committed') {
+      log.info('the review was answered without changing anything', {
+        pr: input.prNumber,
+      })
+      return { pushedSha: null }
+    }
+
+    await pushBranch(deps.workspace.worktreePath, deps.workspace.branch)
+    const pushed = await headSha(deps.workspace.worktreePath)
+    if (pushed !== null && pushed !== undefined) {
+      const attached = await attachCommitToAnswers(subject, pushed, startedAt)
+      log.info('answered the review and pushed', {
+        pr: input.prNumber,
+        sha: pushed.slice(0, 8),
+        answers: attached,
+      })
+    }
+    return { pushedSha: pushed ?? null }
   },
 )

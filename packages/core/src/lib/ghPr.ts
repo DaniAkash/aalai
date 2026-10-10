@@ -115,6 +115,42 @@ export async function listReviewComments(
     .map((line) => JSON.parse(line) as ReviewComment)
 }
 
+export interface ReviewSummary {
+  readonly id: number
+  readonly body: string
+  readonly author: string
+  readonly submitted_at: string
+}
+
+/**
+ * Reviews that said something at the top level rather than against a line.
+ *
+ * Separate from the inline comments because GitHub keeps them apart, and
+ * because a reviewer that leaves only a summary is the ordinary case rather
+ * than the rare one: Copilot's default output is a verdict and a description
+ * with no inline findings at all. Reading only the inline comments means a
+ * thread that shows nothing while a review plainly happened.
+ *
+ * Reviews with an empty body are dropped: an approval with nothing written on
+ * it is a state change, which the pull request already shows.
+ */
+export async function listReviewSummaries(
+  repo: string,
+  number: number,
+): Promise<ReviewSummary[]> {
+  const stdout = await gh([
+    'api',
+    '--paginate',
+    `repos/${repo}/pulls/${number}/reviews`,
+    '--jq',
+    '.[] | select(.body != "") | {id, body, author: .user.login, submitted_at}',
+  ])
+  return stdout
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as ReviewSummary)
+}
+
 /** The head commit of a branch, and who wrote it. */
 export async function branchHead(
   repo: string,

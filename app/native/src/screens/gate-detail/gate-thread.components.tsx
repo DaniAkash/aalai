@@ -1,5 +1,6 @@
 import { waitedFor } from 'aalai/shared'
 import { useState } from 'react'
+import { Markdown } from '@/components/markdown/Markdown'
 import { Button } from '@/components/ui/button'
 
 export interface ThreadEntry {
@@ -70,9 +71,7 @@ export function Thread({
             </span>
             <span>{said(entry.at)}</span>
           </p>
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed">
-            {entry.body}
-          </p>
+          <Markdown body={entry.body} className="text-[13.5px]" />
         </li>
       ))}
       {answering ? (

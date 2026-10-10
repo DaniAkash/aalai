@@ -22,6 +22,13 @@ export interface ToolContext {
   readonly station: StationId
   /** The worktree paths are redacted against, so nothing stored leaks one. */
   readonly worktreePath: string
+  /**
+   * The pull request this turn is about, when it is about one.
+   *
+   * A review answer has to be posted to the pull request, which is not the
+   * issue the run is filed under. Absent on every station that never sees one.
+   */
+  readonly prNumber?: number
   /** What the tools wrote during this turn, in call order. */
   readonly written: ArtifactRef[]
   readonly queued: OutboundIntent[]

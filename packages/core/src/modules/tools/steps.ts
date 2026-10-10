@@ -1,5 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { emit } from '@/events/bus'
+import { recordReviewAnswer } from '@/modules/work/reviews'
+import { queueOutbound } from '@/modules/work/store'
 import type { ToolContext } from './context'
 import {
   answerReviewInput,
@@ -182,7 +184,7 @@ export function registerReviewAnswerTool(
       inputSchema: answerReviewInput,
       outputSchema: answerReviewOutput.shape,
     },
-    ({ thread_id, answer, commit_sha }) => {
+    async ({ thread_id, answer, commit_sha }) => {
       const answeredAt = new Date().toISOString()
       ctx.answered.push({
         threadId: thread_id,
@@ -190,8 +192,30 @@ export function registerReviewAnswerTool(
         answeredAt,
         commitSha: commit_sha ?? null,
       })
-      // Same reason as the context report: the grant does not outlive the
-      // turn, so an answer that only lives on it is an answer nobody sees.
+      // Written down before it is announced. The grant does not outlive the
+      // turn and the event does not outlive the process, so without this an
+      // answer is gone by the time anybody opens the thread to read it.
+      await recordReviewAnswer(ctx.subject, {
+        threadId: thread_id,
+        answer,
+        commitSha: commit_sha ?? null,
+        station: ctx.station,
+        at: answeredAt,
+      })
+      // Queued in the same step as the record, so there is one act rather than
+      // two that can disagree about what was said. The intent is a pointer and
+      // a gate: delivery reads the words back from the record, so an answer
+      // corrected before release sends the correction.
+      const intent = {
+        kind: 'reply_to_review' as const,
+        body: answer,
+        threadId: thread_id,
+        ...(ctx.prNumber === undefined ? {} : { prNumber: ctx.prNumber }),
+        station: ctx.station,
+        queuedAt: answeredAt,
+      }
+      await queueOutbound(ctx.run, intent, `reply-${thread_id}`)
+      ctx.queued.push(intent)
       emit({
         type: 'review.answered',
         runId: ctx.runId,
@@ -201,11 +225,14 @@ export function registerReviewAnswerTool(
         answer,
         commitSha: commit_sha ?? null,
       })
-      return reply('recorded for a person to read. Nothing is posted by you.', {
-        threadId: thread_id,
-        answeredAt,
-        commitSha: commit_sha ?? null,
-      })
+      return reply(
+        'recorded, and queued for a person to release. Nothing is posted by you, and you are not told whether it is sent.',
+        {
+          threadId: thread_id,
+          answeredAt,
+          commitSha: commit_sha ?? null,
+        },
+      )
     },
   )
 }

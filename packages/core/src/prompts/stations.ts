@@ -405,6 +405,48 @@ Answer with exactly one of:
 Quote what you are relying on in \`evidence\` rather than describing it. A verdict whose evidence is a paraphrase is not checkable.`
 }
 
+export interface ReviewAnswerPromptInput {
+  readonly repo: string
+  readonly prNumber: number
+  readonly comments: readonly {
+    readonly id: number
+    readonly author: string
+    readonly body: string
+    readonly path: string | null
+    readonly line: number | null
+  }[]
+}
+
+/**
+ * Answering a review on a pull request this factory opened.
+ *
+ * Every comment is answered, including the ones being disagreed with. A
+ * reviewer who answers only what they intend to change leaves a person unable
+ * to tell the difference between a point taken and a point missed.
+ */
+export function buildReviewAnswerPrompt(
+  input: ReviewAnswerPromptInput,
+): string {
+  const listed = input.comments
+    .map(
+      (comment) =>
+        `<comment id="${comment.id}" by="${comment.author}"${comment.path === null ? '' : ` file="${comment.path}${comment.line === null ? '' : `:${comment.line}`}"`}>\n${comment.body}\n</comment>`,
+    )
+    .join('\n\n')
+
+  return `You are answering a review of ${input.repo}#${input.prNumber}. Your working directory is a checkout of the branch under review.
+
+${listed}
+
+Read the code each comment is about before you answer it. A reviewer can be confidently wrong, and agreeing with one that is wrong makes the change worse.
+
+For each comment, decide whether it is right. If it is, make the change. If it is not, leave the code alone and say plainly why it should stand.
+
+Call answer_review_comment once for every comment above, using its id, whether or not you changed anything for it. A comment you silently skip reads to a person as one you did not understand. Leave commit_sha out: the commit is made after this turn and is attached to your answers for you.
+
+Change only what the comments are about. This is a review of work already agreed, not an opportunity to revisit it.`
+}
+
 export interface CiFixPromptInput {
   readonly repo: string
   readonly prNumber: number

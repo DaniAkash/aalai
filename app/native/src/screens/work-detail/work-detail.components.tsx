@@ -1,6 +1,14 @@
 import { gateSentence } from 'aalai/shared'
-import { Check, CircleDot, FileText, GitPullRequestArrow } from 'lucide-react'
+import {
+  Check,
+  CircleDot,
+  CornerDownRight,
+  FileText,
+  GitPullRequestArrow,
+  MessageSquare,
+} from 'lucide-react'
 import type { ReactNode } from 'react'
+import { Markdown } from '@/components/markdown/Markdown'
 import { cn } from '@/lib/utils'
 import type { Turn } from '@/modules/api/workDetail.hooks'
 
@@ -25,9 +33,7 @@ export function Said({
       <div className="flex justify-end">
         <div className="max-w-[78%] rounded-[var(--radius)] border border-border bg-secondary px-4 py-3">
           <Byline author={turn.author} at={turn.at} you />
-          <p className="m-0 whitespace-pre-wrap text-[13.5px] leading-relaxed">
-            {body}
-          </p>
+          <Markdown body={body} className="text-[13.5px]" />
         </div>
       </div>
     )
@@ -38,9 +44,7 @@ export function Said({
       at={turn.at}
       reporter={turn.voice === 'reporter'}
     >
-      <p className="m-0 max-w-[68ch] whitespace-pre-wrap text-[13.5px] leading-relaxed">
-        {body}
-      </p>
+      <Markdown body={body} className="max-w-[68ch] text-[13.5px]" />
     </Left>
   )
 }
@@ -117,9 +121,15 @@ export function Recorded({
         </ol>
       ) : null}
       {active ? (
-        <pre className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto whitespace-pre-wrap rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3 font-mono text-[11.5px] text-muted-foreground leading-relaxed">
-          {body ?? 'Reading it.'}
-        </pre>
+        <div className="mt-2 max-h-[420px] max-w-[72ch] overflow-auto rounded-[calc(var(--radius)-2px)] border border-border bg-card px-3.5 py-3">
+          {body === undefined ? (
+            <p className="m-0 text-[12.5px] text-muted-foreground">
+              Reading it.
+            </p>
+          ) : (
+            <Markdown body={body} />
+          )}
+        </div>
       ) : null}
     </Left>
   )
@@ -253,6 +263,106 @@ function StepMark({
       )}
     >
       {done ? <Check className="size-3" /> : index + 1}
+    </span>
+  )
+}
+
+/**
+ * What a review asked, and what the factory said back.
+ *
+ * One block rather than two turns, because the question and the answer are
+ * read together. An unanswered comment is the normal first state and says so,
+ * rather than being hidden until something has replied to it.
+ */
+export function Reviewed({
+  turn,
+}: {
+  turn: Extract<Turn, { kind: 'reviewed' }>
+}) {
+  return (
+    <Left author={turn.author} at={turn.at}>
+      <div className="max-w-[68ch] overflow-hidden rounded-[calc(var(--radius)-2px)] border border-border bg-card">
+        <div className="flex items-center gap-2 border-border border-b bg-secondary/40 px-3.5 py-2 font-mono text-[11.5px] text-muted-foreground">
+          <MessageSquare className="size-3" />
+          <span>review comment</span>
+          {turn.path === null ? null : (
+            <span className="truncate">
+              {turn.path}
+              {turn.line === null ? '' : `:${turn.line}`}
+            </span>
+          )}
+        </div>
+        <Markdown body={turn.body} className="px-3.5 py-3" />
+        {turn.answer === null ? (
+          <p className="m-0 border-border border-t px-3.5 py-2.5 text-[12.5px] text-muted-foreground">
+            Not answered yet.
+          </p>
+        ) : (
+          <div className="border-border border-t bg-secondary/20 px-3.5 py-3">
+            <div className="mb-1 flex flex-wrap items-center gap-1.5 font-semibold text-[12px]">
+              <CornerDownRight className="size-3.5 text-muted-foreground" />
+              <DeliveryState turn={turn} />
+              {turn.commitSha === null ? null : (
+                <code className="rounded bg-secondary px-1.5 py-0.5 font-mono font-normal text-[11px] text-muted-foreground">
+                  {turn.commitSha.slice(0, 7)}
+                </code>
+              )}
+            </div>
+            <Markdown body={turn.answer} />
+          </div>
+        )}
+      </div>
+    </Left>
+  )
+}
+
+/**
+ * How far an answer has got, said plainly.
+ *
+ * An answer written down and an answer the reviewer has read are different
+ * things. Rendering both as "answered" told a person their review had been
+ * replied to while nobody outside this machine had seen a word of it, which
+ * is the one lie this surface was telling.
+ */
+function DeliveryState({
+  turn,
+}: {
+  turn: Extract<Turn, { kind: 'reviewed' }>
+}) {
+  if (turn.delivery === 'failed') {
+    return (
+      <span className="text-destructive">
+        Could not be sent{turn.failed === null ? '' : `: ${turn.failed}`}
+      </span>
+    )
+  }
+  if (turn.delivery === 'recorded') {
+    return (
+      <span className="font-normal text-muted-foreground">
+        <b className="font-semibold text-foreground">Answered here.</b> Not sent
+        yet, so the reviewer has not seen it.
+      </span>
+    )
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span>{turn.delivery === 'resolved' ? 'Replied' : 'Sent'}</span>
+      {turn.postedUrl === null ? null : (
+        <a
+          href={turn.postedUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="font-normal text-[11.5px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          on GitHub
+        </a>
+      )}
+      {turn.delivery === 'resolved' ? (
+        <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-normal text-[11px] text-muted-foreground">
+          <Check className="size-2.5" />
+          thread resolved
+        </span>
+      ) : null}
     </span>
   )
 }
