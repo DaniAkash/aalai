@@ -58,7 +58,8 @@
     "demo:thread": "bun run scripts/seed-work-thread.ts",
     "demo:live": "bun run scripts/drive-live-step.ts",
     "demo:review": "bun run scripts/seed-review-thread.ts",
-    "e2e:review-loop": "bun run scripts/review-loop-e2e.ts"
+    "e2e:review-loop": "bun run scripts/review-loop-e2e.ts",
+    "e2e:review-release": "bun run scripts/review-release-e2e.ts"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",
