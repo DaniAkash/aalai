@@ -296,3 +296,107 @@ describe('attaching the commit made after the turn', () => {
     ).toBe(0)
   })
 })
+
+describe('a review that only said something at the top', () => {
+  test('tooling markers are not part of what a reviewer said', async () => {
+    // Copilot wraps its verdict in an HTML comment its own tooling keys on.
+    // That is a handle for the bot, not something anybody wrote to a person.
+    const { readableReviewBody } = await import('@/modules/work/reviews')
+    expect(
+      readableReviewBody('<!-- ccr-overview-v2 -->\n\n### Approval\n\nFine.'),
+    ).toBe('### Approval\n\nFine.')
+  })
+
+  test('a body that is only a marker comes out empty, not as markup', async () => {
+    const { readableReviewBody } = await import('@/modules/work/reviews')
+    expect(readableReviewBody('<!-- x -->')).toBe('')
+  })
+
+  test('a summary with no file is still a turn', async () => {
+    // The case this was built for: Copilot's default output is a verdict with
+    // no inline findings at all, so reading only the inline comments shows an
+    // empty thread while a review plainly happened.
+    await recordReviewComments(subject, [
+      {
+        id: 'review:5001',
+        author: 'copilot-pull-request-reviewer[bot]',
+        body: 'Approval recommended. The change addresses the reported bug.',
+        path: null,
+        line: null,
+        at: '2026-10-10T04:06:47Z',
+      },
+    ])
+    const { readWorkThread } = await import('@/modules/work/thread')
+    const { openState } = await import('@/watch/state')
+    const db = openState()
+    try {
+      const view = await readWorkThread(db, subject)
+      const turn = view.turns.find((t) => t.kind === 'reviewed')
+      expect(turn).toBeDefined()
+      if (turn?.kind === 'reviewed') {
+        expect(turn.path).toBeNull()
+        expect(turn.author).toContain('copilot')
+      }
+    } finally {
+      db.close()
+    }
+  })
+
+  test('a review id cannot be mistaken for a comment id', async () => {
+    // They are different numbers from different tables, and an answer refers
+    // to one of them. Unprefixed, a review and a comment could collide and an
+    // answer would attach to whichever was recorded first.
+    await recordReviewComments(subject, [
+      { ...comment('5001', 'inline'), id: '5001' },
+      {
+        id: 'review:5001',
+        author: 'bot',
+        body: 'summary',
+        path: null,
+        line: null,
+        at: '2026-10-10T04:06:47Z',
+      },
+    ])
+    const { readWorkThread } = await import('@/modules/work/thread')
+    const { openState } = await import('@/watch/state')
+    const db = openState()
+    try {
+      const view = await readWorkThread(db, subject)
+      expect(view.turns.filter((t) => t.kind === 'reviewed')).toHaveLength(2)
+    } finally {
+      db.close()
+    }
+  })
+})
+
+describe('making a review body readable', () => {
+  test('markup this interface does not render is not shown as itself', async () => {
+    // Copilot's body carries a details block and link elements. Rendered as
+    // plain text they appear as themselves mid sentence; the words inside
+    // them are what somebody actually wrote.
+    const { readableReviewBody } = await import('@/modules/work/reviews')
+    expect(
+      readableReviewBody(
+        '<details>\n<summary><strong>What changed</strong></summary>\n\nIt pads the seconds.\n</details>',
+      ),
+    ).toBe('What changed\n\nIt pads the seconds.')
+  })
+
+  test('a long review is not shortened', async () => {
+    // A review is as long as the reviewer made it, and cutting it hides the
+    // part they cared about.
+    const { readableReviewBody } = await import('@/modules/work/reviews')
+    const long = `${'word '.repeat(400)}end`
+    expect(readableReviewBody(long)).toContain('end')
+    expect(readableReviewBody(long).length).toBeGreaterThan(1500)
+  })
+
+  test('a less-than that is not a tag survives', async () => {
+    // Review prose about code says things like "n < 10", and eating that
+    // would change what the reviewer said.
+    const { readableReviewBody } = await import('@/modules/work/reviews')
+    expect(readableReviewBody('guard when n < 10 and n > 2')).toBe(
+      'guard when n < 10 and n > 2',
+    )
+  })
+})

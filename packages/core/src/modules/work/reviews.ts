@@ -46,6 +46,27 @@ export interface RecordedAnswer {
 
 export type ReviewRecord = RecordedComment | RecordedAnswer
 
+/**
+ * What a reviewer wrote, as a person reads it.
+ *
+ * Three things come out, none of which anybody said. HTML comments are a
+ * handle for the bot that left them. HTML tags are markup this interface does
+ * not render, so `<details>` and a link element would otherwise appear as
+ * themselves in the middle of a sentence; the text inside them is kept,
+ * because that is the part somebody wrote. Runs of blank lines left behind by
+ * the first two are collapsed.
+ *
+ * What is deliberately not done here is shortening it. A review is as long as
+ * the reviewer made it, and cutting it would hide the part they cared about.
+ */
+export function readableReviewBody(body: string): string {
+  return body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function fileFor(subject: Subject): string {
   return join(subjectDir(subject), FILE)
 }

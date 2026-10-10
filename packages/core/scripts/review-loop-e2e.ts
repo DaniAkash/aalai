@@ -1,8 +1,11 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { listReviewComments } from '@/lib/ghPr'
+import { listReviewComments, listReviewSummaries } from '@/lib/ghPr'
 import { grantToolAccess, revokeToolAccess } from '@/modules/tools/context'
-import { recordReviewComments } from '@/modules/work/reviews'
+import {
+  readableReviewBody,
+  recordReviewComments,
+} from '@/modules/work/reviews'
 import { readWorkThread } from '@/modules/work/thread'
 import { openState } from '@/watch/state'
 
@@ -25,46 +28,54 @@ const subject = { repo, kind: 'issue' as const, number: Number(issueArg) }
 const say = (line: string) => process.stdout.write(`${line}\n`)
 
 say(`reading the review on ${repo}#${prNumber}`)
-const comments = await listReviewComments(repo, prNumber)
-say(`  github holds ${comments.length} review comment(s)`)
-if (comments.length === 0) {
+const [inline, summaries] = await Promise.all([
+  listReviewComments(repo, prNumber),
+  listReviewSummaries(repo, prNumber),
+])
+say(
+  `  github holds ${summaries.length} review summary and ${inline.length} inline comment(s)`,
+)
+
+const observed = [
+  ...summaries.map((summary) => ({
+    id: `review:${summary.id}`,
+    author: summary.author,
+    body: readableReviewBody(summary.body),
+    path: null,
+    line: null,
+    at: summary.submitted_at,
+  })),
+  ...inline.map((comment) => ({
+    id: String(comment.id),
+    author: comment.author,
+    body: comment.body,
+    path: comment.path ?? null,
+    line: comment.line ?? null,
+    at: comment.created_at,
+  })),
+]
+if (observed.length === 0) {
   say('  nothing to do until a review has been left on it')
   process.exit(1)
 }
-for (const comment of comments) {
-  say(`  ${comment.author}: ${comment.body.slice(0, 72).replace(/\n/g, ' ')}`)
+for (const one of observed) {
+  say(`  ${one.author}: ${one.body.slice(0, 72).replace(/\n/g, ' ')}`)
 }
 
 // Exactly what the watcher does on every poll, including the second time.
-const added = await recordReviewComments(
-  subject,
-  comments.map((comment) => ({
-    id: String(comment.id),
-    author: comment.author,
-    body: comment.body,
-    path: comment.path ?? null,
-    line: comment.line ?? null,
-    at: comment.created_at,
-  })),
-)
+const added = await recordReviewComments(subject, observed)
 say(`  recorded ${added.length} new`)
-const again = await recordReviewComments(
-  subject,
-  comments.map((comment) => ({
-    id: String(comment.id),
-    author: comment.author,
-    body: comment.body,
-    path: comment.path ?? null,
-    line: comment.line ?? null,
-    at: comment.created_at,
-  })),
-)
+const again = await recordReviewComments(subject, observed)
 say(`  recorded ${again.length} on a second pass, which should be 0`)
 
-const first = comments[0]
+// The one a reviewer left, in preference to one this account left, because
+// what is being proved is that somebody else's review reaches the thread.
+const first =
+  observed.find((one) => /bot|copilot/i.test(one.author)) ?? observed[0]
 if (first === undefined) {
   process.exit(1)
 }
+say(`  answering ${first.author}'s`)
 
 say('answering one of them through the tool a station uses')
 const runId = `${repo}#${subject.number}@${Date.now()}`
@@ -87,7 +98,7 @@ await client.connect(
 const result = await client.callTool({
   name: 'answer_review_comment',
   arguments: {
-    thread_id: String(first.id),
+    thread_id: first.id,
     answer:
       'Addressed. The seconds are padded to two digits, and the tests now cover the boundary either side of ten as well as a whole minute.',
     commit_sha: '0f1e2d3c4b5a69788796a5b4c3d2e1f0',
