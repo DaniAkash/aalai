@@ -298,11 +298,11 @@ export function Reviewed({
           </p>
         ) : (
           <div className="border-border border-t bg-secondary/20 px-3.5 py-3">
-            <div className="mb-1 flex items-center gap-1.5 font-semibold text-[12px]">
+            <div className="mb-1 flex flex-wrap items-center gap-1.5 font-semibold text-[12px]">
               <CornerDownRight className="size-3.5 text-muted-foreground" />
-              Answered
+              <DeliveryState turn={turn} />
               {turn.commitSha === null ? null : (
-                <code className="ml-1 rounded bg-secondary px-1.5 py-0.5 font-mono font-normal text-[11px] text-muted-foreground">
+                <code className="rounded bg-secondary px-1.5 py-0.5 font-mono font-normal text-[11px] text-muted-foreground">
                   {turn.commitSha.slice(0, 7)}
                 </code>
               )}
@@ -312,5 +312,56 @@ export function Reviewed({
         )}
       </div>
     </Left>
+  )
+}
+
+/**
+ * How far an answer has got, said plainly.
+ *
+ * An answer written down and an answer the reviewer has read are different
+ * things. Rendering both as "answered" told a person their review had been
+ * replied to while nobody outside this machine had seen a word of it, which
+ * is the one lie this surface was telling.
+ */
+function DeliveryState({
+  turn,
+}: {
+  turn: Extract<Turn, { kind: 'reviewed' }>
+}) {
+  if (turn.delivery === 'failed') {
+    return (
+      <span className="text-destructive">
+        Could not be sent{turn.failed === null ? '' : `: ${turn.failed}`}
+      </span>
+    )
+  }
+  if (turn.delivery === 'recorded') {
+    return (
+      <span className="font-normal text-muted-foreground">
+        <b className="font-semibold text-foreground">Answered here.</b> Not sent
+        yet, so the reviewer has not seen it.
+      </span>
+    )
+  }
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span>{turn.delivery === 'resolved' ? 'Replied' : 'Sent'}</span>
+      {turn.postedUrl === null ? null : (
+        <a
+          href={turn.postedUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="font-normal text-[11.5px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          on GitHub
+        </a>
+      )}
+      {turn.delivery === 'resolved' ? (
+        <span className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 font-normal text-[11px] text-muted-foreground">
+          <Check className="size-2.5" />
+          thread resolved
+        </span>
+      ) : null}
+    </span>
   )
 }

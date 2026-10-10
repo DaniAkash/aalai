@@ -132,8 +132,34 @@ async function reviewTurns(subject: Subject): Promise<Turn[]> {
         answer: answer?.answer ?? null,
         answeredAt: answer?.at ?? null,
         commitSha: answer?.commitSha ?? null,
+        delivery: deliveryOf(answer),
+        postedUrl: answer?.postedUrl ?? null,
+        failed: answer?.failed ?? null,
       }
     })
+}
+
+/**
+ * How far an answer has got.
+ *
+ * Resolved is checked before sent because it implies it: a thread is only
+ * closed after the reply that closed it landed.
+ */
+function deliveryOf(
+  answer: RecordedAnswer | undefined,
+): 'recorded' | 'sent' | 'resolved' | 'failed' {
+  if (answer === undefined) {
+    return 'recorded'
+  }
+  if (answer.failed !== undefined && answer.failed !== null) {
+    return 'failed'
+  }
+  if (answer.resolvedAt !== undefined && answer.resolvedAt !== null) {
+    return 'resolved'
+  }
+  return answer.postedAt !== undefined && answer.postedAt !== null
+    ? 'sent'
+    : 'recorded'
 }
 
 async function saidTurns(subject: Subject): Promise<Turn[]> {

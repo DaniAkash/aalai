@@ -60,6 +60,18 @@ export type Turn = TurnBase &
         readonly answeredAt: string | null
         /** The commit that addressed it, when there was one. */
         readonly commitSha: string | null
+        /**
+         * How far the answer has got, which is not the same as whether it
+         * exists.
+         *
+         * An answer that is written down and an answer the reviewer has read
+         * are different things, and a thread that renders both as "answered"
+         * tells a person their review was replied to when nobody outside this
+         * machine has seen a word of it.
+         */
+        readonly delivery: 'recorded' | 'sent' | 'resolved' | 'failed'
+        readonly postedUrl: string | null
+        readonly failed: string | null
       }
   )
 

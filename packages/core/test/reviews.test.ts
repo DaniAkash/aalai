@@ -400,3 +400,107 @@ describe('making a review body readable', () => {
     )
   })
 })
+
+describe('how far an answer has got', () => {
+  async function stateOf(threadId: string) {
+    const { readWorkThread } = await import('@/modules/work/thread')
+    const { openState } = await import('@/watch/state')
+    const db = openState()
+    try {
+      const view = await readWorkThread(db, subject)
+      const turn = view.turns.find(
+        (t) => t.kind === 'reviewed' && t.commentId === threadId,
+      )
+      return turn?.kind === 'reviewed' ? turn.delivery : undefined
+    } finally {
+      db.close()
+    }
+  }
+
+  test('an answer nobody released reads as recorded, not as answered', async () => {
+    // The lie this replaces: the thread said "Answered" while nothing had
+    // been posted and the reviewer had seen nothing.
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Corrected it.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-10T10:00:00Z',
+    })
+    expect(await stateOf('1')).toBe('recorded')
+  })
+
+  test('posting makes it sent', async () => {
+    const { markAnswerDelivered } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Corrected it.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-10T10:00:00Z',
+    })
+    await markAnswerDelivered(subject, '1', {
+      postedAt: '2026-10-10T10:01:00Z',
+      postedUrl: 'https://github.com/x/y/pull/1#discussion_r1',
+    })
+    expect(await stateOf('1')).toBe('sent')
+  })
+
+  test('resolving outranks sent, because it implies it', async () => {
+    const { markAnswerDelivered } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Corrected it.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-10T10:00:00Z',
+    })
+    await markAnswerDelivered(subject, '1', {
+      postedAt: '2026-10-10T10:01:00Z',
+    })
+    await markAnswerDelivered(subject, '1', {
+      resolvedAt: '2026-10-10T10:02:00Z',
+    })
+    expect(await stateOf('1')).toBe('resolved')
+  })
+
+  test('an answer that could not be sent says so rather than looking recorded', async () => {
+    const { markAnswerDelivered } = await import('@/modules/work/reviews')
+    await recordReviewComments(subject, [comment('1', 'Off by one.')])
+    await recordReviewAnswer(subject, {
+      threadId: '1',
+      answer: 'Corrected it.',
+      commitSha: null,
+      station: 'reviewer',
+      at: '2026-10-10T10:00:00Z',
+    })
+    await markAnswerDelivered(subject, '1', {
+      failed: 'the thread was deleted',
+    })
+    expect(await stateOf('1')).toBe('failed')
+  })
+
+  test('only the unsent ones are offered for release', async () => {
+    const { markAnswerDelivered, unsentAnswers } = await import(
+      '@/modules/work/reviews'
+    )
+    for (const id of ['1', '2']) {
+      await recordReviewComments(subject, [comment(id, `c${id}`)])
+      await recordReviewAnswer(subject, {
+        threadId: id,
+        answer: `a${id}`,
+        commitSha: null,
+        station: 'reviewer',
+        at: '2026-10-10T10:00:00Z',
+      })
+    }
+    await markAnswerDelivered(subject, '1', {
+      postedAt: '2026-10-10T10:01:00Z',
+    })
+    const unsent = await unsentAnswers(subject)
+    expect(unsent.map((a) => a.threadId)).toEqual(['2'])
+  })
+})
